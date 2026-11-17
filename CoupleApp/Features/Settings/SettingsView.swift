@@ -57,6 +57,12 @@ struct SettingsView: View {
                     Text("🎨 Оформление")
                 }
 
+                Section("📅 Планер и клиенты") {
+                    NavigationLink("👧👦 Группы") { PlannerGroupSettingsView().navigationTitle("Группы") }
+                    NavigationLink("📜 Абонементы") { PlannerSubscriptionSettingsView().navigationTitle("Абонементы") }
+                    NavigationLink("🎨 Цвета") { PlannerColorSettingsView().navigationTitle("Цвета") }
+                }
+
                 Section("🔄 Синхронизация") {
                     NavigationLink {
                         SyncSettingsView()
