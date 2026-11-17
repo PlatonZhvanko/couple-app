@@ -15,6 +15,8 @@ enum NutritionFeature {
             NutritionWater.self,
             NutritionFavorite.self,
             NutritionGoal.self,
+            NutritionFood.self,
+            NutritionDish.self,
         ]
     ) {
         NutritionRootView()
