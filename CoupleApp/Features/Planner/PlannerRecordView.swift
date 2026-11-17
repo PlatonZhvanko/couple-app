@@ -483,7 +483,7 @@ private struct PlannerFineRow: View {
         .padding(.vertical, 2)
         .onAppear { amountText = "\(Int(amount.rounded()))" }
         .onChange(of: amountText) { _, text in
-            if let value = Double(text) { onAmount(value) }
+            if let value = Double(text), abs(value - amount) > 0.001 { onAmount(value) }
         }
     }
 }
