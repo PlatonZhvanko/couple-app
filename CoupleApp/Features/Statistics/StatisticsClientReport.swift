@@ -16,11 +16,14 @@ struct StatisticsClientReportView: View {
             .filter { $0.clientID == clientID && period.contains($0.day) && $0.start <= .now }
             .sorted { $0.start > $1.start }
     }
-    private var attended: [StatisticsVisit] { visits.filter { $0.method != .unpaid } }
-    private var cancelled: [StatisticsVisit] { visits.filter { $0.method == .unpaid } }
+    private var attended: [StatisticsVisit] { visits.filter { !$0.cancelled && $0.method != .unpaid } }
+    private var cancelled: [StatisticsVisit] { visits.filter(\.cancelled) }
     private var debts: [StatisticsVisit] { visits.filter(\.isDebt) }
     private var cash: [PlannerPayment] {
         snapshot.cashPayments.filter { $0.clientID == clientID && period.contains($0.day) }.sorted { $0.day > $1.day }
+    }
+    private var fines: [PlannerPayment] {
+        snapshot.finePayments.filter { $0.clientID == clientID && period.contains($0.day) }
     }
     private var subs: [PlannerSubscription] {
         snapshot.subscriptions.filter { $0.clientID == clientID }.sorted { $0.soldAt > $1.soldAt }
@@ -51,7 +54,7 @@ struct StatisticsClientReportView: View {
                     if attended.isEmpty { Text("Нет занятий").foregroundStyle(.secondary) }
                     ForEach(attended) { visitRow($0) }
                 }
-                StatisticsLine(title: "❌ Отмены", value: "\(cancelled.count)") {
+                StatisticsLine(title: "🚫 Отмены", value: "\(cancelled.count)") {
                     if cancelled.isEmpty { Text("Отмен нет").foregroundStyle(.secondary) }
                     ForEach(cancelled) { visitRow($0) }
                 }
@@ -61,12 +64,19 @@ struct StatisticsClientReportView: View {
                 }
                 StatisticsLine(
                     title: "💵 Заработано",
-                    value: money(cash.reduce(0) { $0 + $1.amount } + soldInPeriod.reduce(0) { $0 + $1.amount })
+                    value: money(cash.reduce(0) { $0 + $1.amount } + fines.reduce(0) { $0 + $1.amount } + soldInPeriod.reduce(0) { $0 + $1.amount })
                 ) {
                     ForEach(cash) { payment in
                         StatisticsDetailRow(
                             title: snapshot.eventTitles[payment.eventID] ?? "Занятие",
                             caption: "\(StatisticsFormat.day(payment.day)) · \(payment.methodValue.title)",
+                            value: money(payment.amount)
+                        )
+                    }
+                    ForEach(fines) { payment in
+                        StatisticsDetailRow(
+                            title: "⚠️ Штраф",
+                            caption: StatisticsFormat.day(payment.day),
                             value: money(payment.amount)
                         )
                     }

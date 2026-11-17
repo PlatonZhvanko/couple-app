@@ -5,6 +5,8 @@ import SwiftUI
 enum StatisticsSection: String, CaseIterable, Identifiable {
     case money = "💰 Деньги"
     case clients = "🙋 Клиенты"
+    case cancels = "🚫 Отмены"
+    case debts = "📋 Долги"
     var id: String { rawValue }
 }
 
@@ -26,16 +28,21 @@ struct StatisticsRootView: View {
                     ForEach(StatisticsSection.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .font(.caption)
                 .padding(.horizontal)
                 .padding(.vertical, 8)
 
-                periodBar
+                periodBar.fixedSize(horizontal: false, vertical: true)
 
                 switch section {
                 case .money:
                     StatisticsMoneyView(snapshot: snapshot, period: period)
                 case .clients:
                     StatisticsClientsView(snapshot: snapshot, period: period)
+                case .cancels:
+                    StatisticsCancelsView(snapshot: snapshot, period: period)
+                case .debts:
+                    StatisticsDebtsView(snapshot: snapshot, period: period)
                 }
             }
             .navigationTitle("Статистика")

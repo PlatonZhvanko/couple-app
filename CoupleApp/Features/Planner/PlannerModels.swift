@@ -188,6 +188,7 @@ final class PlannerEvent: SyncableModel {
         var repeatWeekdays: String?
         var repeatUntil: Date?
         var colorHex: String?
+        var cancelledDays: String?
     }
 
     static let recordKind = "planner.event"
@@ -221,6 +222,8 @@ final class PlannerEvent: SyncableModel {
     var repeatUntil: Date? = nil
     /// Свой цвет записи в виде #RRGGBB. Пусто — цвет по виду.
     var colorHex: String = ""
+    /// Отменённые занятия (дни повтора), метки времени начала дня через запятую.
+    var cancelledDaysRaw: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -239,7 +242,7 @@ final class PlannerEvent: SyncableModel {
             reminderMinutes: reminderMinutes, createdBy: createdBy, createdAt: createdAt,
             participantIDs: participantIDs, skippedDays: skippedDays, isPrivate: isPrivate,
             repeatInterval: repeatInterval, repeatWeekdays: repeatWeekdaysRaw,
-            repeatUntil: repeatUntil, colorHex: colorHex
+            repeatUntil: repeatUntil, colorHex: colorHex, cancelledDays: cancelledDaysRaw
         )
     }
 
@@ -262,6 +265,7 @@ final class PlannerEvent: SyncableModel {
         repeatWeekdaysRaw = payload.repeatWeekdays ?? ""
         repeatUntil = payload.repeatUntil
         colorHex = payload.colorHex ?? ""
+        cancelledDaysRaw = payload.cancelledDays ?? ""
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }
@@ -269,6 +273,21 @@ final class PlannerEvent: SyncableModel {
         get { repeatWeekdaysRaw.split(separator: ",").compactMap { Int($0) } }
         set { repeatWeekdaysRaw = newValue.sorted().map(String.init).joined(separator: ",") }
     }
+    private static func dayKey(_ day: Date) -> String {
+        String(Int(PlannerCalendar.calendar.startOfDay(for: day).timeIntervalSince1970))
+    }
+
+    /// Занятие в этот день отменено.
+    func isCancelled(on day: Date) -> Bool {
+        cancelledDaysRaw.split(separator: ",").contains { $0 == Self.dayKey(day)[...] }
+    }
+
+    func setCancelled(_ cancelled: Bool, on day: Date) {
+        var keys = cancelledDaysRaw.split(separator: ",").map(String.init).filter { $0 != Self.dayKey(day) }
+        if cancelled { keys.append(Self.dayKey(day)) }
+        cancelledDaysRaw = keys.joined(separator: ",")
+    }
+
     var categoryValue: PlannerCategory { PlannerCategory(rawValue: category) ?? .general }
     var repeatValue: PlannerRepeat { PlannerRepeat(rawValue: repeatRule) ?? .none }
 }
