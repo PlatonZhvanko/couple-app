@@ -1,41 +1,41 @@
 import SwiftData
 import SwiftUI
 
-/// Главный экран раздела «Питание»: дневник за выбранный день.
+/// Главный экран раздела «Питание»: дневник выбранного профиля за выбранный день.
 struct NutritionRootView: View {
     @Environment(AccountStore.self) private var account
-    @State private var showingPartner = false
     @State private var date = Date.now
-
-    private var member: CoupleMember {
-        showingPartner ? account.current.other : account.current
-    }
 
     var body: some View {
         NavigationStack {
             NutritionDayView(
-                member: member,
+                member: account.current,
                 dayKey: NutritionDay.key(for: date),
-                isMine: !showingPartner,
-                showingPartner: $showingPartner,
                 date: $date
             )
             .navigationTitle("Питание")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink {
-                        NutritionWeekView(member: member)
+                        NutritionWeekView(member: account.current)
                     } label: {
                         Label("Неделя", systemImage: "chart.bar")
                     }
                 }
-                if !showingPartner {
-                    ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
                         NavigationLink {
                             NutritionGoalsView(member: account.current)
                         } label: {
-                            Label("Цели", systemImage: "target")
+                            Label("Моя норма и калькулятор", systemImage: "target")
                         }
+                        NavigationLink {
+                            NutritionDishesView()
+                        } label: {
+                            Label("Мои блюда", systemImage: "fork.knife")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
@@ -43,59 +43,53 @@ struct NutritionRootView: View {
     }
 }
 
-/// Что открыть в окне редактирования еды.
-struct NutritionEditorTarget: Identifiable {
-    let id = UUID()
-    var meal: NutritionMealType
-    var entry: NutritionEntry?
+/// Что открыть поверх дневника.
+enum NutritionSheet: Identifiable {
+    case add(NutritionMealType)
+    case generate(NutritionMealType)
+    case manual(NutritionEntry)
+    case weight(NutritionEntry)
+
+    var id: String {
+        switch self {
+        case .add(let meal): "add-\(meal.rawValue)"
+        case .generate(let meal): "gen-\(meal.rawValue)"
+        case .manual(let entry): "manual-\(entry.syncID)"
+        case .weight(let entry): "weight-\(entry.syncID)"
+        }
+    }
 }
 
 /// Дневник одного человека за один день.
 struct NutritionDayView: View {
     let member: CoupleMember
     let dayKey: String
-    let isMine: Bool
-    @Binding var showingPartner: Bool
     @Binding var date: Date
 
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
-    @Environment(AccountStore.self) private var account
 
     @Query private var entries: [NutritionEntry]
-    @Query private var water: [NutritionWater]
     @Query private var goals: [NutritionGoal]
-    @State private var editor: NutritionEditorTarget?
+    @State private var sheet: NutritionSheet?
 
-    init(member: CoupleMember, dayKey: String, isMine: Bool, showingPartner: Binding<Bool>, date: Binding<Date>) {
+    init(member: CoupleMember, dayKey: String, date: Binding<Date>) {
         self.member = member
         self.dayKey = dayKey
-        self.isMine = isMine
-        _showingPartner = showingPartner
         _date = date
         let memberID = member.rawValue
         _entries = Query(
             filter: #Predicate<NutritionEntry> { $0.deletedAt == nil && $0.member == memberID && $0.dayKey == dayKey },
             sort: \NutritionEntry.createdAt
         )
-        _water = Query(
-            filter: #Predicate<NutritionWater> { $0.deletedAt == nil && $0.member == memberID && $0.dayKey == dayKey },
-            sort: \NutritionWater.createdAt
-        )
         _goals = Query(filter: #Predicate<NutritionGoal> { $0.deletedAt == nil && $0.member == memberID })
     }
 
     private var targets: NutritionTargets { goals.first?.targets ?? .standard }
-    private var waterTotal: Int { water.reduce(0) { $0 + $1.milliliters } }
 
     var body: some View {
         List {
             Section {
-                Picker("Чей дневник", selection: $showingPartner) {
-                    Text(account.myName).tag(false)
-                    Text(account.partnerName).tag(true)
-                }
-                .pickerStyle(.segmented)
                 dayPicker
             }
 
@@ -103,15 +97,45 @@ struct NutritionDayView: View {
                 NutritionSummaryCard(totals: NutritionTotals.sum(entries), targets: targets)
             }
 
-            waterSection
-
             ForEach(NutritionMealType.allCases) { meal in
                 mealSection(meal)
             }
         }
         .refreshable { await sync.syncNow() }
-        .sheet(item: $editor) { target in
-            NutritionEntryEditor(member: member, dayKey: dayKey, meal: target.meal, entry: target.entry)
+        .sheet(item: $sheet) { item in
+            switch item {
+            case .add(let meal):
+                NutritionFoodPicker(diary: NutritionDiaryTarget(member: member, dayKey: dayKey, meal: meal))
+            case .generate(let meal):
+                NutritionGeneratorView(
+                    diary: NutritionDiaryTarget(member: member, dayKey: dayKey, meal: meal),
+                    dailyCalories: targets.calories
+                )
+            case .manual(let entry):
+                NutritionEntryEditor(member: member, dayKey: dayKey, meal: entry.mealType, entry: entry)
+            case .weight(let entry):
+                NavigationStack {
+                    NutritionPortionView(
+                        food: NutritionFoodValues(
+                            name: entry.name, kcal: entry.kcal100, protein: entry.protein100,
+                            fat: entry.fat100, carbs: entry.carbs100
+                        ),
+                        initialGrams: entry.grams, meal: entry.mealType, confirmTitle: "Сохранить"
+                    ) { _, grams, meal in
+                        entry.grams = grams
+                        entry.meal = meal.rawValue
+                        entry.recalculate()
+                        entry.markChanged()
+                        saveAndSync()
+                        sheet = nil
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Отмена") { sheet = nil }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -151,48 +175,6 @@ struct NutritionDayView: View {
         }
     }
 
-    // MARK: Вода
-
-    private var waterSection: some View {
-        Section("Вода") {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "drop.fill")
-                        .foregroundStyle(.blue)
-                    Text("\(waterTotal) из \(targets.water) мл")
-                    Spacer()
-                }
-                ProgressView(value: min(Double(waterTotal) / Double(max(targets.water, 1)), 1))
-                    .tint(.blue)
-            }
-            if isMine {
-                HStack {
-                    Button("+250 мл") { addWater(250) }
-                    Button("+500 мл") { addWater(500) }
-                    Spacer()
-                    Button {
-                        removeLastWater()
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                    }
-                    .disabled(water.isEmpty)
-                    .accessibilityLabel("Отменить последнюю воду")
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-    }
-
-    private func addWater(_ milliliters: Int) {
-        context.insert(NutritionWater(member: member, dayKey: dayKey, milliliters: milliliters))
-        saveAndSync()
-    }
-
-    private func removeLastWater() {
-        water.last?.markDeleted()
-        saveAndSync()
-    }
-
     // MARK: Приёмы пищи
 
     private func mealSection(_ meal: NutritionMealType) -> some View {
@@ -200,29 +182,29 @@ struct NutritionDayView: View {
         let calories = items.reduce(0) { $0 + $1.calories }
         return Section {
             ForEach(items) { entry in
-                if isMine {
-                    Button {
-                        editor = NutritionEditorTarget(meal: meal, entry: entry)
-                    } label: {
-                        NutritionEntryRow(entry: entry)
-                    }
-                    .foregroundStyle(.primary)
-                } else {
+                Button {
+                    sheet = entry.grams > 0 ? .weight(entry) : .manual(entry)
+                } label: {
                     NutritionEntryRow(entry: entry)
                 }
+                .foregroundStyle(.primary)
             }
-            .onDelete(perform: isMine ? { offsets in delete(items, at: offsets) } : nil)
+            .onDelete { offsets in delete(items, at: offsets) }
 
-            if isMine {
+            HStack {
                 Button {
-                    editor = NutritionEditorTarget(meal: meal, entry: nil)
+                    sheet = .add(meal)
                 } label: {
                     Label("Добавить", systemImage: "plus")
                 }
-            } else if items.isEmpty {
-                Text("Ничего не записано")
-                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    sheet = .generate(meal)
+                } label: {
+                    Label("Сгенерировать", systemImage: "wand.and.stars")
+                }
             }
+            .buttonStyle(.borderless)
         } header: {
             HStack {
                 Label(meal.title, systemImage: meal.systemImage)
@@ -253,7 +235,9 @@ struct NutritionEntryRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name.isEmpty ? "Без названия" : entry.name)
-                Text("Б \(entry.protein.nutritionText) · Ж \(entry.fat.nutritionText) · У \(entry.carbs.nutritionText)")
+                Text(entry.grams > 0
+                     ? "\(entry.grams.nutritionText) г · Б \(entry.protein.nutritionText) · Ж \(entry.fat.nutritionText) · У \(entry.carbs.nutritionText)"
+                     : "Б \(entry.protein.nutritionText) · Ж \(entry.fat.nutritionText) · У \(entry.carbs.nutritionText)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

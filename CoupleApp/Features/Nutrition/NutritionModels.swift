@@ -116,6 +116,11 @@ final class NutritionEntry: SyncableModel {
         var fat: Double
         var carbs: Double
         var createdAt: Date
+        var grams: Double?
+        var kcal100: Double?
+        var protein100: Double?
+        var fat100: Double?
+        var carbs100: Double?
     }
 
     static let recordKind = "nutrition.entry"
@@ -129,6 +134,13 @@ final class NutritionEntry: SyncableModel {
     var protein: Double = 0
     var fat: Double = 0
     var carbs: Double = 0
+    /// Вес порции в граммах. 0 — запись без веса (введена вручную).
+    var grams: Double = 0
+    /// Ккал и БЖУ на 100 г: по ним пересчитывается запись при смене веса.
+    var kcal100: Double = 0
+    var protein100: Double = 0
+    var fat100: Double = 0
+    var carbs100: Double = 0
     var createdAt: Date = Date.now
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
@@ -151,7 +163,8 @@ final class NutritionEntry: SyncableModel {
 
     var payload: Payload {
         Payload(member: member, dayKey: dayKey, meal: meal, name: name, calories: calories,
-                protein: protein, fat: fat, carbs: carbs, createdAt: createdAt)
+                protein: protein, fat: fat, carbs: carbs, createdAt: createdAt,
+                grams: grams, kcal100: kcal100, protein100: protein100, fat100: fat100, carbs100: carbs100)
     }
 
     func apply(_ payload: Payload) {
@@ -164,6 +177,31 @@ final class NutritionEntry: SyncableModel {
         fat = payload.fat
         carbs = payload.carbs
         createdAt = payload.createdAt
+        grams = payload.grams ?? 0
+        kcal100 = payload.kcal100 ?? 0
+        protein100 = payload.protein100 ?? 0
+        fat100 = payload.fat100 ?? 0
+        carbs100 = payload.carbs100 ?? 0
+    }
+
+    /// Записать продукт с весом: значения пересчитываются по граммам.
+    func set(food: NutritionFoodValues, grams: Double) {
+        name = food.name
+        self.grams = grams
+        kcal100 = food.kcal
+        protein100 = food.protein
+        fat100 = food.fat
+        carbs100 = food.carbs
+        recalculate()
+    }
+
+    /// Пересчитать калории и БЖУ по весу.
+    func recalculate() {
+        let k = grams / 100
+        calories = kcal100 * k
+        protein = protein100 * k
+        fat = fat100 * k
+        carbs = carbs100 * k
     }
 }
 
@@ -284,6 +322,12 @@ final class NutritionGoal: SyncableModel {
         var fat: Double
         var carbs: Double
         var water: Int
+        var sex: String?
+        var age: Int?
+        var heightCm: Double?
+        var weightKg: Double?
+        var activity: Double?
+        var aim: String?
     }
 
     static let recordKind = "nutrition.goal"
@@ -302,6 +346,13 @@ final class NutritionGoal: SyncableModel {
     var fat: Double = NutritionTargets.standard.fat
     var carbs: Double = NutritionTargets.standard.carbs
     var water: Int = NutritionTargets.standard.water
+    /// Данные для калькулятора нормы.
+    var sex: String = "female"
+    var age: Int = 25
+    var heightCm: Double = 165
+    var weightKg: Double = 60
+    var activity: Double = 1.4
+    var aim: String = "keep"
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -321,7 +372,8 @@ final class NutritionGoal: SyncableModel {
     }
 
     var payload: Payload {
-        Payload(member: member, calories: calories, protein: protein, fat: fat, carbs: carbs, water: water)
+        Payload(member: member, calories: calories, protein: protein, fat: fat, carbs: carbs, water: water,
+                sex: sex, age: age, heightCm: heightCm, weightKg: weightKg, activity: activity, aim: aim)
     }
 
     func apply(_ payload: Payload) {
@@ -331,5 +383,11 @@ final class NutritionGoal: SyncableModel {
         fat = payload.fat
         carbs = payload.carbs
         water = payload.water
+        sex = payload.sex ?? "female"
+        age = payload.age ?? 25
+        heightCm = payload.heightCm ?? 165
+        weightKg = payload.weightKg ?? 60
+        activity = payload.activity ?? 1.4
+        aim = payload.aim ?? "keep"
     }
 }
