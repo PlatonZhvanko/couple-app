@@ -48,27 +48,11 @@ struct ClientsSheetView: View {
 }
 
 struct ClientsHomeView: View {
-    enum Page: String, CaseIterable, Identifiable {
-        case schedule = "Расписание"
-        case clients = "Клиенты"
-        case more = "Ещё"
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .schedule: "📅 Расписание"
-            case .clients: "🙋 Клиенты"
-            case .more: "⚙️ Ещё"
-            }
-        }
-    }
-
     let member: CoupleMember
 
     @Environment(SyncCoordinator.self) private var sync
     @Query private var appointments: [ClientsAppointment]
     @Query private var clients: [ClientsClient]
-    @AppStorage("clients.selectedTab") private var tab: Page = .clients
     @State private var sheet: ClientsSheet?
 
     init(member: CoupleMember) {
@@ -96,49 +80,19 @@ struct ClientsHomeView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch tab {
-                case .schedule:
-                    ClientsScheduleView(appointments: appointments, clients: clientsByID) {
-                        sheet = .newAppointment(clientID: nil)
-                    }
-                case .clients:
-                    ClientsListView(clients: clients, appointments: appointments) {
-                        sheet = .newClient
-                    }
-                case .more:
-                    List {
-                        NavigationLink("👧👦 Группы") { PlannerGroupSettingsView().navigationTitle("Группы") }
-                        NavigationLink("📜 Абонементы") { PlannerSubscriptionSettingsView().navigationTitle("Абонементы") }
-                        NavigationLink("🎨 Цвета") { PlannerColorSettingsView().navigationTitle("Цвета") }
-                    }
-                }
-            }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                Picker("Раздел", selection: $tab) {
-                    ForEach(Page.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(.bar)
+            ClientsListView(clients: clients, appointments: appointments) {
+                sheet = .newClient
             }
             .navigationTitle("Клиенты")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button("Новая запись", systemImage: "calendar.badge.plus") {
-                            sheet = .newAppointment(clientID: nil)
-                        }
-                        Button("Новый клиент", systemImage: "person.badge.plus") {
-                            sheet = .newClient
-                        }
+                    Button {
+                        sheet = .newClient
                     } label: {
                         Image(systemName: "plus")
-                    } primaryAction: {
-                        sheet = tab == .clients ? .newClient : .newAppointment(clientID: nil)
                     }
+                    .accessibilityLabel("Новый клиент")
                 }
             }
             .navigationDestination(for: ClientsAppointment.self) { item in
