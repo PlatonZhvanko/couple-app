@@ -14,6 +14,7 @@ struct PlannerSubscriptionSaleSheet: View {
 
     @State private var selectedType: PlannerSubscriptionType?
     @State private var amountText = ""
+    @State private var validText = "30"
     @State private var query = ""
     @State private var typeQuery = ""
     @State private var client: PlannerClientDirectory.Entry?
@@ -59,6 +60,7 @@ struct PlannerSubscriptionSaleSheet: View {
                                 selectedType = type
                                 typeQuery = ""
                                 amountText = "\(Int(type.price.rounded()))"
+                                validText = "\(type.validDays)"
                             } label: {
                                 HStack {
                                     Text(type.name).foregroundStyle(Color.primary)
@@ -76,6 +78,15 @@ struct PlannerSubscriptionSaleSheet: View {
                             .multilineTextAlignment(.trailing)
                             .frame(width: 90)
                         Text("₽").foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Срок действия")
+                        Spacer()
+                        TextField("30", text: $validText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 60)
+                        Text("дн.").foregroundStyle(.secondary)
                     }
                 }
 
@@ -127,7 +138,7 @@ struct PlannerSubscriptionSaleSheet: View {
         guard let client, let amount else { return }
         PlannerPaymentStore.saveSubscription(
             context, clientID: client.id, month: month, amount: max(0, amount),
-            kindName: selectedType?.name
+            kindName: selectedType?.name, validDays: Int(validText) ?? 30
         )
         sync.requestSync()
         dismiss()
@@ -233,12 +244,14 @@ struct PlannerSubscriptionTypeEditor: View {
 
     @State private var name: String
     @State private var price: String
+    @State private var validDays: String
     @State private var deleted = false
 
     init(type: PlannerSubscriptionType) {
         self.type = type
         _name = State(initialValue: type.name)
         _price = State(initialValue: "\(Int(type.price.rounded()))")
+        _validDays = State(initialValue: "\(type.validDays)")
     }
 
     var body: some View {
@@ -254,17 +267,25 @@ struct PlannerSubscriptionTypeEditor: View {
                         .frame(width: 90)
                     Text("₽").foregroundStyle(.secondary)
                 }
+                HStack {
+                    Text("Срок действия")
+                    Spacer()
+                    TextField("30", text: $validDays)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 60)
+                    Text("дн.").foregroundStyle(.secondary)
+                }
             }
             Section {
                 Button("Удалить вид", role: .destructive) {
                     deleted = true
-                    type.markDeleted()
-                    try? context.save()
+                    PlannerSubscriptionTypeStore.delete(context, type: type)
                     sync.requestSync()
                     dismiss()
                 }
             } footer: {
-                Text("Проданные абонементы останутся.")
+                Text("Вместе с видом удалятся проданные по нему абонементы и их списания.")
             }
         }
         .navigationTitle("Абонемент")
@@ -274,6 +295,7 @@ struct PlannerSubscriptionTypeEditor: View {
             let clean = name.trimmingCharacters(in: .whitespaces)
             if !clean.isEmpty { type.name = clean }
             if let value = Double(price) { type.price = value }
+            if let days = Int(validDays), days > 0 { type.validDays = days }
             type.markChanged()
             try? context.save()
             sync.requestSync()

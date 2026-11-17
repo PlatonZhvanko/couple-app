@@ -51,9 +51,15 @@ struct PlannerCalendarView: View {
     private var cal: Calendar { PlannerCalendar.calendar }
 
     private var events: [PlannerEvent] {
-        guard !showsEveryone else { return allEvents }
+        // Записи с галочкой «Не показывать партнёру» видит только автор.
+        let visible = allEvents.filter { event in
+            guard event.isPrivate else { return true }
+            let author = event.scopeValue.member ?? CoupleMember(rawValue: event.createdBy) ?? .owner
+            return author == account.current
+        }
+        guard !showsEveryone else { return visible }
         let me = PlannerScope.personal(account.current)
-        return allEvents.filter { $0.scopeValue == .shared || $0.scopeValue == me }
+        return visible.filter { $0.scopeValue == .shared || $0.scopeValue == me }
     }
 
     /// Свои записи из других разделов.
