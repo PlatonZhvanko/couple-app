@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// Главный экран раздела «Клиенты»: расписание, список клиентов и итоги.
+/// Главный экран раздела «Клиенты»: расписание, список клиентов и настройки групп.
 /// У каждого из пары свои клиенты и записи.
 struct ClientsRootView: View {
     @Environment(AccountStore.self) private var account
@@ -51,7 +51,7 @@ struct ClientsHomeView: View {
     enum Page: String, CaseIterable, Identifiable {
         case schedule = "Расписание"
         case clients = "Клиенты"
-        case summary = "Итоги"
+        case groups = "Группы"
         var id: String { rawValue }
     }
 
@@ -98,8 +98,8 @@ struct ClientsHomeView: View {
                     ClientsListView(clients: clients, appointments: appointments) {
                         sheet = .newClient
                     }
-                case .summary:
-                    ClientsSummaryView(appointments: appointments, clients: clientsByID)
+                case .groups:
+                    PlannerGroupSettingsView()
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {

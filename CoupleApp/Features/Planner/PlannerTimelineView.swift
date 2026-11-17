@@ -286,7 +286,7 @@ struct PlannerTimelineView: View {
         let tall = height > 40
         let content = VStack(alignment: .leading, spacing: 1) {
             Text(block.title)
-                .font(isDayMode ? .callout.weight(.semibold) : .system(size: 9.5, weight: .bold))
+                .font(isDayMode ? .body.weight(.semibold) : .system(size: 11, weight: .bold))
                 .lineLimit(isDayMode ? (tall ? 4 : 1) : (tall ? 4 : 2))
                 .minimumScaleFactor(0.7)
                 .multilineTextAlignment(.leading)
@@ -298,10 +298,15 @@ struct PlannerTimelineView: View {
             }
         }
         .padding(.horizontal, 3)
-        .padding(.vertical, 2)
-        .padding(.trailing, block.badge.symbol == nil ? 0 : 10)
+        .padding(.top, height > 30 ? 13 : 2)
+        .padding(.bottom, 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .topTrailing) {
+            if height > 30 && !block.emoji.isEmpty {
+                Text(block.emoji).font(.system(size: 11)).padding(1)
+            }
+        }
+        .overlay(alignment: .topLeading) {
             if let symbol = block.badge.symbol {
                 Text(symbol).font(.system(size: 10)).padding(1)
             }
@@ -394,9 +399,10 @@ struct PlannerTimelineView: View {
             let end = min(max(occurrence.end, start.addingTimeInterval(minimum)), dayEnd)
             raw.append(PlannerTimelineBlock(
                 id: occurrence.id, source: .event(occurrence.event),
-                title: isDayMode ? occurrence.event.displayTitle : occurrence.event.plainTitle,
+                title: occurrence.event.plainTitle,
                 color: occurrence.event.categoryValue.color, start: start, end: end,
-                badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event)
+                badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event),
+                emoji: occurrence.event.categoryValue.emoji ?? ""
             ))
         }
         for item in externalItems(day) {
@@ -454,5 +460,6 @@ struct PlannerTimelineBlock: Identifiable {
     let badge: PlannerPayBadge
     let owner: String?
     var column = 0
+    var emoji = ""
     var columns = 1
 }

@@ -10,6 +10,8 @@ final class ClientsClient: SyncableModel {
         var note: String
         var member: String
         var createdAt: Date
+        /// День рождения. Нет в старых записях.
+        var birthday: Date?
     }
 
     static let recordKind = "clients.client"
@@ -20,6 +22,7 @@ final class ClientsClient: SyncableModel {
     var note: String = ""
     var member: String = CoupleMember.owner.rawValue
     var createdAt: Date = Date.now
+    var birthday: Date? = nil
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -37,7 +40,7 @@ final class ClientsClient: SyncableModel {
     }
 
     var payload: Payload {
-        Payload(name: name, phone: phone, note: note, member: member, createdAt: createdAt)
+        Payload(name: name, phone: phone, note: note, member: member, createdAt: createdAt, birthday: birthday)
     }
 
     func apply(_ payload: Payload) {
@@ -46,6 +49,7 @@ final class ClientsClient: SyncableModel {
         note = payload.note
         member = payload.member
         createdAt = payload.createdAt
+        birthday = payload.birthday
     }
 
     /// Только цифры телефона (для WhatsApp и звонка).

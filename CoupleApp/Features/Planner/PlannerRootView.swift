@@ -24,7 +24,8 @@ struct PlannerRootView: View {
                             ForEach(Page.allCases) { Text($0.title).tag($0) }
                         }
                         .pickerStyle(.segmented)
-                        .frame(width: 200)
+                        .controlSize(.small)
+                        .frame(width: 130)
                     }
                 }
         }

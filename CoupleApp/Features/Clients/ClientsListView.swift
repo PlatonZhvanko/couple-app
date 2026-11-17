@@ -80,6 +80,7 @@ struct ClientsClientDetailView: View {
 
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @Query private var history: [ClientsAppointment]
     @State private var sheet: ClientsSheet?
 
@@ -110,15 +111,19 @@ struct ClientsClientDetailView: View {
                 }
             }
 
-            if !client.note.isEmpty {
-                Section("Заметки") {
-                    Text(client.note)
-                }
+            Section {
+                LabeledContent("Дата рождения", value: client.birthday.map { $0.formatted(.dateTime.day().month(.wide).year()) } ?? "не указана")
+            }
+
+            Section("Заметки") {
+                Text(client.note.isEmpty ? "Пока пусто" : client.note)
+                    .foregroundStyle(client.note.isEmpty ? .secondary : .primary)
             }
 
             Section("Итоги") {
-                LabeledContent("Визитов", value: "\(done.count)")
-                LabeledContent("Заработано", value: ClientsFormat.money(done.reduce(0) { $0 + $1.price }))
+                let planner = PlannerClientDirectory.stats(for: client.syncID, context: context)
+                LabeledContent("Визитов", value: "\(done.count + planner.visits)")
+                LabeledContent("Заработано", value: ClientsFormat.money(done.reduce(0) { $0 + $1.price } + planner.earned))
                 let noShows = history.filter { $0.status == .noShow }.count
                 if noShows > 0 {
                     LabeledContent("Не пришёл", value: "\(noShows)")
@@ -176,6 +181,8 @@ struct ClientsClientEditor: View {
     @State private var name = ""
     @State private var phone = ""
     @State private var note = ""
+    @State private var hasBirthday = false
+    @State private var birthday = Calendar.current.date(byAdding: .year, value: -25, to: .now) ?? .now
     @State private var confirmDelete = false
 
     init(member: CoupleMember, client: ClientsClient?) {
@@ -184,6 +191,8 @@ struct ClientsClientEditor: View {
         _name = State(initialValue: client?.name ?? "")
         _phone = State(initialValue: client?.phone ?? "")
         _note = State(initialValue: client?.note ?? "")
+        _hasBirthday = State(initialValue: client?.birthday != nil)
+        if let b = client?.birthday { _birthday = State(initialValue: b) }
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -197,6 +206,12 @@ struct ClientsClientEditor: View {
                     TextField("Телефон", text: $phone)
                         .keyboardType(.phonePad)
                         .textContentType(.telephoneNumber)
+                }
+                Section {
+                    Toggle("Дата рождения", isOn: $hasBirthday)
+                    if hasBirthday {
+                        DatePicker("Дата", selection: $birthday, in: ...Date.now, displayedComponents: .date)
+                    }
                 }
                 Section("Заметки") {
                     TextField("Пожелания, особенности", text: $note, axis: .vertical)
@@ -232,6 +247,7 @@ struct ClientsClientEditor: View {
         target.name = trimmedName
         target.phone = phone.trimmingCharacters(in: .whitespaces)
         target.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.birthday = hasBirthday ? birthday : nil
         target.markChanged()
         if client == nil { context.insert(target) }
         try? context.save()

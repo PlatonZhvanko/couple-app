@@ -313,10 +313,9 @@ struct PlannerTrainingEditor: View {
     private func selectGroupKind(_ kind: PlannerGroupKind) {
         title = kind.name
         groupCategory = kind.categoryValue
-        // Подставляем клиентов из прошлой записи этой группы.
-        if participants.isEmpty {
-            let ids = PlannerGroupKindStore.lastParticipants(context, groupName: kind.name)
-            participants = ids.compactMap { id in directory.first { $0.id == id } }
+        // Подставляем постоянных клиентов группы (их можно убрать).
+        if !kind.memberIDs.isEmpty {
+            participants = kind.memberIDs.compactMap { id in directory.first { $0.id == id } }
         }
     }
 
@@ -332,7 +331,8 @@ struct PlannerTrainingEditor: View {
     private var suggestions: [PlannerClientDirectory.Entry] {
         let selected = Set(participants.map(\.id))
         let pool = directory.filter { !selected.contains($0.id) }
-        guard !trimmedQuery.isEmpty else { return Array(pool.prefix(5)) }
+        // Без запроса показываем только двух недавних.
+        guard !trimmedQuery.isEmpty else { return Array(pool.prefix(2)) }
         return Array(pool.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(6))
     }
 

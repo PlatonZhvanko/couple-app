@@ -104,19 +104,21 @@ struct PlannerCalendarView: View {
                     withAnimation { selectedDay = cal.startOfDay(for: .now) }
                 }
             }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    withAnimation { style = style == .planner ? .calendar : .planner }
-                } label: {
-                    Image(systemName: style == .planner ? "calendar" : "calendar.day.timeline.left")
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: 2) {
+                    Button {
+                        withAnimation { style = style == .planner ? .calendar : .planner }
+                    } label: {
+                        Image(systemName: style == .planner ? "calendar" : "calendar.day.timeline.left")
+                    }
+                    .accessibilityLabel(style == .planner ? "Обычный календарь" : "Журнал по времени")
+                    Button {
+                        sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel(account.current == .partner ? "Новая тренировка" : "Новое событие")
                 }
-                .accessibilityLabel(style == .planner ? "Обычный календарь" : "Журнал по времени")
-                Button {
-                    sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel(account.current == .partner ? "Новая тренировка" : "Новое событие")
             }
         }
         .sheet(item: $sheetTarget) { target in
@@ -203,6 +205,13 @@ struct PlannerCalendarView: View {
         return account.name(of: member).prefix(1).uppercased()
     }
 
+    /// Сколько денег уже оплачено за сегодня.
+    private var todayEarned: Double {
+        payments
+            .filter { $0.deletedAt == nil && $0.methodValue.isPaid && cal.isDateInToday($0.day) }
+            .reduce(0) { $0 + $1.amount }
+    }
+
     private var plannerBody: some View {
         VStack(spacing: 0) {
             HStack {
@@ -258,6 +267,15 @@ struct PlannerCalendarView: View {
                 },
                 onMove: { event, from, to in moveByDrag(event, from: from, to: to) }
             )
+            .overlay(alignment: .bottomTrailing) {
+                Text("Сегодня 💰 \(Int(todayEarned)) ₽")
+                    .font(.footnote.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(8)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
