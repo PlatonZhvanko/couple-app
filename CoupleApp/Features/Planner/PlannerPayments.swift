@@ -187,6 +187,8 @@ final class PlannerSubscription: SyncableModel {
         var amount: Double
         var kindName: String? = nil
         var soldAt: Date? = nil
+        var expiresAt: Date? = nil
+        var charge: Double? = nil
     }
 
     static let recordKind = "planner.subscription"
@@ -200,6 +202,10 @@ final class PlannerSubscription: SyncableModel {
     var kindName: String = ""
     /// Когда продан (деньги за абонемент считаются в этот день).
     var soldAt: Date = Date.now
+    /// До какого дня действует; потом неиспользованный остаток «сгорает».
+    var expiresAt: Date = Date.distantFuture
+    /// Сколько списывается за одно занятие.
+    var charge: Double = PlannerPricing.subscriptionCharge
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -209,6 +215,7 @@ final class PlannerSubscription: SyncableModel {
         self.clientID = clientID
         self.month = PlannerCalendar.startOfMonth(month)
         self.amount = amount
+        self.expiresAt = Self.endOfMonth(month)
     }
 
     init(syncID: UUID, payload: Payload) {
@@ -216,7 +223,7 @@ final class PlannerSubscription: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(clientID: clientID, month: month, amount: amount, kindName: kindName, soldAt: soldAt) }
+    var payload: Payload { Payload(clientID: clientID, month: month, amount: amount, kindName: kindName, soldAt: soldAt, expiresAt: expiresAt, charge: charge) }
 
     func apply(_ payload: Payload) {
         clientID = payload.clientID
@@ -224,7 +231,25 @@ final class PlannerSubscription: SyncableModel {
         amount = payload.amount
         kindName = payload.kindName ?? ""
         soldAt = payload.soldAt ?? Date.now
+        expiresAt = payload.expiresAt ?? Self.endOfMonth(payload.month)
+        charge = payload.charge ?? PlannerPricing.subscriptionCharge
     }
+
+    static func endOfMonth(_ month: Date) -> Date {
+        let cal = PlannerCalendar.calendar
+        let start = PlannerCalendar.startOfMonth(month)
+        let next = cal.date(byAdding: .month, value: 1, to: start) ?? start
+        return next.addingTimeInterval(-1)
+    }
+
+    /// Действует ли абонемент в этот день.
+    func covers(_ day: Date) -> Bool {
+        PlannerCalendar.calendar.isDate(month, equalTo: day, toGranularity: .month)
+            && PlannerCalendar.calendar.startOfDay(for: day) <= expiresAt
+    }
+
+    /// Срок вышел.
+    var isExpired: Bool { expiresAt < .now }
 
     static func makeID(clientID: UUID, month: Date) -> UUID {
         let parts = PlannerCalendar.calendar.dateComponents([.year, .month], from: month)
@@ -291,6 +316,23 @@ enum PlannerPaymentStore {
         try? context.save()
     }
 
+    /// Цена занятия: у группы — своя (из настроек групп), иначе по умолчанию.
+    static func price(for event: PlannerEvent, context: ModelContext) -> Double {
+        guard event.categoryValue == .group || event.categoryValue == .school else {
+            return PlannerPricing.price(for: event.categoryValue)
+        }
+        let id = PlannerGroupKind.makeID(name: event.title)
+        let found = try? context.fetch(FetchDescriptor<PlannerGroupKind>(predicate: #Predicate { $0.syncID == id }))
+        if let kind = found?.first, kind.deletedAt == nil { return kind.price }
+        return PlannerPricing.group
+    }
+
+    /// Сколько спишется с абонемента клиента за занятие в этот день.
+    static func subscriptionCharge(_ context: ModelContext, clientID: UUID, day: Date) -> Double {
+        allSubscriptions(context).first { $0.clientID == clientID && $0.covers(day) }?.charge
+            ?? PlannerPricing.subscriptionCharge
+    }
+
     static func payment(_ context: ModelContext, eventID: UUID, day: Date, clientID: UUID) -> PlannerPayment? {
         let id = PlannerPayment.makeID(eventID: eventID, day: day, clientID: clientID)
         let found = try? context.fetch(FetchDescriptor<PlannerPayment>(predicate: #Predicate { $0.syncID == id }))
@@ -307,7 +349,7 @@ enum PlannerPaymentStore {
         method: PlannerPayMethod? = nil,
         amount: Double? = nil
     ) -> PlannerPayment {
-        let price = PlannerPricing.price(for: event.categoryValue)
+        let price = Self.price(for: event, context: context)
         let item: PlannerPayment
         if let existing = payment(context, eventID: event.syncID, day: day, clientID: clientID) {
             item = existing
@@ -325,7 +367,7 @@ enum PlannerPaymentStore {
             item.method = method.rawValue
             if amount == nil {
                 if method == .subscription {
-                    item.amount = PlannerPricing.subscriptionCharge
+                    item.amount = Self.subscriptionCharge(context, clientID: clientID, day: day)
                 } else if old == .subscription {
                     item.amount = price
                 }
@@ -375,7 +417,7 @@ enum PlannerPaymentStore {
     }
 
     /// Оформить (или изменить) абонемент клиента на месяц и сразу списать им тренировки месяца.
-    static func saveSubscription(_ context: ModelContext, clientID: UUID, month: Date, amount: Double, kindName: String? = nil) {
+    static func saveSubscription(_ context: ModelContext, clientID: UUID, month: Date, amount: Double, kindName: String? = nil, validDays: Int? = nil, charge: Double? = nil) {
         let monthStart = PlannerCalendar.startOfMonth(month)
         let id = PlannerSubscription.makeID(clientID: clientID, month: monthStart)
         let found = try? context.fetch(FetchDescriptor<PlannerSubscription>(predicate: #Predicate { $0.syncID == id }))
@@ -389,6 +431,11 @@ enum PlannerPaymentStore {
             item = PlannerSubscription(clientID: clientID, month: monthStart, amount: amount)
             item.kindName = kindName ?? ""
             context.insert(item)
+        }
+        if let charge { item.charge = max(0, charge) }
+        if let validDays {
+            item.soldAt = .now
+            item.expiresAt = cal.startOfDay(for: .now).addingTimeInterval(Double(max(1, validDays)) * 86400 - 1)
         }
         item.markChanged()
         try? context.save()
@@ -408,9 +455,7 @@ enum PlannerPaymentStore {
         for event in events where isTraining(event) && event.categoryValue != .personal && !event.participantIDs.isEmpty {
             for day in days where event.startsOn(day) {
                 for clientID in event.participantIDs {
-                    let hasSubscription = subs.contains {
-                        $0.clientID == clientID && cal.isDate($0.month, equalTo: day, toGranularity: .month)
-                    }
+                    let hasSubscription = subs.contains { $0.clientID == clientID && $0.covers(day) }
                     guard hasSubscription,
                           payment(context, eventID: event.syncID, day: day, clientID: clientID) == nil
                     else { continue }
@@ -450,6 +495,7 @@ enum PlannerMover {
             clone.notes = event.notes
             clone.isAllDay = event.isAllDay
             clone.scope = event.scope
+            clone.isPrivate = event.isPrivate
             clone.category = event.category
             clone.repeatRule = PlannerRepeat.none.rawValue
             clone.reminderMinutes = event.reminderMinutes
@@ -490,6 +536,7 @@ final class PlannerGroupKind: SyncableModel {
         var category: String
         /// Постоянные клиенты группы. Нет в старых записях.
         var memberIDs: [UUID]?
+        var price: Double?
     }
 
     static let recordKind = "planner.group_kind"
@@ -500,6 +547,8 @@ final class PlannerGroupKind: SyncableModel {
     var category: String = PlannerCategory.group.rawValue
     /// Постоянные клиенты группы: подставляются при создании записи.
     var memberIDs: [UUID] = []
+    /// Цена с клиента по умолчанию.
+    var price: Double = PlannerPricing.group
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -515,12 +564,13 @@ final class PlannerGroupKind: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(name: name, category: category, memberIDs: memberIDs) }
+    var payload: Payload { Payload(name: name, category: category, memberIDs: memberIDs, price: price) }
 
     func apply(_ payload: Payload) {
         name = payload.name
         category = payload.category
         memberIDs = payload.memberIDs ?? []
+        price = payload.price ?? PlannerPricing.group
     }
 
     var categoryValue: PlannerCategory { category == PlannerCategory.school.rawValue ? .school : .group }
@@ -565,6 +615,8 @@ final class PlannerSubscriptionType: SyncableModel {
     struct Payload: Codable {
         var name: String
         var price: Double
+        var validDays: Int? = nil
+        var charge: Double? = nil
     }
 
     static let recordKind = "planner.subscriptionType"
@@ -572,6 +624,10 @@ final class PlannerSubscriptionType: SyncableModel {
     var syncID: UUID = UUID()
     var name: String = ""
     var price: Double = 0
+    /// Срок действия в днях.
+    var validDays: Int = 30
+    /// Сколько списывается за одно занятие.
+    var charge: Double = PlannerPricing.subscriptionCharge
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -587,11 +643,13 @@ final class PlannerSubscriptionType: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(name: name, price: price) }
+    var payload: Payload { Payload(name: name, price: price, validDays: validDays, charge: charge) }
 
     func apply(_ payload: Payload) {
         name = payload.name
         price = payload.price
+        validDays = payload.validDays ?? 30
+        charge = payload.charge ?? PlannerPricing.subscriptionCharge
     }
 
     static func makeID(name: String) -> UUID {
@@ -600,6 +658,40 @@ final class PlannerSubscriptionType: SyncableModel {
 }
 
 enum PlannerSubscriptionTypeStore {
+    /// Удалить одну продажу абонемента вместе со списаниями с неё.
+    @MainActor
+    static func deleteSale(_ context: ModelContext, sub: PlannerSubscription) {
+        let cal = PlannerCalendar.calendar
+        for charge in PlannerPaymentStore.allPayments(context) where charge.deletedAt == nil
+            && charge.methodValue == .subscription && charge.clientID == sub.clientID
+            && cal.isDate(charge.day, equalTo: sub.month, toGranularity: .month) {
+            charge.markDeleted()
+        }
+        sub.markDeleted()
+        try? context.save()
+    }
+
+    /// Удалить вид вместе с проданными по нему абонементами и их списаниями.
+    @MainActor
+    static func delete(_ context: ModelContext, type: PlannerSubscriptionType) {
+        let name = type.name
+        let subs = ((try? context.fetch(FetchDescriptor<PlannerSubscription>())) ?? [])
+            .filter { $0.deletedAt == nil && $0.kindName == name }
+        let cal = PlannerCalendar.calendar
+        let charges = PlannerPaymentStore.allPayments(context).filter {
+            $0.deletedAt == nil && $0.methodValue == .subscription
+        }
+        for sub in subs {
+            for charge in charges where charge.clientID == sub.clientID
+                && cal.isDate(charge.day, equalTo: sub.month, toGranularity: .month) {
+                charge.markDeleted()
+            }
+            sub.markDeleted()
+        }
+        type.markDeleted()
+        try? context.save()
+    }
+
     /// Создаёт «Абонемент Ноябрь» 5000 ₽, если видов ещё нет.
     @MainActor
     static func ensureDefault(_ context: ModelContext) {

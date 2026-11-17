@@ -83,6 +83,7 @@ struct ClientsClientDetailView: View {
     @Environment(\.modelContext) private var context
     @Query private var history: [ClientsAppointment]
     @State private var sheet: ClientsSheet?
+    @State private var planner: (visits: Int, earned: Double) = (0, 0)
 
     init(client: ClientsClient, member: CoupleMember) {
         self.client = client
@@ -115,13 +116,12 @@ struct ClientsClientDetailView: View {
                 LabeledContent("Дата рождения", value: client.birthday.map { $0.formatted(.dateTime.day().month(.wide).year()) } ?? "не указана")
             }
 
-            Section("Заметки") {
+            Section("📝 Заметки") {
                 Text(client.note.isEmpty ? "Пока пусто" : client.note)
                     .foregroundStyle(client.note.isEmpty ? .secondary : .primary)
             }
 
-            Section("Итоги") {
-                let planner = PlannerClientDirectory.stats(for: client.syncID, context: context)
+            Section("📊 Итоги") {
                 LabeledContent("Визитов", value: "\(done.count + planner.visits)")
                 LabeledContent("Заработано", value: ClientsFormat.money(done.reduce(0) { $0 + $1.price } + planner.earned))
                 let noShows = history.filter { $0.status == .noShow }.count
@@ -144,6 +144,7 @@ struct ClientsClientDetailView: View {
             }
         }
         .navigationTitle(client.name)
+        .task { planner = PlannerClientDirectory.stats(for: client.syncID, context: context) }
         .toolbar {
             Button("Изменить") { sheet = .editClient(client) }
         }

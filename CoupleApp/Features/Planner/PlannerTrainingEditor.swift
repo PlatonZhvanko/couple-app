@@ -28,7 +28,7 @@ struct PlannerTrainingEditor: View {
     @State private var notes: String
     @State private var start: Date
     @State private var durationMinutes: Int
-    @State private var isShared: Bool
+    @State private var isPrivate: Bool
     @State private var repeatRule: PlannerRepeat
     @State private var reminder: Int
     @State private var participants: [PlannerClientDirectory.Entry] = []
@@ -61,7 +61,7 @@ struct PlannerTrainingEditor: View {
             _notes = State(initialValue: event.notes)
             _start = State(initialValue: event.start)
             _durationMinutes = State(initialValue: max(30, Int(event.end.timeIntervalSince(event.start) / 60)))
-            _isShared = State(initialValue: event.scopeValue == .shared)
+            _isPrivate = State(initialValue: event.isPrivate)
             _repeatRule = State(initialValue: event.repeatValue)
             _reminder = State(initialValue: event.reminderMinutes)
             _participantIDs = State(initialValue: event.participantIDs)
@@ -74,7 +74,7 @@ struct PlannerTrainingEditor: View {
             _notes = State(initialValue: "")
             _start = State(initialValue: begin)
             _durationMinutes = State(initialValue: 60)
-            _isShared = State(initialValue: true)
+            _isPrivate = State(initialValue: false)
             _repeatRule = State(initialValue: .none)
             _reminder = State(initialValue: PlannerReminderOption.none)
             _participantIDs = State(initialValue: [])
@@ -133,7 +133,7 @@ struct PlannerTrainingEditor: View {
 
                 switch mode {
                 case .client:
-                    Section("Клиент") { participantsPicker(multiple: false) }
+                    Section("🙋 Клиент") { participantsPicker(multiple: false) }
                 case .group:
                     Section {
                         Picker("Категория", selection: $groupCategory) {
@@ -156,12 +156,12 @@ struct PlannerTrainingEditor: View {
                             }
                         }
                     } header: {
-                        Text(title.isEmpty ? "Какая группа" : "Группа: \(title)")
+                        Text(title.isEmpty ? "👧👦 Какая группа" : "Группа: \(title)")
                     }
                     Section {
                         participantsPicker(multiple: true)
                     } header: {
-                        Text("Клиенты группы")
+                        Text("👥 Клиенты группы")
                     } footer: {
                         Text("Блок можно создать без клиентов и записать их потом.")
                     }
@@ -196,7 +196,7 @@ struct PlannerTrainingEditor: View {
                             TextField("Что нужно сделать (например, купить кастрюли)", text: $title)
                         }
                     } header: {
-                        Text("Дело")
+                        Text("🧳 Дело")
                     }
                 }
 
@@ -231,17 +231,13 @@ struct PlannerTrainingEditor: View {
                 }
 
                 Section {
-                    Picker("Видно", selection: $isShared) {
-                        Text("Общее").tag(true)
-                        Text("Только моё").tag(false)
-                    }
-                    .pickerStyle(.segmented)
+                    Toggle("Не показывать партнёру", isOn: $isPrivate)
                     Picker("Напоминание", selection: $reminder) {
                         ForEach(PlannerReminderOption.options(allDay: false)) { Text($0.title).tag($0.minutes) }
                     }
                 }
 
-                Section("Заметка") {
+                Section("📝 Заметка") {
                     TextField("Что взять, детали", text: $notes, axis: .vertical)
                         .lineLimit(2...5)
                 }
@@ -491,7 +487,8 @@ struct PlannerTrainingEditor: View {
         target.isAllDay = false
         target.start = start
         target.end = start.addingTimeInterval(TimeInterval(durationMinutes * 60))
-        target.scope = (isShared ? PlannerScope.shared : .personal(account.current)).rawValue
+        if event == nil { target.scope = PlannerScope.personal(account.current).rawValue }
+        target.isPrivate = isPrivate
         target.category = category.rawValue
         target.repeatRule = repeatRule.rawValue
         target.reminderMinutes = reminder

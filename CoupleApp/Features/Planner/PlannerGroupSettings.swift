@@ -36,12 +36,12 @@ struct PlannerGroupSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             } header: {
-                Text("Готовые группы")
+                Text("👧👦 Готовые группы")
             } footer: {
                 Text("Постоянные клиенты подставляются сами, когда выбираешь группу в журнале. Их можно убрать в конкретной записи.")
             }
 
-            Section("Новая группа") {
+            Section("➕ Новая группа") {
                 Picker("Тип", selection: $newCategory) {
                     ForEach([PlannerCategory.group, .school]) { item in
                         Text(item.title).tag(item)
@@ -81,6 +81,7 @@ struct PlannerGroupEditor: View {
     @State private var name: String
     @State private var category: PlannerCategory
     @State private var memberIDs: [UUID]
+    @State private var priceText: String
     @State private var query = ""
     @State private var directory: [PlannerClientDirectory.Entry] = []
     @State private var confirmDelete = false
@@ -91,6 +92,7 @@ struct PlannerGroupEditor: View {
         _name = State(initialValue: kind.name)
         _category = State(initialValue: kind.categoryValue)
         _memberIDs = State(initialValue: kind.memberIDs)
+        _priceText = State(initialValue: "\(Int(kind.price.rounded()))")
     }
 
     private var trimmedQuery: String { query.trimmingCharacters(in: .whitespaces) }
@@ -119,6 +121,15 @@ struct PlannerGroupEditor: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                HStack {
+                    Text("Цена с клиента")
+                    Spacer()
+                    TextField("750", text: $priceText)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                    Text("₽").foregroundStyle(.secondary)
+                }
             }
 
             Section {
@@ -161,7 +172,7 @@ struct PlannerGroupEditor: View {
                     }
                 }
             } header: {
-                Text("Постоянные клиенты")
+                Text("👥 Постоянные клиенты")
             } footer: {
                 Text("Они сами добавятся, когда выберешь эту группу при создании записи.")
             }
@@ -208,6 +219,7 @@ struct PlannerGroupEditor: View {
         if !clean.isEmpty { kind.name = clean }
         kind.category = category.rawValue
         kind.memberIDs = memberIDs
+        if let value = Double(priceText) { kind.price = max(0, value) }
         kind.markChanged()
         try? context.save()
         sync.requestSync()

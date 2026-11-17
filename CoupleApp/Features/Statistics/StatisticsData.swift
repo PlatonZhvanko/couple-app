@@ -69,12 +69,24 @@ struct StatisticsSnapshot {
     var visits: [StatisticsVisit] = []
     var cashPayments: [PlannerPayment] = []
     var subscriptions: [PlannerSubscription] = []
+    /// Списания тренировок с абонементов.
+    var charges: [PlannerPayment] = []
     var clients: [UUID: String] = [:]
+    var eventTitles: [UUID: String] = [:]
 
     func name(_ id: UUID) -> String { clients[id] ?? "Клиент" }
 
+    /// Сколько осталось на абонементе (оплачено минус списано за его месяц).
+    func left(_ sub: PlannerSubscription) -> Double {
+        let cal = PlannerCalendar.calendar
+        let used = charges
+            .filter { $0.clientID == sub.clientID && cal.isDate($0.day, equalTo: sub.month, toGranularity: .month) }
+            .reduce(0) { $0 + $1.amount }
+        return max(0, sub.amount - used)
+    }
+
     @MainActor
-    static func load(_ context: ModelContext, until end: Date) -> StatisticsSnapshot {
+    static func load(_ context: ModelContext, from begin: Date, until end: Date) -> StatisticsSnapshot {
         let cal = PlannerCalendar.calendar
         var snap = StatisticsSnapshot()
         snap.clients = Dictionary(
@@ -83,6 +95,7 @@ struct StatisticsSnapshot {
         )
         let events = ((try? context.fetch(FetchDescriptor<PlannerEvent>())) ?? []).filter { $0.deletedAt == nil }
         let map = PlannerPaymentStore.eventMap(events)
+        snap.eventTitles = map.mapValues(\.plainTitle)
         let live = PlannerPaymentStore.allPayments(context).filter { PlannerPaymentStore.isLive($0, events: map) }
         var byKey: [String: PlannerPayment] = [:]
         for payment in live {
@@ -90,11 +103,13 @@ struct StatisticsSnapshot {
         }
         snap.cashPayments = live.filter { $0.methodValue == .cash || $0.methodValue == .transfer }
         snap.subscriptions = PlannerPaymentStore.allSubscriptions(context)
+        snap.charges = live.filter { $0.methodValue == .subscription }
 
         for event in events where PlannerPaymentStore.isTraining(event) && !event.participantIDs.isEmpty {
-            var day = cal.startOfDay(for: event.start)
+            // Считаем только дни периода, а не всю историю повтора.
+            var day = max(cal.startOfDay(for: event.start), cal.startOfDay(for: begin))
             var steps = 0
-            while day < end && steps < 800 {
+            while day < end && steps < 400 {
                 if event.startsOn(day) {
                     let start = PlannerCalendar.combine(day: day, time: event.start)
                     for clientID in event.participantIDs {
@@ -104,7 +119,7 @@ struct StatisticsSnapshot {
                             id: key, eventTitle: event.plainTitle, day: day, start: start,
                             clientID: clientID, category: event.categoryValue,
                             method: row?.methodValue ?? .none,
-                            amount: row?.amount ?? PlannerPricing.price(for: event.categoryValue)
+                            amount: row?.amount ?? PlannerPaymentStore.price(for: event, context: context)
                         ))
                     }
                 }

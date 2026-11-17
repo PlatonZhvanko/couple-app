@@ -183,6 +183,7 @@ final class PlannerEvent: SyncableModel {
         var participantIDs: [UUID]?
         /// Дни повторяющегося события, которые перенесены в другое время.
         var skippedDays: [Date]?
+        var isPrivate: Bool?
     }
 
     static let recordKind = "planner.event"
@@ -206,6 +207,8 @@ final class PlannerEvent: SyncableModel {
     var participantIDs: [UUID] = []
     /// Дни повторяющегося события, которые перенесены в другое время.
     var skippedDays: [Date] = []
+    /// «Не показывать партнёру»: запись видит только её автор.
+    var isPrivate: Bool = false
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -222,7 +225,7 @@ final class PlannerEvent: SyncableModel {
             title: title, notes: notes, start: start, end: end, isAllDay: isAllDay,
             scope: scope, category: category, repeatRule: repeatRule,
             reminderMinutes: reminderMinutes, createdBy: createdBy, createdAt: createdAt,
-            participantIDs: participantIDs, skippedDays: skippedDays
+            participantIDs: participantIDs, skippedDays: skippedDays, isPrivate: isPrivate
         )
     }
 
@@ -240,6 +243,7 @@ final class PlannerEvent: SyncableModel {
         createdAt = payload.createdAt
         participantIDs = payload.participantIDs ?? []
         skippedDays = payload.skippedDays ?? []
+        isPrivate = payload.isPrivate ?? false
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }

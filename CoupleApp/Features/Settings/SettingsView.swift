@@ -28,7 +28,7 @@ struct SettingsView: View {
                     }
                     LabeledContent("Вторая половинка", value: account.partnerName)
                 } header: {
-                    Text("Профиль")
+                    Text("👤 Профиль")
                 }
 
                 if account.mode == .local {
@@ -42,7 +42,7 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.segmented)
                     } header: {
-                        Text("Проверка профилей")
+                        Text("🔀 Проверка профилей")
                     } footer: {
                         Text("Работает без сервера. Нажми «Настенька», и вкладка «Планер» покажет её форму тренировки.")
                     }
@@ -54,10 +54,10 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                 } header: {
-                    Text("Оформление")
+                    Text("🎨 Оформление")
                 }
 
-                Section("Синхронизация") {
+                Section("🔄 Синхронизация") {
                     NavigationLink {
                         SyncSettingsView()
                     } label: {
@@ -68,7 +68,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("О приложении") {
+                Section("ℹ️ О приложении") {
                     LabeledContent("Версия", value: Bundle.main.appVersion)
                 }
 
