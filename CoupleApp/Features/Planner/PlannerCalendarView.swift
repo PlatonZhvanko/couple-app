@@ -1,36 +1,15 @@
 import SwiftData
 import SwiftUI
 
-/// Какие записи показывать.
-enum PlannerFilter: String, CaseIterable, Identifiable {
-    case all, shared, mine, partner
-    var id: String { rawValue }
-
-    func matches(_ scope: PlannerScope, me: CoupleMember) -> Bool {
-        switch self {
-        case .all: true
-        case .shared: scope == .shared
-        case .mine: scope == .personal(me)
-        case .partner: scope == .personal(me.other)
-        }
-    }
-
-    @MainActor
-    func title(_ account: AccountStore) -> String {
-        switch self {
-        case .all: "Все"
-        case .shared: "Общие"
-        case .mine: "Мои"
-        case .partner: account.partnerName
-        }
-    }
-}
-
-/// Календарь: сетка месяца или недели и список на выбранный день.
+/// Журнал «Личный» (мои записи и общие) или «Общий» (записи обоих).
+/// Главный вид: время по часам. Кнопка в углу переключает на обычный календарь-месяц.
 struct PlannerCalendarView: View {
     enum Mode: String { case month, week }
-    /// Планировщик (время по часам) или обычный календарь (сетка месяца).
+    /// Журнал по времени или обычный календарь-месяц.
     enum Style: String { case planner, calendar }
+
+    /// `true` — записи обоих, `false` — мои и общие.
+    let showsEveryone: Bool
 
     @Environment(AccountStore.self) private var account
     @Environment(SyncCoordinator.self) private var sync
@@ -38,35 +17,44 @@ struct PlannerCalendarView: View {
 
     @Query(filter: #Predicate<PlannerEvent> { $0.deletedAt == nil })
     private var allEvents: [PlannerEvent]
-    @Query(filter: #Predicate<PlannerTask> { $0.deletedAt == nil })
-    private var allTasks: [PlannerTask]
+    @Query(filter: #Predicate<PlannerPayment> { $0.deletedAt == nil })
+    private var payments: [PlannerPayment]
 
     @AppStorage("planner.mode") private var mode: Mode = .month
     @AppStorage("planner.style") private var style: Style = .planner
-    /// В планировщике: открыт один день вместо недели.
+    /// В журнале: открыт один день вместо недели.
     @AppStorage("planner.dayFocus") private var dayFocus = false
-    @AppStorage("planner.filter") private var filter: PlannerFilter = .all
     @State private var selectedDay = PlannerCalendar.calendar.startOfDay(for: .now)
-    @State private var editorTarget: EditorTarget?
+    @State private var sheetTarget: SheetTarget?
+    /// Запись, которую сейчас переносят: нужно выбрать новое время.
+    @State private var moving: MovingState?
     /// Элементы из других разделов (например, записи клиентов).
     @State private var externalItems: [CalendarItem] = []
 
-    private struct EditorTarget: Identifiable {
+    private struct SheetTarget: Identifiable {
+        enum Kind { case detail, edit }
         let id = UUID()
+        let kind: Kind
         let event: PlannerEvent?
         let day: Date
         var time: Date? = nil
     }
 
+    private struct MovingState {
+        let event: PlannerEvent
+        let occurrenceStart: Date
+    }
+
     private var cal: Calendar { PlannerCalendar.calendar }
 
     private var events: [PlannerEvent] {
-        allEvents.filter { filter.matches($0.scopeValue, me: account.current) }
+        guard !showsEveryone else { return allEvents }
+        let me = PlannerScope.personal(account.current)
+        return allEvents.filter { $0.scopeValue == .shared || $0.scopeValue == me }
     }
 
-    /// Свои записи из других разделов: только во вкладках «Все» и «Мои».
+    /// Свои записи из других разделов.
     private func items(on day: Date) -> [CalendarItem] {
-        guard filter == .all || filter == .mine else { return [] }
         let dayStart = cal.startOfDay(for: day)
         let dayEnd = PlannerCalendar.addDays(1, to: dayStart)
         return externalItems
@@ -74,24 +62,26 @@ struct PlannerCalendarView: View {
             .sorted { $0.start < $1.start }
     }
 
-    /// Меняется при листании и после синхронизации: тогда перечитываем записи других разделов.
-    private var externalItemsKey: String {
-        let first = days.first?.timeIntervalSince1970 ?? 0
-        let synced = sync.lastSyncedAt?.timeIntervalSince1970 ?? 0
-        return "\(first)-\(days.count)-\(synced)"
-    }
-
-    private func loadExternalItems() {
-        guard let first = days.first, let last = days.last else { return }
-        let interval = DateInterval(start: first, end: PlannerCalendar.addDays(1, to: last))
-        externalItems = FeatureRegistry.calendarItems(context: context, interval: interval)
-    }
-
     private var days: [Date] {
         if style == .planner {
             return dayFocus ? [cal.startOfDay(for: selectedDay)] : PlannerCalendar.week(containing: selectedDay)
         }
         return mode == .month ? PlannerCalendar.monthGrid(selectedDay) : PlannerCalendar.week(containing: selectedDay)
+    }
+
+    /// Меняется при листании и после синхронизации: тогда перечитываем записи других разделов.
+    private var refreshKey: String {
+        let first = days.first?.timeIntervalSince1970 ?? 0
+        let synced = sync.lastSyncedAt?.timeIntervalSince1970 ?? 0
+        return "\(first)-\(days.count)-\(synced)-\(allEvents.count)"
+    }
+
+    private func refresh() {
+        guard let first = days.first, let last = days.last else { return }
+        let interval = DateInterval(start: first, end: PlannerCalendar.addDays(1, to: last))
+        externalItems = FeatureRegistry.calendarItems(context: context, interval: interval)
+        // Тренировки клиентов с абонементом списываются сами.
+        PlannerPaymentStore.autoCharge(context, events: allEvents, days: days)
     }
 
     var body: some View {
@@ -102,10 +92,12 @@ struct PlannerCalendarView: View {
                 calendarBody
             }
         }
-        .task(id: externalItemsKey) {
-            loadExternalItems()
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let moving {
+                movingBanner(moving)
+            }
         }
-        .onAppear(perform: loadExternalItems)
+        .task(id: refreshKey) { refresh() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Сегодня") {
@@ -118,16 +110,42 @@ struct PlannerCalendarView: View {
                 } label: {
                     Image(systemName: style == .planner ? "calendar" : "calendar.day.timeline.left")
                 }
-                .accessibilityLabel(style == .planner ? "Обычный календарь" : "Планировщик")
+                .accessibilityLabel(style == .planner ? "Обычный календарь" : "Журнал по времени")
                 Button {
-                    editorTarget = EditorTarget(event: nil, day: selectedDay)
+                    sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("Новое событие")
+                .accessibilityLabel(account.current == .partner ? "Новая тренировка" : "Новое событие")
             }
         }
-        .sheet(item: $editorTarget) { target in
+        .sheet(item: $sheetTarget) { target in
+            sheetContent(target)
+        }
+    }
+
+    @ViewBuilder
+    private func sheetContent(_ target: SheetTarget) -> some View {
+        switch target.kind {
+        case .detail:
+            if let event = target.event {
+                PlannerRecordView(
+                    event: event,
+                    day: target.day,
+                    onEdit: {
+                        afterSheet { sheetTarget = SheetTarget(kind: .edit, event: event, day: target.day) }
+                    },
+                    onMove: {
+                        afterSheet {
+                            let start = PlannerCalendar.combine(day: target.day, time: event.start)
+                            moving = MovingState(event: event, occurrenceStart: event.isAllDay ? target.day : start)
+                            style = .planner
+                            selectedDay = target.day
+                        }
+                    }
+                )
+            }
+        case .edit:
             if PlannerTrainingEditor.shouldUse(for: target.event, me: account.current) {
                 PlannerTrainingEditor(event: target.event, day: target.day, at: target.time)
             } else {
@@ -136,7 +154,54 @@ struct PlannerCalendarView: View {
         }
     }
 
-    // MARK: - Планировщик
+    /// Дать закрыться текущему листу, потом сделать следующее действие.
+    private func afterSheet(_ action: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: action)
+    }
+
+    // MARK: - Перенос
+
+    private func movingBanner(_ moving: MovingState) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Куда перенести?").font(.subheadline.weight(.semibold))
+                Text("Нажми на любое время или день: «\(moving.event.displayTitle)»")
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button("Отмена") { withAnimation { self.moving = nil } }
+                .font(.subheadline.weight(.semibold))
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.accentColor.opacity(0.2))
+        .foregroundStyle(Color.primary)
+    }
+
+    private func finishMove(to start: Date) {
+        guard let moving else { return }
+        PlannerMover.move(moving.event, occurrenceStart: moving.occurrenceStart, to: start, context: context)
+        sync.requestSync()
+        withAnimation {
+            self.moving = nil
+            selectedDay = cal.startOfDay(for: start)
+        }
+    }
+
+    private func moveByDrag(_ event: PlannerEvent, from occurrenceStart: Date, to start: Date) {
+        PlannerMover.move(event, occurrenceStart: occurrenceStart, to: start, context: context)
+        sync.requestSync()
+    }
+
+    // MARK: - Журнал по времени
+
+    private func ownerLetter(_ event: PlannerEvent) -> String? {
+        guard showsEveryone else { return nil }
+        let member = event.scopeValue.member ?? CoupleMember(rawValue: event.createdBy) ?? .owner
+        return account.name(of: member).prefix(1).uppercased()
+    }
 
     private var plannerBody: some View {
         VStack(spacing: 0) {
@@ -154,24 +219,25 @@ struct PlannerCalendarView: View {
                 Text(PlannerCalendar.monthTitle(selectedDay))
                     .font(.headline)
                 Spacer()
-                Menu {
-                    Picker("Показывать", selection: $filter) {
-                        ForEach(PlannerFilter.allCases) { Text($0.title(account)).tag($0) }
-                    }
-                } label: {
-                    Image(systemName: filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                }
                 Button { movePlanner(1) } label: { Image(systemName: "chevron.right") }
             }
             .buttonStyle(.borderless)
             .padding(.horizontal)
             .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 30).onEnded { value in
+                if value.translation.width < -40 { movePlanner(1) }
+                if value.translation.width > 40 { movePlanner(-1) }
+            })
 
             PlannerTimelineView(
                 days: days,
                 isDayMode: dayFocus,
                 events: events,
                 externalItems: { items(on: $0) },
+                badge: { event, day in PlannerPaymentStore.badge(for: event, day: day, payments: payments) },
+                ownerLetter: { ownerLetter($0) },
+                canMove: { $0.scopeValue.canEdit(by: account.current) },
                 onHeaderTap: { day in
                     withAnimation(.snappy) {
                         selectedDay = day
@@ -179,18 +245,19 @@ struct PlannerCalendarView: View {
                     }
                 },
                 onSlotTap: { start in
-                    selectedDay = cal.startOfDay(for: start)
-                    editorTarget = EditorTarget(event: nil, day: start, time: start)
+                    if moving != nil {
+                        finishMove(to: start)
+                    } else {
+                        selectedDay = cal.startOfDay(for: start)
+                        sheetTarget = SheetTarget(kind: .edit, event: nil, day: start, time: start)
+                    }
                 },
-                onEventTap: { event in
-                    editorTarget = EditorTarget(event: event, day: selectedDay)
-                }
+                onEventTap: { event, day in
+                    guard moving == nil else { return }
+                    sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
+                },
+                onMove: { event, from, to in moveByDrag(event, from: from, to: to) }
             )
-            .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height) * 1.5 else { return }
-                if value.translation.width < -60 { movePlanner(1) }
-                if value.translation.width > 60 { movePlanner(-1) }
-            })
         }
     }
 
@@ -211,7 +278,6 @@ struct PlannerCalendarView: View {
                         if value.translation.width < -40 { move(1) }
                         if value.translation.width > 40 { move(-1) }
                     })
-                filterBar
                 Divider()
                 dayList
             }
@@ -271,11 +337,16 @@ struct PlannerCalendarView: View {
         let isToday = cal.isDateInToday(day)
         let dayEvents = events.occurrences(on: day)
         let colors = Array(dayEvents.map(\.event.categoryValue.color).prefix(3))
-        let hasTasks = tasks(on: day).contains { !$0.isDone }
         let isBusy = !items(on: day).isEmpty
 
         return Button {
-            withAnimation(.snappy) { selectedDay = day }
+            if let moving {
+                // Перенос на другой день: то же время суток.
+                let time = PlannerCalendar.combine(day: day, time: moving.occurrenceStart)
+                finishMove(to: moving.event.isAllDay ? day : time)
+            } else {
+                withAnimation(.snappy) { selectedDay = day }
+            }
         } label: {
             VStack(spacing: 3) {
                 Text("\(cal.component(.day, from: day))")
@@ -296,9 +367,6 @@ struct PlannerCalendarView: View {
                     if isBusy {
                         Circle().fill(Color.gray).frame(width: 5, height: 5)
                     }
-                    if hasTasks {
-                        Circle().stroke(Color.secondary, lineWidth: 1).frame(width: 5, height: 5)
-                    }
                 }
                 .frame(height: 5)
             }
@@ -308,39 +376,22 @@ struct PlannerCalendarView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Фильтр
-
-    private var filterBar: some View {
-        Picker("Показывать", selection: $filter) {
-            ForEach(PlannerFilter.allCases) { Text($0.title(account)).tag($0) }
-        }
-        .pickerStyle(.segmented)
-    }
-
     // MARK: - Список на день
-
-    private func tasks(on day: Date) -> [PlannerTask] {
-        allTasks.filter { task in
-            guard let due = task.dueDate, filter.matches(task.scopeValue, me: account.current) else { return false }
-            return cal.isDate(due, inSameDayAs: day)
-        }
-    }
 
     private var dayList: some View {
         let occurrences = events.occurrences(on: selectedDay)
-        let dayTasks = tasks(on: selectedDay).sorted { !$0.isDone && $1.isDone }
         let dayItems = items(on: selectedDay)
 
         return VStack(alignment: .leading, spacing: 10) {
             Text(PlannerCalendar.dayTitle(selectedDay))
                 .font(.headline)
 
-            if occurrences.isEmpty && dayTasks.isEmpty && dayItems.isEmpty {
+            if occurrences.isEmpty && dayItems.isEmpty {
                 VStack(spacing: 8) {
                     Text("Ничего не запланировано")
                         .foregroundStyle(.secondary)
-                    Button("Добавить событие") {
-                        editorTarget = EditorTarget(event: nil, day: selectedDay)
+                    Button(account.current == .partner ? "Добавить тренировку" : "Добавить событие") {
+                        sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -349,20 +400,19 @@ struct PlannerCalendarView: View {
 
             ForEach(occurrences) { occurrence in
                 Button {
-                    editorTarget = EditorTarget(event: occurrence.event, day: selectedDay)
+                    sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: selectedDay)
                 } label: {
-                    PlannerEventRow(occurrence: occurrence, day: selectedDay)
+                    PlannerEventRow(
+                        occurrence: occurrence,
+                        day: selectedDay,
+                        badge: PlannerPaymentStore.badge(for: occurrence.event, day: selectedDay, payments: payments)
+                    )
                 }
                 .buttonStyle(.plain)
             }
 
             ForEach(dayItems) { item in
                 PlannerExternalItemRow(item: item)
-            }
-
-            ForEach(dayTasks) { task in
-                PlannerTaskRow(task: task, showsDue: false)
-                    .padding(.vertical, 4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -374,6 +424,7 @@ struct PlannerEventRow: View {
     @Environment(AccountStore.self) private var account
     let occurrence: PlannerOccurrence
     let day: Date
+    var badge: PlannerPayBadge = .none
 
     private var event: PlannerEvent { occurrence.event }
 
@@ -398,6 +449,9 @@ struct PlannerEventRow: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
+            if let symbol = badge.symbol {
+                Text(symbol)
+            }
             Text(event.scopeValue.title(account))
                 .font(.caption2.weight(.semibold))
                 .padding(.horizontal, 8)
@@ -445,6 +499,6 @@ struct PlannerExternalItemRow: View {
                 .foregroundStyle(.secondary)
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+        .background(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
     }
 }

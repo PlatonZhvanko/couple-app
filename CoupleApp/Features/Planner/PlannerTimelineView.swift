@@ -1,47 +1,59 @@
 import SwiftUI
 
-/// Планировщик: дни колонками, время слева с шагом 30 минут, события блоками.
-/// Неделя или один день. Нажатие на пустое время создаёт блок, на блок открывает его.
+/// Журнал: дни колонками, время слева с шагом 30 минут, записи блоками.
+/// Неделя или один день. Нажатие на пустое время создаёт запись, на блок открывает её,
+/// блок можно зажать и перетащить на другое время или день.
 struct PlannerTimelineView: View {
     let days: [Date]
     let isDayMode: Bool
     let events: [PlannerEvent]
     let externalItems: (Date) -> [CalendarItem]
+    /// Значок оплаты записи за этот день.
+    let badge: (PlannerEvent, Date) -> PlannerPayBadge
+    /// Буква владельца записи (в общем журнале), `nil` — не показывать.
+    let ownerLetter: (PlannerEvent) -> String?
+    /// Можно ли переносить запись этому человеку.
+    let canMove: (PlannerEvent) -> Bool
     /// Нажали на день в шапке.
     let onHeaderTap: (Date) -> Void
     /// Нажали на пустое время: начало получасового отрезка.
     let onSlotTap: (Date) -> Void
-    let onEventTap: (PlannerEvent) -> Void
+    /// Нажали на запись: событие и начало этого раза.
+    let onEventTap: (PlannerEvent, Date) -> Void
+    /// Запись перетащили: событие, начало этого раза, новое начало.
+    let onMove: (PlannerEvent, Date, Date) -> Void
 
     static let slotMinutes = 30
     private let timeColumnWidth: CGFloat = 46
-    /// Стандартный видимый промежуток: с 9:00 до 22:00 (в получасовых отрезках).
+    private let topPadding: CGFloat = 10
+    private let bottomPadding: CGFloat = 16
+    /// Стандартный видимый промежуток: с 9:00 до 0:00 (в получасовых отрезках).
     private let defaultFirstSlot = 18
-    private let defaultLastSlot = 44
+    private let defaultLastSlot = 48
 
-    /// Показан ли весь день (с прокруткой) вместо экрана «всё сразу».
+    /// Показаны ли все 24 часа (с прокруткой) вместо экрана «всё сразу».
     @State private var showFullDay = false
+    @State private var dragID: String?
+    @State private var dragDay: Date?
+    @State private var dragOffset: CGSize = .zero
 
     private var cal: Calendar { PlannerCalendar.calendar }
 
-    /// Видимые отрезки [первый, последний). По умолчанию 9:00–22:00,
-    /// расширяются, если у кого-то из дней есть события за их пределами.
+    /// Видимые отрезки. По умолчанию 9:00–0:00, расширяются, если у кого-то из дней
+    /// есть записи раньше 9:00.
     private var slotRange: Range<Int> {
         if showFullDay { return 0..<48 }
         var first = defaultFirstSlot
-        var last = defaultLastSlot
         for day in days {
             let dayStart = cal.startOfDay(for: day)
-            let ends = events.occurrences(on: day).filter { !$0.event.isAllDay }.map { ($0.start, $0.end) }
-                + externalItems(day).map { ($0.start, $0.end) }
-            for (start, end) in ends {
-                let startSlot = Int(max(0, start.timeIntervalSince(dayStart)) / 60) / Self.slotMinutes
-                let endSlot = min(48, Int((max(0, end.timeIntervalSince(dayStart)) / 60).rounded(.up)) / Self.slotMinutes + 1)
-                first = min(first, startSlot)
-                last = max(last, endSlot)
+            let starts = events.occurrences(on: day).filter { !$0.event.isAllDay }.map(\.start)
+                + externalItems(day).map(\.start)
+            for start in starts {
+                let slot = Int(max(0, start.timeIntervalSince(dayStart)) / 60) / Self.slotMinutes
+                first = min(first, slot)
             }
         }
-        return max(0, first)..<min(48, max(last, first + 1))
+        return max(0, first)..<defaultLastSlot
     }
 
     var body: some View {
@@ -51,42 +63,40 @@ struct PlannerTimelineView: View {
             Divider()
             GeometryReader { geo in
                 let range = slotRange
-                // Кнопка «показать весь день» занимает 28 пунктов под сеткой.
-                let fit = (geo.size.height - 28) / CGFloat(range.count)
-                let slotHeight = showFullDay ? 34 : max(fit, 16)
+                let columnWidth = (geo.size.width - timeColumnWidth) / CGFloat(max(days.count, 1))
+                let fit = (geo.size.height - topPadding - bottomPadding) / CGFloat(range.count)
+                let slotHeight: CGFloat = showFullDay ? 34 : max(fit, 14)
                 ScrollView {
-                    VStack(spacing: 0) {
-                        HStack(alignment: .top, spacing: 0) {
-                            timeColumn(range: range, slotHeight: slotHeight)
-                            ForEach(days, id: \.self) { day in
-                                dayColumn(day, range: range, slotHeight: slotHeight)
-                            }
+                    HStack(alignment: .top, spacing: 0) {
+                        timeColumn(range: range, slotHeight: slotHeight)
+                        ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                            dayColumn(day, index: index, range: range, slotHeight: slotHeight, columnWidth: columnWidth)
+                                .zIndex(dragDay == day ? 5 : 0)
                         }
-                        .frame(height: slotHeight * CGFloat(range.count))
-                        expandButton
                     }
+                    .frame(height: slotHeight * CGFloat(range.count))
+                    .coordinateSpace(.named("grid"))
+                    .padding(.top, topPadding)
+                    .padding(.bottom, bottomPadding)
                 }
-                .scrollDisabled(!showFullDay && fit >= 16)
+                .scrollDisabled(!showFullDay && fit >= 14 && dragID == nil)
             }
         }
-    }
-
-    private var expandButton: some View {
-        Button {
-            withAnimation(.snappy) { showFullDay.toggle() }
-        } label: {
-            Image(systemName: showFullDay ? "chevron.up" : "chevron.down")
-                .frame(maxWidth: .infinity, minHeight: 28)
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityLabel(showFullDay ? "Свернуть до рабочих часов" : "Показать весь день")
     }
 
     // MARK: - Шапка с днями
 
     private var header: some View {
         HStack(spacing: 0) {
-            Color.clear.frame(width: timeColumnWidth, height: 1)
+            Button {
+                withAnimation(.snappy) { showFullDay.toggle() }
+            } label: {
+                Image(systemName: showFullDay ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: timeColumnWidth, height: 30)
+            }
+            .accessibilityLabel(showFullDay ? "Свернуть до 9:00–0:00" : "Показать все 24 часа")
             ForEach(days, id: \.self) { day in
                 Button { onHeaderTap(day) } label: {
                     headerCell(day)
@@ -111,7 +121,7 @@ struct PlannerTimelineView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(isToday ? Color.red : Color.primary)
+                .foregroundStyle(isToday ? Color.accentColor : Color.primary)
             } else {
                 VStack(spacing: 2) {
                     Text(weekday)
@@ -121,7 +131,7 @@ struct PlannerTimelineView: View {
                         .font(.headline)
                         .frame(width: 30, height: 30)
                         .background {
-                            if isToday { Circle().fill(Color.red) }
+                            if isToday { Circle().fill(Color.accentColor) }
                         }
                         .foregroundStyle(isToday ? Color.white : (isWeekend ? Color.red : Color.primary))
                 }
@@ -144,19 +154,17 @@ struct PlannerTimelineView: View {
                     .multilineTextAlignment(.trailing)
                     .frame(width: timeColumnWidth - 6, alignment: .trailing)
                     .padding(.trailing, 6)
-                ForEach(Array(days.enumerated()), id: \.offset) { index, _ in
+                ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                     VStack(spacing: 2) {
                         ForEach(perDay[index].prefix(isDayMode ? 4 : 2)) { occurrence in
-                            Button { onEventTap(occurrence.event) } label: {
-                                Text(occurrence.event.displayTitle)
-                                    .font(.caption2.weight(.semibold))
-                                    .lineLimit(1)
-                                    .foregroundStyle(Color.black)
-                                    .padding(.horizontal, 3)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(RoundedRectangle(cornerRadius: 3).fill(occurrence.event.categoryValue.color))
-                            }
-                            .buttonStyle(.plain)
+                            Text(occurrence.event.displayTitle)
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                                .foregroundStyle(Color.black)
+                                .padding(.horizontal, 3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(RoundedRectangle(cornerRadius: 3).fill(occurrence.event.categoryValue.color))
+                                .onTapGesture { onEventTap(occurrence.event, day) }
                         }
                         let extra = perDay[index].count - (isDayMode ? 4 : 2)
                         if extra > 0 {
@@ -174,22 +182,28 @@ struct PlannerTimelineView: View {
     // MARK: - Шкала времени
 
     private func timeColumn(range: Range<Int>, slotHeight: CGFloat) -> some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .topTrailing) {
             ForEach(Array(range), id: \.self) { slot in
                 let isHour = slot % 2 == 0
-                Text(String(format: "%d:%02d", slot / 2, isHour ? 0 : 30))
+                Text(slot == 48 ? "0:00" : String(format: "%d:%02d", slot / 2, isHour ? 0 : 30))
                     .font(isHour ? .caption.weight(.semibold) : .caption2)
                     .foregroundStyle(isHour ? Color.primary : Color.secondary)
-                    .frame(width: timeColumnWidth - 6, height: slotHeight, alignment: .topTrailing)
                     .padding(.trailing, 6)
-                    .offset(y: slot == range.lowerBound ? 0 : -7)
+                    .offset(y: CGFloat(slot - range.lowerBound) * slotHeight - 7)
+            }
+            if range.upperBound == 48 {
+                Text("0:00")
+                    .font(.caption.weight(.semibold))
+                    .padding(.trailing, 6)
+                    .offset(y: CGFloat(range.count) * slotHeight - 7)
             }
         }
+        .frame(width: timeColumnWidth, height: slotHeight * CGFloat(range.count), alignment: .topTrailing)
     }
 
     // MARK: - Колонка дня
 
-    private func dayColumn(_ day: Date, range: Range<Int>, slotHeight: CGFloat) -> some View {
+    private func dayColumn(_ day: Date, index: Int, range: Range<Int>, slotHeight: CGFloat, columnWidth: CGFloat) -> some View {
         let dayStart = cal.startOfDay(for: day)
         let isToday = cal.isDateInToday(day)
         let blocks = layout(day)
@@ -218,9 +232,17 @@ struct PlannerTimelineView: View {
                 ForEach(blocks) { block in
                     let width = geo.size.width / CGFloat(block.columns)
                     let blockHeight = max(height(of: block, slotHeight: slotHeight), 14)
-                    blockView(block, height: blockHeight)
+                    let dragging = dragID == block.id
+                    blockView(block, height: blockHeight, day: day, index: index, range: range,
+                              slotHeight: slotHeight, columnWidth: columnWidth)
                         .frame(width: max(width - 2, 4), height: blockHeight)
-                        .offset(x: width * CGFloat(block.column) + 1, y: y(of: block.start, from: rangeStart, slotHeight: slotHeight))
+                        .scaleEffect(dragging ? 1.05 : 1)
+                        .shadow(color: .black.opacity(dragging ? 0.35 : 0), radius: 6)
+                        .offset(
+                            x: width * CGFloat(block.column) + 1 + (dragging ? dragOffset.width : 0),
+                            y: y(of: block.start, from: rangeStart, slotHeight: slotHeight) + (dragging ? dragOffset.height : 0)
+                        )
+                        .zIndex(dragging ? 10 : 0)
                 }
             }
 
@@ -230,7 +252,7 @@ struct PlannerTimelineView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(isToday ? Color.secondary.opacity(0.08) : Color.clear)
+        .background(isToday ? Color.accentColor.opacity(0.08) : Color.clear)
         .overlay(alignment: .leading) {
             Rectangle().fill(Color.secondary.opacity(0.3)).frame(width: 0.5)
         }
@@ -254,8 +276,13 @@ struct PlannerTimelineView: View {
         .allowsHitTesting(false)
     }
 
+    // MARK: - Блок
+
     @ViewBuilder
-    private func blockView(_ block: PlannerTimelineBlock, height: CGFloat) -> some View {
+    private func blockView(
+        _ block: PlannerTimelineBlock, height: CGFloat, day: Date, index: Int,
+        range: Range<Int>, slotHeight: CGFloat, columnWidth: CGFloat
+    ) -> some View {
         let tall = height > 40
         let content = VStack(alignment: .leading, spacing: 1) {
             Text(block.title)
@@ -270,25 +297,86 @@ struct PlannerTimelineView: View {
         }
         .padding(.horizontal, 3)
         .padding(.vertical, 2)
+        .padding(.trailing, block.badge.symbol == nil ? 0 : 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .topTrailing) {
+            if let symbol = block.badge.symbol {
+                Text(symbol).font(.system(size: 10)).padding(1)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let owner = block.owner {
+                Text(owner)
+                    .font(.system(size: 8, weight: .bold))
+                    .padding(.horizontal, 3)
+                    .background(Capsule().fill(Color.black.opacity(0.25)))
+                    .padding(1)
+            }
+        }
 
         switch block.source {
         case .event(let event):
-            Button { onEventTap(event) } label: {
-                content
-                    .foregroundStyle(Color.black)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(block.color))
+            let base = content
+                .foregroundStyle(Color.black)
+                .background(RoundedRectangle(cornerRadius: 6).fill(block.color))
+                .contentShape(Rectangle())
+                .onTapGesture { onEventTap(event, block.start) }
+            if canMove(event) && !event.isAllDay {
+                base.gesture(moveGesture(
+                    block: block, event: event, index: index, range: range,
+                    slotHeight: slotHeight, columnWidth: columnWidth
+                ))
+            } else {
+                base
             }
-            .buttonStyle(.plain)
         case .external:
             content
                 .foregroundStyle(Color.primary)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: 6)
                         .fill(Color.gray.opacity(0.25))
-                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.gray, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.gray, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
                 )
         }
+    }
+
+    /// Зажать блок и перетащить: на другое время или в другой день.
+    private func moveGesture(
+        block: PlannerTimelineBlock, event: PlannerEvent, index: Int,
+        range: Range<Int>, slotHeight: CGFloat, columnWidth: CGFloat
+    ) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.35)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("grid")))
+            .onChanged { value in
+                if case .second(true, let drag?) = value {
+                    dragID = block.id
+                    dragDay = days[index]
+                    dragOffset = drag.translation
+                }
+            }
+            .onEnded { value in
+                defer {
+                    dragID = nil
+                    dragDay = nil
+                    dragOffset = .zero
+                }
+                guard case .second(true, let drag?) = value, columnWidth > 0 else { return }
+
+                let dayStart = cal.startOfDay(for: days[index])
+                let origin = dayStart.addingTimeInterval(Double(range.lowerBound * Self.slotMinutes * 60))
+                let blockTop = y(of: block.start, from: origin, slotHeight: slotHeight)
+                let grab = drag.startLocation.y - blockTop
+                let newTop = drag.location.y - grab
+                let slot = Int((newTop / slotHeight).rounded())
+                let absoluteSlot = min(max(range.lowerBound + slot, 0), 47)
+                let column = Int(((drag.location.x - timeColumnWidth) / columnWidth).rounded(.down))
+                let targetIndex = min(max(column, 0), days.count - 1)
+                let newStart = cal.startOfDay(for: days[targetIndex])
+                    .addingTimeInterval(Double(absoluteSlot * Self.slotMinutes * 60))
+                if abs(newStart.timeIntervalSince(block.start)) >= 60 {
+                    onMove(event, block.start, newStart)
+                }
+            }
     }
 
     // MARK: - Раскладка пересекающихся блоков
@@ -305,7 +393,8 @@ struct PlannerTimelineView: View {
             raw.append(PlannerTimelineBlock(
                 id: occurrence.id, source: .event(occurrence.event),
                 title: occurrence.event.displayTitle,
-                color: occurrence.event.categoryValue.color, start: start, end: end
+                color: occurrence.event.categoryValue.color, start: start, end: end,
+                badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event)
             ))
         }
         for item in externalItems(day) {
@@ -313,7 +402,7 @@ struct PlannerTimelineView: View {
             let end = min(max(item.end, start.addingTimeInterval(minimum)), dayEnd)
             raw.append(PlannerTimelineBlock(
                 id: item.id, source: .external, title: item.title,
-                color: item.color, start: start, end: end
+                color: item.color, start: start, end: end, badge: .none, owner: nil
             ))
         }
         raw.sort { $0.start != $1.start ? $0.start < $1.start : $0.end > $1.end }
@@ -360,6 +449,8 @@ struct PlannerTimelineBlock: Identifiable {
     let color: Color
     let start: Date
     let end: Date
+    let badge: PlannerPayBadge
+    let owner: String?
     var column = 0
     var columns = 1
 }

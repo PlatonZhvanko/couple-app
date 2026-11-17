@@ -5,6 +5,7 @@ import SwiftData
 @main
 struct CoupleApp: App {
     private let environment: AppEnvironment
+    @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .dark
 
     init() {
         environment = AppEnvironment.live()
@@ -15,6 +16,8 @@ struct CoupleApp: App {
             RootView()
                 .environment(environment.account)
                 .environment(environment.sync)
+                .tint(.appAccent)
+                .preferredColorScheme(theme.colorScheme)
         }
         .modelContainer(environment.modelContainer)
     }

@@ -13,6 +13,8 @@ enum PlannerFeature {
         models: [
             PlannerEvent.self,
             PlannerTask.self,
+            PlannerPayment.self,
+            PlannerSubscription.self,
         ]
     ) {
         PlannerRootView()

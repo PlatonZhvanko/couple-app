@@ -4,6 +4,7 @@ struct SettingsView: View {
     @Environment(AccountStore.self) private var account
     @Environment(SyncCoordinator.self) private var sync
 
+    @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .dark
     @State private var name = ""
     @State private var renameError: String?
     @State private var confirmSignOut = false
@@ -45,6 +46,15 @@ struct SettingsView: View {
                     } footer: {
                         Text("Работает без сервера. Нажми «Настенька», и вкладка «Планер» покажет её форму тренировки.")
                     }
+                }
+
+                Section {
+                    Picker("Тема", selection: $theme) {
+                        ForEach(AppTheme.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Оформление")
                 }
 
                 Section("Синхронизация") {

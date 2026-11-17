@@ -59,8 +59,8 @@ enum PlannerCategory: String, CaseIterable, Identifiable {
     var emoji: String? {
         switch self {
         case .personal: "🐱🎾"
-        case .group: "🐱🐱🐱🎾"
-        case .school: "🐱🎽🎾"
+        case .group: "👧👦🎾"
+        case .school: "🏫🎾"
         case .errand: "🧳"
         default: nil
         }
@@ -181,6 +181,8 @@ final class PlannerEvent: SyncableModel {
         var createdAt: Date
         /// Клиенты тренировки (id из раздела «Клиенты»). Нет в старых записях.
         var participantIDs: [UUID]?
+        /// Дни повторяющегося события, которые перенесены в другое время.
+        var skippedDays: [Date]?
     }
 
     static let recordKind = "planner.event"
@@ -202,6 +204,8 @@ final class PlannerEvent: SyncableModel {
     var createdAt: Date = Date.now
     /// Клиенты тренировки (id из раздела «Клиенты»).
     var participantIDs: [UUID] = []
+    /// Дни повторяющегося события, которые перенесены в другое время.
+    var skippedDays: [Date] = []
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -218,7 +222,7 @@ final class PlannerEvent: SyncableModel {
             title: title, notes: notes, start: start, end: end, isAllDay: isAllDay,
             scope: scope, category: category, repeatRule: repeatRule,
             reminderMinutes: reminderMinutes, createdBy: createdBy, createdAt: createdAt,
-            participantIDs: participantIDs
+            participantIDs: participantIDs, skippedDays: skippedDays
         )
     }
 
@@ -235,6 +239,7 @@ final class PlannerEvent: SyncableModel {
         createdBy = payload.createdBy
         createdAt = payload.createdAt
         participantIDs = payload.participantIDs ?? []
+        skippedDays = payload.skippedDays ?? []
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }
