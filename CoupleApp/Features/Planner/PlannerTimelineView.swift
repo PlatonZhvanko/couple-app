@@ -302,26 +302,42 @@ struct PlannerTimelineView: View {
     ) -> some View {
         // Блоки, которые делят время, становятся узкими: шрифт чуть меньше, но всё равно крупный.
         let narrow = block.columns > 1
-        let fontSize: CGFloat = isDayMode ? (narrow ? 15 : 19) : (narrow ? 11.5 : 14)
+        let fontSize: CGFloat = isDayMode ? (narrow ? 15 : 19) : (narrow ? 12 : 14)
         let lineHeight = fontSize * 1.2
         let topInset: CGFloat = height > 34 ? 13 : 2
-        let lines = max(1, Int((height - topInset - 4) / lineHeight))
-        let showTime = height > 52 && !narrow
-        let content = VStack(alignment: .leading, spacing: 1) {
-            Text(block.title)
-                .font(.system(size: fontSize, weight: .bold))
-                .lineLimit(showTime ? max(1, lines - 1) : lines)
-                .minimumScaleFactor(0.65)
-                .multilineTextAlignment(.leading)
-            if showTime {
+        let room = height - topInset - 3
+        let showTime = height > 56 && !narrow
+        let words = block.title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        // Фамилия сверху, имя снизу, если две строки помещаются по высоте.
+        let twoLines = words.count >= 2 && room >= lineHeight * 1.7
+        let content = VStack(alignment: .leading, spacing: 0) {
+            if twoLines {
+                Text(words[0])
+                    .font(.system(size: fontSize, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
+                Text(words.dropFirst().joined(separator: " "))
+                    .font(.system(size: fontSize, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
+            } else {
+                Text(block.title)
+                    .font(.system(size: fontSize, weight: .bold))
+                    .lineLimit(max(1, Int(room / lineHeight)))
+                    .minimumScaleFactor(0.4)
+                    .multilineTextAlignment(.leading)
+            }
+            if showTime && room >= lineHeight * (twoLines ? 3 : 2) {
                 Text("\(PlannerCalendar.time(block.start))–\(PlannerCalendar.time(block.end))")
                     .font(.system(size: isDayMode ? 12 : 10, weight: .medium))
                     .opacity(0.75)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
         }
-        .padding(.leading, 4)
-        .padding(.trailing, block.badge.symbol == nil ? 3 : 15)
+        .allowsTightening(true)
+        .padding(.leading, 3)
+        .padding(.trailing, 2)
         .padding(.top, topInset)
         .padding(.bottom, 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
