@@ -43,6 +43,8 @@ struct PlannerCalendarView: View {
     @AppStorage("planner.filter") private var filter: PlannerFilter = .all
     @State private var selectedDay = PlannerCalendar.calendar.startOfDay(for: .now)
     @State private var editorTarget: EditorTarget?
+    /// Элементы из других разделов (например, записи клиентов).
+    @State private var externalItems: [CalendarItem] = []
 
     private struct EditorTarget: Identifiable {
         let id = UUID()
@@ -54,6 +56,22 @@ struct PlannerCalendarView: View {
 
     private var events: [PlannerEvent] {
         allEvents.filter { filter.matches($0.scopeValue, me: account.current) }
+    }
+
+    /// Свои записи из других разделов: только во вкладках «Все» и «Мои».
+    private func items(on day: Date) -> [CalendarItem] {
+        guard filter == .all || filter == .mine else { return [] }
+        let dayStart = cal.startOfDay(for: day)
+        let dayEnd = PlannerCalendar.addDays(1, to: dayStart)
+        return externalItems
+            .filter { ($0.member == nil || $0.member == account.current) && $0.start < dayEnd && $0.end > dayStart }
+            .sorted { $0.start < $1.start }
+    }
+
+    private func loadExternalItems() {
+        guard let first = days.first, let last = days.last else { return }
+        let interval = DateInterval(start: first, end: PlannerCalendar.addDays(1, to: last))
+        externalItems = FeatureRegistry.calendarItems(context: context, interval: interval)
     }
 
     private var days: [Date] {
@@ -76,6 +94,10 @@ struct PlannerCalendarView: View {
             .padding()
         }
         .refreshable { await sync.syncNow() }
+        .task(id: "\(days.first?.timeIntervalSince1970 ?? 0)-\(days.count)-\(sync.lastSyncedAt?.timeIntervalSince1970 ?? 0)") {
+            loadExternalItems()
+        }
+        .onAppear(perform: loadExternalItems)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Сегодня") {
@@ -148,6 +170,7 @@ struct PlannerCalendarView: View {
         let dayEvents = events.occurrences(on: day)
         let colors = Array(dayEvents.map(\.event.categoryValue.color).prefix(3))
         let hasTasks = tasks(on: day).contains { !$0.isDone }
+        let isBusy = !items(on: day).isEmpty
 
         return Button {
             withAnimation(.snappy) { selectedDay = day }
@@ -167,6 +190,9 @@ struct PlannerCalendarView: View {
                 HStack(spacing: 3) {
                     ForEach(Array(colors.enumerated()), id: \.offset) { _, color in
                         Circle().fill(color).frame(width: 5, height: 5)
+                    }
+                    if isBusy {
+                        Circle().fill(Color.gray).frame(width: 5, height: 5)
                     }
                     if hasTasks {
                         Circle().stroke(Color.secondary, lineWidth: 1).frame(width: 5, height: 5)
@@ -201,12 +227,13 @@ struct PlannerCalendarView: View {
     private var dayList: some View {
         let occurrences = events.occurrences(on: selectedDay)
         let dayTasks = tasks(on: selectedDay).sorted { !$0.isDone && $1.isDone }
+        let dayItems = items(on: selectedDay)
 
         return VStack(alignment: .leading, spacing: 10) {
             Text(PlannerCalendar.dayTitle(selectedDay))
                 .font(.headline)
 
-            if occurrences.isEmpty && dayTasks.isEmpty {
+            if occurrences.isEmpty && dayTasks.isEmpty && dayItems.isEmpty {
                 VStack(spacing: 8) {
                     Text("Ничего не запланировано")
                         .foregroundStyle(.secondary)
@@ -225,6 +252,10 @@ struct PlannerCalendarView: View {
                     PlannerEventRow(occurrence: occurrence, day: selectedDay)
                 }
                 .buttonStyle(.plain)
+            }
+
+            ForEach(dayItems) { item in
+                PlannerExternalItemRow(item: item)
             }
 
             ForEach(dayTasks) { task in
@@ -287,5 +318,31 @@ struct PlannerEventRow: View {
         case (false, true): return "до \(PlannerCalendar.time(occurrence.end))"
         case (false, false): return "Весь день"
         }
+    }
+}
+
+/// Запись из другого раздела (например, клиент): только для просмотра.
+struct PlannerExternalItemRow: View {
+    let item: CalendarItem
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: item.systemImage)
+                .foregroundStyle(item.color)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title)
+                    .font(.body.weight(.medium))
+                Text("\(PlannerCalendar.time(item.start))–\(PlannerCalendar.time(item.end))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("Занят")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
     }
 }
