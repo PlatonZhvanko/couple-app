@@ -10,7 +10,8 @@ enum MoodFeature {
         title: "Настроение",
         systemImage: "face.smiling",
         models: [
-            // Сюда добавлять модели SwiftData раздела, например: MoodEntry.self
+            MoodEntry.self,
+            MoodReaction.self,
         ]
     ) {
         MoodRootView()

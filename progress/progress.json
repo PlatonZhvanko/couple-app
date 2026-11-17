@@ -114,22 +114,38 @@
       "tasks": [
         {
           "title": "Обсудить шкалу и что видит партнёр",
-          "status": "doing"
+          "status": "done"
         },
         {
           "title": "Модель данных и синхронизация",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Быстрая отметка настроения за день",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Настроение партнёра и общая история",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Напоминание отметить настроение",
+          "status": "done"
+        },
+        {
+          "title": "Поддержка партнёра (❤️ 🤗 ☕️)",
+          "status": "done"
+        },
+        {
+          "title": "Приватные заметки «только для меня»",
+          "status": "done"
+        },
+        {
+          "title": "Принять в main и проверить на iPhone",
+          "status": "doing"
+        },
+        {
+          "title": "Связь настроения со сном и питанием",
           "status": "todo"
         }
       ]
