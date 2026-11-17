@@ -198,8 +198,10 @@ struct PlannerRecordView: View {
     private func deleteRecord(onlyThisDay: Bool) {
         if onlyThisDay {
             event.skippedDays.append(PlannerCalendar.calendar.startOfDay(for: day))
+            PlannerPaymentStore.purge(context, eventID: event.syncID, day: day)
         } else {
             event.markDeleted()
+            PlannerPaymentStore.purge(context, eventID: event.syncID)
         }
         event.markChanged()
         try? context.save()

@@ -74,7 +74,7 @@ struct PlannerTrainingEditor: View {
             _notes = State(initialValue: "")
             _start = State(initialValue: begin)
             _durationMinutes = State(initialValue: 60)
-            _isShared = State(initialValue: false)
+            _isShared = State(initialValue: true)
             _repeatRule = State(initialValue: .none)
             _reminder = State(initialValue: PlannerReminderOption.none)
             _participantIDs = State(initialValue: [])
@@ -513,6 +513,7 @@ struct PlannerTrainingEditor: View {
     private func delete() {
         guard let event else { return }
         event.markDeleted()
+        PlannerPaymentStore.purge(context, eventID: event.syncID)
         try? context.save()
         sync.requestSync()
         dismiss()
