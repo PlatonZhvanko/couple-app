@@ -128,7 +128,11 @@ struct PlannerCalendarView: View {
             }
         }
         .sheet(item: $editorTarget) { target in
-            PlannerEventEditor(event: target.event, day: target.day, at: target.time)
+            if PlannerTrainingEditor.shouldUse(for: target.event, me: account.current) {
+                PlannerTrainingEditor(event: target.event, day: target.day, at: target.time)
+            } else {
+                PlannerEventEditor(event: target.event, day: target.day, at: target.time)
+            }
         }
     }
 
@@ -379,7 +383,7 @@ struct PlannerEventRow: View {
                 .fill(event.categoryValue.color)
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: 3) {
-                Text(event.title.isEmpty ? "Без названия" : event.title)
+                Text(event.displayTitle)
                     .font(.body.weight(.medium))
                 HStack(spacing: 6) {
                     Text(timeText)
