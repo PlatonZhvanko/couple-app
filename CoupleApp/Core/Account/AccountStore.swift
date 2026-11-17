@@ -143,6 +143,18 @@ final class AccountStore {
         onAccountChange?()
     }
 
+    /// Переключить профиль в режиме «без сервера» (для проверки): Платоня или Настенька.
+    /// Данные на телефоне общие, меняется только то, кто сейчас вошёл.
+    func switchLocalProfile(to member: CoupleMember) {
+        guard mode == .local, me != member else { return }
+        for item in CoupleMember.allCases where (names[item] ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
+            names[item] = item == .owner ? "Платоня" : "Настенька"
+        }
+        me = member
+        save()
+        onAccountChange?()
+    }
+
     func signOut() {
         client?.signOut()
         me = nil

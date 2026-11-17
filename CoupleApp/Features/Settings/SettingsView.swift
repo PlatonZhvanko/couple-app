@@ -30,6 +30,23 @@ struct SettingsView: View {
                     Text("Профиль")
                 }
 
+                if account.mode == .local {
+                    Section {
+                        Picker("Войти как", selection: Binding(
+                            get: { account.current },
+                            set: { account.switchLocalProfile(to: $0) }
+                        )) {
+                            Text("Платоня").tag(CoupleMember.owner)
+                            Text("Настенька").tag(CoupleMember.partner)
+                        }
+                        .pickerStyle(.segmented)
+                    } header: {
+                        Text("Проверка профилей")
+                    } footer: {
+                        Text("Работает без сервера. Нажми «Настенька», и вкладка «Планер» покажет её форму тренировки.")
+                    }
+                }
+
                 Section("Синхронизация") {
                     NavigationLink {
                         SyncSettingsView()
