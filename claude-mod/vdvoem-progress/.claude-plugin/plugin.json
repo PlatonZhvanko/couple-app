@@ -1,0 +1,10 @@
+{
+  "name": "vdvoem-progress",
+  "version": "0.1.0",
+  "description": "Мини-панель прогресса приложения «Вдвоём» с Рыжиком: всегда над полем ввода, раскрывается кнопкой",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "PlatonZhvanko"
+  },
+  "license": "UNLICENSED"
+}
