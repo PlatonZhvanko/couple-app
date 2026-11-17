@@ -322,8 +322,8 @@
           "status": "done"
         },
         {
-          "title": "Проверить сборку в Xcode и на iPhone",
-          "status": "todo"
+          "title": "Проверить сборку в Xcode (симулятор)",
+          "status": "done"
         },
         {
           "title": "Фото чеков и документов",
