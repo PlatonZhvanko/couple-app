@@ -71,6 +71,13 @@ enum PlannerCalendar {
         return text.prefix(1).uppercased() + text.dropFirst()
     }
 
+    /// «Пн», «Вт», ...
+    static func weekdayShort(_ date: Date) -> String {
+        let symbols = calendar.shortStandaloneWeekdaySymbols
+        let text = symbols[calendar.component(.weekday, from: date) - 1]
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
     static func time(_ date: Date) -> String {
         format(date, "Hm")
     }
