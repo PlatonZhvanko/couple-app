@@ -53,6 +53,7 @@ enum PlannerPayMethod: String, CaseIterable, Identifiable {
         case .transfer: "💳"
         case .subscription: "📜"
         case .unpaid: "❌"
+        case .unknown: "❓"
         }
     }
 
@@ -100,6 +101,8 @@ enum PlannerPayBadge {
     case partial
     /// Не оплатили (крестик).
     case unpaid
+    /// Ничего не отмечено (вопросик).
+    case unknown
 
     var symbol: String? {
         switch self {
@@ -309,7 +312,7 @@ enum PlannerPaymentStore {
         if paid == ids.count { return .paid }
         if paid > 0 { return .partial }
         if unpaid > 0 { return .unpaid }
-        return .none
+        return .unknown
     }
 
     // MARK: Абонементы
