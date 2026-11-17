@@ -12,7 +12,10 @@ enum ClientsFeature {
         models: [
             ClientsClient.self,
             ClientsAppointment.self,
-        ]
+        ],
+        calendarItems: { context, interval in
+            ClientsCalendar.items(context: context, interval: interval)
+        }
     ) {
         ClientsRootView()
     }
