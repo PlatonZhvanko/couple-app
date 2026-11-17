@@ -6,7 +6,7 @@ enum FeatureRegistry {
     static let all: [Feature] = [
         PlannerFeature.feature,
         NutritionFeature.feature,
-        SleepFeature.feature,
+        StatisticsFeature.feature,
         MoodFeature.feature,
         ClientsFeature.feature,
         CarFeature.feature,

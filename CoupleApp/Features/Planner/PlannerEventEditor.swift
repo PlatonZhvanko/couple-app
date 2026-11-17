@@ -199,6 +199,7 @@ struct PlannerEventEditor: View {
     private func delete() {
         guard let event else { return }
         event.markDeleted()
+        PlannerPaymentStore.purge(context, eventID: event.syncID)
         try? context.save()
         sync.requestSync()
         dismiss()
