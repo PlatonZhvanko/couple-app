@@ -169,3 +169,38 @@ struct PlannerColorSettingsView: View {
         }
     }
 }
+
+/// Строка «Свой цвет» для группы или клиента: пишет в настройки цветов.
+struct PlannerRuleColorRow: View {
+    let key: String
+    let fallback: Color
+
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @Query(filter: #Predicate<PlannerColorRule> { $0.deletedAt == nil })
+    private var rules: [PlannerColorRule]
+
+    var body: some View {
+        let current = rules.first { $0.key == key }.flatMap { Color(hex: $0.hex) }
+        HStack {
+            Text("🎨 Цвет")
+            Spacer()
+            if current != nil {
+                Button("Сбросить") {
+                    PlannerColorStore.set(context, key: key, hex: nil)
+                    sync.requestSync()
+                }
+                .font(.caption)
+                .buttonStyle(.borderless)
+            }
+            ColorPicker("", selection: Binding(
+                get: { current ?? fallback },
+                set: {
+                    PlannerColorStore.set(context, key: key, hex: $0.hexString)
+                    sync.requestSync()
+                }
+            ), supportsOpacity: false)
+            .labelsHidden()
+        }
+    }
+}

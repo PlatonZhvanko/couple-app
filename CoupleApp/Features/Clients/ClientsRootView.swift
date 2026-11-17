@@ -51,12 +51,14 @@ struct ClientsHomeView: View {
     enum Page: String, CaseIterable, Identifiable {
         case schedule = "Расписание"
         case clients = "Клиенты"
+        case more = "Ещё"
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .schedule: "📅 Расписание"
             case .clients: "🙋 Клиенты"
+            case .more: "⚙️ Ещё"
             }
         }
     }
@@ -103,6 +105,12 @@ struct ClientsHomeView: View {
                 case .clients:
                     ClientsListView(clients: clients, appointments: appointments) {
                         sheet = .newClient
+                    }
+                case .more:
+                    List {
+                        NavigationLink("👧👦 Группы") { PlannerGroupSettingsView().navigationTitle("Группы") }
+                        NavigationLink("📜 Абонементы") { PlannerSubscriptionSettingsView().navigationTitle("Абонементы") }
+                        NavigationLink("🎨 Цвета") { PlannerColorSettingsView().navigationTitle("Цвета") }
                     }
                 }
             }

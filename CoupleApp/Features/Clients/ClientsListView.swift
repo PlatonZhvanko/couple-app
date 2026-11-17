@@ -122,6 +122,12 @@ struct ClientsClientDetailView: View {
             }
 
             Section {
+                PlannerRuleColorRow(key: PlannerColorRule.clientKey(client.syncID), fallback: PlannerCategory.personal.color)
+            } footer: {
+                Text("Необязательно: так будут выглядеть его персональные тренировки в журнале.")
+            }
+
+            Section {
                 NavigationLink {
                     StatisticsClientReportView(clientID: client.syncID, name: client.name)
                 } label: {
