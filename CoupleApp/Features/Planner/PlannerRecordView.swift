@@ -10,6 +10,7 @@ struct PlannerRecordView: View {
     let onMove: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmDelete = false
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
     @Environment(AccountStore.self) private var account
@@ -55,6 +56,22 @@ struct PlannerRecordView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } }
+                if canEdit {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(role: .destructive) { confirmDelete = true } label: {
+                            Image(systemName: "trash")
+                        }
+                        .accessibilityLabel("Удалить запись")
+                    }
+                }
+            }
+            .confirmationDialog("Удалить запись?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                if event.repeatValue != .none {
+                    Button("Только этот день", role: .destructive) { deleteRecord(onlyThisDay: true) }
+                    Button("Все повторы", role: .destructive) { deleteRecord(onlyThisDay: false) }
+                } else {
+                    Button("Удалить", role: .destructive) { deleteRecord(onlyThisDay: false) }
+                }
             }
             .onAppear {
                 clients = PlannerClientDirectory.all(context)
@@ -176,6 +193,18 @@ struct PlannerRecordView: View {
             PlannerPaymentStore.set(context, event: event, day: day, clientID: client.id, method: method)
         }
         sync.requestSync()
+    }
+
+    private func deleteRecord(onlyThisDay: Bool) {
+        if onlyThisDay {
+            event.skippedDays.append(PlannerCalendar.calendar.startOfDay(for: day))
+        } else {
+            event.markDeleted()
+        }
+        event.markChanged()
+        try? context.save()
+        sync.requestSync()
+        dismiss()
     }
 
     // MARK: - Действия
