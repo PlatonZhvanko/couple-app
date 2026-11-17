@@ -23,10 +23,15 @@ struct StatisticsMoneyView: View {
 
     /// Занятия периода считаются один раз при создании экрана.
     private let inPeriod: [StatisticsVisit]
+    /// Прошедшие занятия без оплаты и неоплаченные штрафы.
+    private let debtVisits: [StatisticsVisit]
 
     init(snapshot: StatisticsSnapshot, period: StatisticsPeriod) {
         self.snapshot = snapshot
         self.period = period
+        self.debtVisits = snapshot.visits
+            .filter { period.contains($0.day) && ($0.isDebt || $0.isUnpaidFine) }
+            .sorted { $0.start > $1.start }
         self.inPeriod = snapshot.visits
             .filter { period.contains($0.day) && $0.start <= .now && !$0.cancelled }
             .sorted { $0.start > $1.start }
@@ -93,6 +98,23 @@ struct StatisticsMoneyView: View {
                 }
                 StatisticsLine(title: "Оплачено", value: "\(paidVisits.count)") {
                     ForEach(paidVisits) { visitRow($0, showClient: true) }
+                }
+            }
+
+            Section("📋 Долги") {
+                StatisticsLine(
+                    title: "Должны всего",
+                    value: PlannerPricing.format(debtVisits.reduce(0) { $0 + $1.amount }),
+                    bold: true
+                ) {
+                    if debtVisits.isEmpty { Text("Долгов нет 🎉").foregroundStyle(.secondary) }
+                    ForEach(debtVisits) { visit in
+                        StatisticsDetailRow(
+                            title: snapshot.name(visit.clientID),
+                            caption: "\(StatisticsFormat.day(visit.start)) · \(visit.cancelled ? "штраф за отмену" : visit.eventTitle)",
+                            value: PlannerPricing.format(visit.amount)
+                        )
+                    }
                 }
             }
 
