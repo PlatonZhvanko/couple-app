@@ -19,6 +19,7 @@ struct PlannerCalendarView: View {
     private var allEvents: [PlannerEvent]
     @Query(filter: #Predicate<PlannerPayment> { $0.deletedAt == nil })
     private var payments: [PlannerPayment]
+    @State private var showSale = false
 
     @AppStorage("planner.mode") private var mode: Mode = .month
     @AppStorage("planner.style") private var style: Style = .planner
@@ -112,6 +113,10 @@ struct PlannerCalendarView: View {
                         Image(systemName: style == .planner ? "calendar" : "calendar.day.timeline.left")
                     }
                     .accessibilityLabel(style == .planner ? "Обычный календарь" : "Журнал по времени")
+                    Button { showSale = true } label: {
+                        Image(systemName: "dollarsign.circle.fill")
+                    }
+                    .accessibilityLabel("Продать абонемент")
                     Button {
                         sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
                     } label: {
@@ -123,6 +128,9 @@ struct PlannerCalendarView: View {
         }
         .sheet(item: $sheetTarget) { target in
             sheetContent(target)
+        }
+        .sheet(isPresented: $showSale) {
+            PlannerSubscriptionSaleSheet(month: selectedDay)
         }
     }
 

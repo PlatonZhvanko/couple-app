@@ -134,7 +134,7 @@ struct PlannerTrainingEditor: View {
                     Section {
                         Picker("Категория", selection: $groupCategory) {
                             ForEach([PlannerCategory.group, .school]) { item in
-                                Text("\(item.emoji ?? "") \(item.title)").tag(item)
+                                Text(item.title).tag(item)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -293,7 +293,7 @@ struct PlannerTrainingEditor: View {
                             Button {
                                 selectGroupKind(kind)
                             } label: {
-                                Text("\(kind.categoryValue.emoji ?? "") \(kind.name)")
+                                Text(kind.name)
                                     .font(.subheadline.weight(.semibold))
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 7)

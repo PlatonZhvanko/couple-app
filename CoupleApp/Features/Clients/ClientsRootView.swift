@@ -52,6 +52,7 @@ struct ClientsHomeView: View {
         case schedule = "Расписание"
         case clients = "Клиенты"
         case groups = "Группы"
+        case subscriptions = "Абонементы"
         var id: String { rawValue }
     }
 
@@ -100,6 +101,8 @@ struct ClientsHomeView: View {
                     }
                 case .groups:
                     PlannerGroupSettingsView()
+                case .subscriptions:
+                    PlannerSubscriptionSettingsView()
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {

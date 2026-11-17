@@ -23,7 +23,7 @@ struct PlannerGroupSettingsView: View {
                         PlannerGroupEditor(kind: kind)
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("\(kind.categoryValue.emoji ?? "") \(kind.name)")
+                            Text(kind.name)
                                 .font(.body.weight(.medium))
                             Text(kind.memberIDs.isEmpty ? "Без постоянных клиентов" : "Постоянных клиентов: \(kind.memberIDs.count)")
                                 .font(.caption)
@@ -44,7 +44,7 @@ struct PlannerGroupSettingsView: View {
             Section("Новая группа") {
                 Picker("Тип", selection: $newCategory) {
                     ForEach([PlannerCategory.group, .school]) { item in
-                        Text("\(item.emoji ?? "") \(item.title)").tag(item)
+                        Text(item.title).tag(item)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -101,7 +101,7 @@ struct PlannerGroupEditor: View {
 
     private var suggestions: [PlannerClientDirectory.Entry] {
         let pool = directory.filter { !memberIDs.contains($0.id) }
-        guard !trimmedQuery.isEmpty else { return Array(pool.prefix(5)) }
+        guard !trimmedQuery.isEmpty else { return Array(pool.prefix(2)) }
         return Array(pool.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(6))
     }
 
@@ -115,7 +115,7 @@ struct PlannerGroupEditor: View {
                 TextField("Название", text: $name)
                 Picker("Тип", selection: $category) {
                     ForEach([PlannerCategory.group, .school]) { item in
-                        Text("\(item.emoji ?? "") \(item.title)").tag(item)
+                        Text(item.title).tag(item)
                     }
                 }
                 .pickerStyle(.segmented)
