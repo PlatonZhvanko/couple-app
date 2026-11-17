@@ -13,5 +13,8 @@
   - Данные для второго телефона: реализовать `SyncableModel`, `recordKind` вида
     `"<раздел>.<тип>"`, вызывать `markChanged()` / `markDeleted()` и `sync.requestSync()`.
     Списки фильтровать по `deletedAt == nil`.
+  - Два аккаунта: `CoupleMember.owner` / `.partner`. Кто вошёл: `@Environment(AccountStore.self)`,
+    `account.current`, `account.myName`, `account.partnerName`. Вкладка только для одного:
+    `Feature(..., availableFor: [.owner])`. Чья запись: поле `member: String` = `account.current.rawValue`.
   - `project.pbxproj` не редактировать: папки синхронизированы, новые файлы подхватываются сами.
     Не класть в `CoupleApp/` файлы `.md` и прочие не-ресурсы.

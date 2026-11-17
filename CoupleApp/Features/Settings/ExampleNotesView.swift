@@ -6,7 +6,7 @@ import SwiftUI
 struct ExampleNotesView: View {
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
-    @AppStorage(ProfileKeys.name) private var name = ""
+    @Environment(AccountStore.self) private var account
     @Query(filter: #Predicate<ExampleNote> { $0.deletedAt == nil }, sort: \ExampleNote.createdAt, order: .reverse)
     private var notes: [ExampleNote]
     @State private var draft = ""
@@ -44,7 +44,7 @@ struct ExampleNotesView: View {
     private func add() {
         let text = draft.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
-        context.insert(ExampleNote(text: text, author: name))
+        context.insert(ExampleNote(text: text, author: account.myName))
         try? context.save()
         draft = ""
         sync.requestSync()

@@ -3,13 +3,21 @@ import SwiftUI
 /// Нижняя панель вкладок. Вкладки берутся из `FeatureRegistry`.
 /// На iPhone видно 4 вкладки, остальные автоматически попадают в «Ещё».
 struct RootTabView: View {
+    /// Кто вошёл. Набор вкладок может зависеть от аккаунта.
+    let me: CoupleMember
+
+    @Environment(AccountStore.self) private var account
     @Environment(SyncCoordinator.self) private var sync
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("root.selectedTab") private var selection: String = FeatureRegistry.all.first?.id ?? SettingsFeature.feature.id
 
+    private var features: [Feature] {
+        FeatureRegistry.all.filter { $0.isAvailable(for: me) }
+    }
+
     var body: some View {
         TabView(selection: $selection) {
-            ForEach(FeatureRegistry.all) { feature in
+            ForEach(features) { feature in
                 Tab(feature.title, systemImage: feature.systemImage, value: feature.id) {
                     feature.makeRootView()
                 }
@@ -18,11 +26,21 @@ struct RootTabView: View {
                 SettingsFeature.feature.makeRootView()
             }
         }
+        .onAppear {
+            if !features.contains(where: { $0.id == selection }) && selection != SettingsFeature.feature.id {
+                selection = features.first?.id ?? SettingsFeature.feature.id
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { sync.requestSync() }
+            if phase == .active {
+                sync.requestSync()
+                Task { await account.refreshFromServer() }
+            }
         }
         .task {
-            // Пока приложение открыто, синхронизируемся раз в минуту.
+            // Сразу после входа и дальше раз в минуту, пока приложение открыто.
+            sync.requestSync()
+            await account.refreshFromServer()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 sync.requestSync()

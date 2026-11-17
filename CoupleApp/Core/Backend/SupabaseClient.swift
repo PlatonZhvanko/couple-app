@@ -1,7 +1,7 @@
 import Foundation
 
 /// Адрес проекта Supabase и его публичный ключ (anon key).
-/// Вводятся в приложении: Настройки → Синхронизация.
+/// Берутся из `BackendConfig` или вводятся один раз на экране входа.
 struct SupabaseConfig: Codable, Equatable {
     var url: String = ""
     var anonKey: String = ""

@@ -7,9 +7,14 @@ create table if not exists public.couples (
   created_at timestamptz not null default now()
 );
 
+-- role: 'owner' (владелец) или 'partner' (партнёр). От роли зависит,
+-- какие вкладки и функции видит человек в приложении.
 create table if not exists public.couple_members (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  couple_id uuid not null references public.couples(id) on delete cascade
+  couple_id uuid not null references public.couples(id) on delete cascade,
+  role text not null check (role in ('owner', 'partner')),
+  display_name text,
+  unique (couple_id, role)
 );
 
 -- Пара текущего пользователя.
@@ -74,6 +79,12 @@ drop policy if exists "members: read own couple" on public.couple_members;
 create policy "members: read own couple" on public.couple_members
   for select to authenticated using (couple_id = public.my_couple_id());
 
+drop policy if exists "members: rename self" on public.couple_members;
+create policy "members: rename self" on public.couple_members
+  for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
 drop policy if exists "records: read own couple" on public.records;
 create policy "records: read own couple" on public.records
   for select to authenticated using (couple_id = public.my_couple_id());
@@ -89,14 +100,18 @@ create policy "records: update own couple" on public.records
   with check (couple_id = public.my_couple_id());
 
 grant select on public.couples, public.couple_members to authenticated;
+grant update (display_name) on public.couple_members to authenticated;
 grant select, insert, update on public.records to authenticated;
 grant execute on function public.my_couple_id() to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- ШАГ 2 (выполнить отдельно, после создания двух пользователей в
--- Authentication → Users). Замените почты на свои и запустите:
+-- Authentication → Users). Замените почты и имена на свои и запустите:
 --
 -- with c as (insert into public.couples default values returning id)
--- insert into public.couple_members (user_id, couple_id)
--- select u.id, c.id from auth.users u, c
+-- insert into public.couple_members (user_id, couple_id, role, display_name)
+-- select u.id, c.id,
+--        case when u.email = 'я@example.com' then 'owner' else 'partner' end,
+--        case when u.email = 'я@example.com' then 'Моё имя' else 'Её имя' end
+-- from auth.users u, c
 -- where u.email in ('я@example.com', 'она@example.com');

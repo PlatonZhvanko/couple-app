@@ -4,8 +4,10 @@
 
 ```
 CoupleApp/
-  App/                 запуск приложения и нижняя панель вкладок
+  App/                 запуск, экран входа и нижняя панель вкладок
   Core/                общее для всех разделов
+    Account/           аккаунты: кто вошёл (AccountStore, CoupleMember)
+    Backend/           клиент Supabase и его адрес (BackendConfig)
     Features/          описание раздела (Feature) и список вкладок (FeatureRegistry)
     Persistence/       локальная база SwiftData (AppDatabase)
     Sync/              синхронизация между телефонами (Supabase)
@@ -39,6 +41,31 @@ docs/                  инструкции и SQL для Supabase
 - Разделы не обращаются к типам других разделов напрямую.
 - Имена типов начинаются с названия раздела (`NutritionMeal`, `CarRefuel`),
   чтобы не было совпадений.
+
+## Аккаунты
+
+В приложении ровно два человека: `CoupleMember.owner` (владелец) и
+`CoupleMember.partner` (партнёр). Вход делается один раз по почте и паролю
+(Supabase Auth), дальше телефон его помнит. Пока никто не вошёл, показывается
+экран входа. Есть вход «без сервера» для пробы: данные только на телефоне.
+
+Во всех разделах доступно, кто сейчас вошёл:
+
+```swift
+@Environment(AccountStore.self) private var account
+
+account.current        // .owner или .partner
+account.myName         // имя вошедшего
+account.partnerName    // имя второго
+if account.current == .owner { ... }   // отличия по аккаунту
+```
+
+- Вкладку можно показать только одному: `Feature(..., availableFor: [.owner])`.
+- Если запись принадлежит конкретному человеку, храните в модели
+  `var member: String = CoupleMember.owner.rawValue` и записывайте туда
+  `account.current.rawValue`. Это значение одинаковое на обоих телефонах
+  и не зависит от сервера.
+- Роли и имена хранятся на сервере в таблице `couple_members`.
 
 ## Данные
 

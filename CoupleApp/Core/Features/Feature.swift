@@ -15,6 +15,9 @@ struct Feature: Identifiable {
     /// Модели SwiftData этого раздела. Модели, которые надо синхронизировать
     /// между телефонами, должны реализовать `SyncableModel`.
     let models: [any PersistentModel.Type]
+    /// Кому показывать вкладку. По умолчанию обоим.
+    /// Например, `availableFor: [.owner]` — вкладка только у владельца.
+    let availableFor: Set<CoupleMember>
     let makeRootView: @MainActor () -> AnyView
 
     init<Content: View>(
@@ -22,12 +25,18 @@ struct Feature: Identifiable {
         title: String,
         systemImage: String,
         models: [any PersistentModel.Type] = [],
+        availableFor: Set<CoupleMember> = Set(CoupleMember.allCases),
         @ViewBuilder rootView: @escaping @MainActor () -> Content
     ) {
         self.id = id
         self.title = title
         self.systemImage = systemImage
         self.models = models
+        self.availableFor = availableFor
         self.makeRootView = { AnyView(rootView()) }
+    }
+
+    func isAvailable(for member: CoupleMember) -> Bool {
+        availableFor.contains(member)
     }
 }
