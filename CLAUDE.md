@@ -18,3 +18,5 @@
     `Feature(..., availableFor: [.owner])`. Чья запись: поле `member: String` = `account.current.rawValue`.
   - `project.pbxproj` не редактировать: папки синхронизированы, новые файлы подхватываются сами.
     Не класть в `CoupleApp/` файлы `.md` и прочие не-ресурсы.
+- Прогресс: при старте, завершении или добавлении работы обновить статусы в `progress/progress.json`
+  и переопубликовать дашборд по правилам `progress/README.md`.
