@@ -51,18 +51,12 @@ struct ClientsHomeView: View {
     enum Page: String, CaseIterable, Identifiable {
         case schedule = "Расписание"
         case clients = "Клиенты"
-        case groups = "Группы"
-        case subscriptions = "Абонементы"
-        case colors = "Цвета"
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .schedule: "📅 Расписание"
             case .clients: "🙋 Клиенты"
-            case .groups: "👧👦 Группы"
-            case .subscriptions: "📜 Абонементы"
-            case .colors: "🎨 Цвета"
             }
         }
     }
@@ -72,7 +66,7 @@ struct ClientsHomeView: View {
     @Environment(SyncCoordinator.self) private var sync
     @Query private var appointments: [ClientsAppointment]
     @Query private var clients: [ClientsClient]
-    @AppStorage("clients.selectedTab") private var tab: Page = .schedule
+    @AppStorage("clients.selectedTab") private var tab: Page = .clients
     @State private var sheet: ClientsSheet?
 
     init(member: CoupleMember) {
@@ -110,12 +104,6 @@ struct ClientsHomeView: View {
                     ClientsListView(clients: clients, appointments: appointments) {
                         sheet = .newClient
                     }
-                case .groups:
-                    PlannerGroupSettingsView()
-                case .subscriptions:
-                    PlannerSubscriptionSettingsView()
-                case .colors:
-                    PlannerColorSettingsView()
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {

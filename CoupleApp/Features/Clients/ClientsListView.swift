@@ -121,6 +121,14 @@ struct ClientsClientDetailView: View {
                     .foregroundStyle(client.note.isEmpty ? .secondary : .primary)
             }
 
+            Section {
+                NavigationLink {
+                    StatisticsClientReportView(clientID: client.syncID, name: client.name)
+                } label: {
+                    Label("Посещения, отмены, долги, абонементы", systemImage: "chart.bar.doc.horizontal")
+                }
+            }
+
             Section("📊 Итоги") {
                 LabeledContent("Визитов", value: "\(done.count + planner.visits)")
                 LabeledContent("Заработано", value: ClientsFormat.money(done.reduce(0) { $0 + $1.price } + planner.earned))
