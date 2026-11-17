@@ -37,7 +37,7 @@ struct PlannerRootView: View {
         // При любых изменениях событий (в том числе со второго телефона)
         // пересчитываем напоминания.
         .task(id: reminderSignature) {
-            await PlannerReminders.reschedule(events: events, me: account.current)
+            PlannerReminders.reschedule(events: events, me: account.current)
         }
     }
 
