@@ -15,6 +15,7 @@ struct PlannerSubscriptionSaleSheet: View {
     @State private var selectedType: PlannerSubscriptionType?
     @State private var amountText = ""
     @State private var query = ""
+    @State private var typeQuery = ""
     @State private var client: PlannerClientDirectory.Entry?
     @State private var directory: [PlannerClientDirectory.Entry] = []
 
@@ -23,6 +24,12 @@ struct PlannerSubscriptionSaleSheet: View {
     private var matches: [PlannerClientDirectory.Entry] {
         guard !trimmedQuery.isEmpty else { return Array(directory.prefix(2)) }
         return Array(directory.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(5))
+    }
+
+    private var typeMatches: [PlannerSubscriptionType] {
+        let q = typeQuery.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return Array(types.prefix(3)) }
+        return Array(types.filter { $0.name.localizedCaseInsensitiveContains(q) }.prefix(5))
     }
 
     private var amount: Double? { Double(amountText.replacingOccurrences(of: ",", with: ".")) }
@@ -35,17 +42,28 @@ struct PlannerSubscriptionSaleSheet: View {
                         Text("Видов пока нет. Добавь их в разделе «Клиенты» → «Абонементы».")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
-                    ForEach(types) { type in
-                        Button {
-                            selectedType = type
-                            amountText = "\(Int(type.price.rounded()))"
-                        } label: {
-                            HStack {
-                                Text(type.name).foregroundStyle(Color.primary)
-                                Spacer()
-                                Text(PlannerPricing.format(type.price)).foregroundStyle(.secondary)
-                                if selectedType?.syncID == type.syncID {
-                                    Image(systemName: "checkmark").foregroundStyle(Color.appAccent)
+                    if let selectedType {
+                        HStack {
+                            Label(selectedType.name, systemImage: "checkmark.circle.fill")
+                            Spacer()
+                            Button { self.selectedType = nil; amountText = "" } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    } else {
+                        TextField("Поиск абонемента", text: $typeQuery)
+                            .autocorrectionDisabled()
+                        ForEach(typeMatches) { type in
+                            Button {
+                                selectedType = type
+                                typeQuery = ""
+                                amountText = "\(Int(type.price.rounded()))"
+                            } label: {
+                                HStack {
+                                    Text(type.name).foregroundStyle(Color.primary)
+                                    Spacer()
+                                    Text(PlannerPricing.format(type.price)).foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -99,12 +117,6 @@ struct PlannerSubscriptionSaleSheet: View {
             .onAppear {
                 directory = PlannerClientDirectory.all(context)
                 PlannerSubscriptionTypeStore.ensureDefault(context)
-            }
-            .onChange(of: types.count, initial: true) {
-                if selectedType == nil, let first = types.first {
-                    selectedType = first
-                    amountText = "\(Int(first.price.rounded()))"
-                }
             }
         }
         .presentationDetents([.large])

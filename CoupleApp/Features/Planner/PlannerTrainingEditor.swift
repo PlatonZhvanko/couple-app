@@ -37,6 +37,9 @@ struct PlannerTrainingEditor: View {
     @State private var directory: [PlannerClientDirectory.Entry] = []
     @State private var confirmDelete = false
     @State private var newKindName = ""
+    @State private var errandRegular = false
+    @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil }, sort: \PlannerErrandKind.name)
+    private var errandKinds: [PlannerErrandKind]
     @Query(filter: #Predicate<PlannerGroupKind> { $0.deletedAt == nil }, sort: \PlannerGroupKind.name)
     private var groupKinds: [PlannerGroupKind]
 
@@ -54,6 +57,7 @@ struct PlannerTrainingEditor: View {
             _mode = State(initialValue: category == .errand ? .errand : (category == .personal ? .client : .group))
             _groupCategory = State(initialValue: category == .school ? .school : .group)
             _title = State(initialValue: event.title)
+            _errandRegular = State(initialValue: category == .errand && event.repeatRule != PlannerRepeat.none.rawValue)
             _notes = State(initialValue: event.notes)
             _start = State(initialValue: event.start)
             _durationMinutes = State(initialValue: max(30, Int(event.end.timeIntervalSince(event.start) / 60)))
@@ -162,8 +166,37 @@ struct PlannerTrainingEditor: View {
                         Text("Блок можно создать без клиентов и записать их потом.")
                     }
                 case .errand:
-                    Section("Дело") {
-                        TextField("Название дела", text: $title)
+                    Section {
+                        Picker("Вид дела", selection: $errandRegular.animation()) {
+                            Text("Разовое").tag(false)
+                            Text("Регулярное").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        if errandRegular {
+                            HStack {
+                                TextField("Поиск или новый тип", text: $title)
+                                    .textInputAutocapitalization(.sentences)
+                                if !trimmedTitle.isEmpty && !errandKindExists {
+                                    Button {
+                                        PlannerErrandKindStore.ensure(context, name: trimmedTitle)
+                                        sync.requestSync()
+                                    } label: {
+                                        Image(systemName: "plus.circle.fill").font(.title3)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel("Добавить тип дела")
+                                }
+                            }
+                            ForEach(errandMatches) { kind in
+                                Button { title = kind.name } label: {
+                                    Label(kind.name, systemImage: kind.name == trimmedTitle ? "checkmark" : "tag")
+                                }
+                            }
+                        } else {
+                            TextField("Что нужно сделать (например, купить кастрюли)", text: $title)
+                        }
+                    } header: {
+                        Text("Дело")
                     }
                 }
 
@@ -394,6 +427,17 @@ struct PlannerTrainingEditor: View {
         query = ""
     }
 
+    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespaces) }
+
+    private var errandKindExists: Bool {
+        errandKinds.contains { $0.name.caseInsensitiveCompare(trimmedTitle) == .orderedSame }
+    }
+
+    private var errandMatches: [PlannerErrandKind] {
+        guard !trimmedTitle.isEmpty else { return Array(errandKinds.prefix(5)) }
+        return Array(errandKinds.filter { $0.name.localizedCaseInsensitiveContains(trimmedTitle) }.prefix(5))
+    }
+
     /// Если такой клиент уже есть, выбираем его, иначе заводим нового в общей базе.
     private func addTypedClient() {
         let name = trimmedQuery
@@ -441,6 +485,7 @@ struct PlannerTrainingEditor: View {
         case .errand:
             target.title = title.trimmingCharacters(in: .whitespaces)
             target.participantIDs = []
+            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.title) }
         }
         target.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         target.isAllDay = false
