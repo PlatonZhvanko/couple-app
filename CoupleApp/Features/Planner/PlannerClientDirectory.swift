@@ -29,3 +29,31 @@ enum PlannerClientDirectory {
         return Entry(id: client.syncID, name: client.name)
     }
 }
+
+extension PlannerClientDirectory {
+    /// Сколько было тренировок с клиентом в журнале и сколько он оплатил.
+    @MainActor
+    static func stats(for clientID: UUID, context: ModelContext) -> (visits: Int, earned: Double) {
+        let cal = PlannerCalendar.calendar
+        let today = cal.startOfDay(for: .now)
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        var visits = 0
+        for event in events where event.participantIDs.contains(clientID) && PlannerPaymentStore.isTraining(event) {
+            var day = cal.startOfDay(for: event.start)
+            var steps = 0
+            // Повторяющиеся записи разворачиваем по дням (не дальше двух лет назад).
+            while day <= today && steps < 800 {
+                if event.startsOn(day), PlannerCalendar.combine(day: day, time: event.start) <= .now {
+                    visits += 1
+                }
+                if event.repeatValue == .none { break }
+                day = PlannerCalendar.addDays(1, to: day)
+                steps += 1
+            }
+        }
+        let earned = PlannerPaymentStore.allPayments(context)
+            .filter { $0.deletedAt == nil && $0.clientID == clientID && $0.methodValue.isPaid }
+            .reduce(0) { $0 + $1.amount }
+        return (visits, earned)
+    }
+}

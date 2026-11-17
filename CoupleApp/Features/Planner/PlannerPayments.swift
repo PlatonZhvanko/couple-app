@@ -442,6 +442,8 @@ final class PlannerGroupKind: SyncableModel {
     struct Payload: Codable {
         var name: String
         var category: String
+        /// Постоянные клиенты группы. Нет в старых записях.
+        var memberIDs: [UUID]?
     }
 
     static let recordKind = "planner.group_kind"
@@ -450,6 +452,8 @@ final class PlannerGroupKind: SyncableModel {
     var name: String = ""
     /// `group` или `school`.
     var category: String = PlannerCategory.group.rawValue
+    /// Постоянные клиенты группы: подставляются при создании записи.
+    var memberIDs: [UUID] = []
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -465,11 +469,12 @@ final class PlannerGroupKind: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(name: name, category: category) }
+    var payload: Payload { Payload(name: name, category: category, memberIDs: memberIDs) }
 
     func apply(_ payload: Payload) {
         name = payload.name
         category = payload.category
+        memberIDs = payload.memberIDs ?? []
     }
 
     var categoryValue: PlannerCategory { category == PlannerCategory.school.rawValue ? .school : .group }
@@ -482,14 +487,13 @@ final class PlannerGroupKind: SyncableModel {
 
 @MainActor
 enum PlannerGroupKindStore {
-    /// Добавить вид группы, если такого ещё нет (или вернуть существующий).
+    /// Добавить вид группы, если такого ещё нет (или вернуть существующий по названию).
     @discardableResult
     static func ensure(_ context: ModelContext, name: String, category: PlannerCategory) -> PlannerGroupKind {
         let clean = name.trimmingCharacters(in: .whitespaces)
-        let id = PlannerGroupKind.makeID(name: clean)
-        let found = try? context.fetch(FetchDescriptor<PlannerGroupKind>(predicate: #Predicate { $0.syncID == id }))
+        let all = (try? context.fetch(FetchDescriptor<PlannerGroupKind>())) ?? []
         let item: PlannerGroupKind
-        if let existing = found?.first {
+        if let existing = all.first(where: { $0.name.caseInsensitiveCompare(clean) == .orderedSame }) {
             item = existing
             if item.deletedAt != nil || item.category != category.rawValue {
                 item.deletedAt = nil
@@ -503,14 +507,5 @@ enum PlannerGroupKindStore {
         }
         try? context.save()
         return item
-    }
-
-    /// Клиенты, которые были в последней записи с таким названием группы.
-    static func lastParticipants(_ context: ModelContext, groupName: String) -> [UUID] {
-        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(
-            predicate: #Predicate { $0.deletedAt == nil },
-            sortBy: [SortDescriptor(\.start, order: .reverse)]
-        ))) ?? []
-        return events.first { $0.title == groupName && !$0.participantIDs.isEmpty }?.participantIDs ?? []
     }
 }

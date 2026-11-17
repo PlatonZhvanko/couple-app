@@ -120,6 +120,9 @@ struct PlannerRecordView: View {
                     balanceText: balanceText(for: client),
                     canEdit: canEdit,
                     isGroup: event.categoryValue != .personal,
+                    hasSubscription: subscriptions.contains {
+                        $0.clientID == client.id && cal.isDate($0.month, equalTo: day, toGranularity: .month)
+                    },
                     onSelect: { select($0, for: client) },
                     onSubscription: { subscriptionClient = client },
                     onAmount: { setAmount($0, for: client) }
@@ -165,10 +168,8 @@ struct PlannerRecordView: View {
         sync.requestSync()
     }
 
-    /// Способы для кнопки «Все оплатили»: у групп ещё абонемент.
-    private var bulkMethods: [PlannerPayMethod] {
-        event.categoryValue == .personal ? [.cash, .transfer] : [.cash, .transfer, .subscription]
-    }
+    /// Способы для кнопки «Все оплатили».
+    private var bulkMethods: [PlannerPayMethod] { [.cash, .transfer] }
 
     private func markAllPaid(with method: PlannerPayMethod) {
         for client in participants where self.method(of: client) == .none {
@@ -212,6 +213,7 @@ private struct PlannerPaymentRow: View {
     let balanceText: String?
     let canEdit: Bool
     let isGroup: Bool
+    let hasSubscription: Bool
     let onSelect: (PlannerPayMethod) -> Void
     let onSubscription: () -> Void
     let onAmount: (Double) -> Void
@@ -227,7 +229,7 @@ private struct PlannerPaymentRow: View {
     }
 
     private var choices: [PlannerPayMethod] {
-        isGroup ? [.cash, .transfer, .subscription, .unpaid] : [.cash, .transfer, .unpaid]
+        hasSubscription ? [.cash, .transfer, .subscription, .unpaid] : [.cash, .transfer, .unpaid]
     }
 
     var body: some View {
@@ -279,7 +281,7 @@ private struct PlannerPaymentRow: View {
                         Button {
                             onSubscription()
                         } label: {
-                            Label("Абонемент клиента…", systemImage: "ticket")
+                            Label(hasSubscription ? "Абонемент клиента…" : "Оформить абонемент…", systemImage: "ticket")
                                 .font(.footnote)
                         }
                         .buttonStyle(.borderless)
