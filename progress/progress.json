@@ -91,18 +91,34 @@
       "tasks": [
         {
           "title": "Обсудить, что учитывать (время, качество, Здоровье)",
-          "status": "doing"
+          "status": "done"
         },
         {
           "title": "Модель данных и синхронизация",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Запись сна: лёг, встал, как спалось",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "График сна за неделю и месяц",
+          "status": "done"
+        },
+        {
+          "title": "Цель сна и средние значения",
+          "status": "done"
+        },
+        {
+          "title": "Проверить раздел на iPhone через Xcode",
+          "status": "todo"
+        },
+        {
+          "title": "Импорт сна из Apple Здоровье",
+          "status": "todo"
+        },
+        {
+          "title": "Напоминание «пора спать»",
           "status": "todo"
         }
       ]

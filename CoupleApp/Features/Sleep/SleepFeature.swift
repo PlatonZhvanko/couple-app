@@ -10,7 +10,7 @@ enum SleepFeature {
         title: "Сон",
         systemImage: "bed.double.fill",
         models: [
-            // Сюда добавлять модели SwiftData раздела, например: SleepEntry.self
+            SleepEntry.self,
         ]
     ) {
         SleepRootView()
