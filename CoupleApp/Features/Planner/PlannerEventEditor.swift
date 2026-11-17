@@ -101,7 +101,7 @@ struct PlannerEventEditor: View {
                     }
                 }
 
-                Section("Заметка") {
+                Section("📝 Заметка") {
                     TextField("Адрес, детали, ссылка", text: $notes, axis: .vertical)
                         .lineLimit(2...6)
                 }

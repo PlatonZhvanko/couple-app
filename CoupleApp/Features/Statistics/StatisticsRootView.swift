@@ -3,8 +3,8 @@ import SwiftUI
 
 /// Подразделы статистики. Чтобы добавить новый, допиши case и экран в `content`.
 enum StatisticsSection: String, CaseIterable, Identifiable {
-    case money = "Деньги"
-    case clients = "Клиенты"
+    case money = "💰 Деньги"
+    case clients = "🙋 Клиенты"
     var id: String { rawValue }
 }
 

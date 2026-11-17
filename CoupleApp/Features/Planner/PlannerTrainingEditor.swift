@@ -133,7 +133,7 @@ struct PlannerTrainingEditor: View {
 
                 switch mode {
                 case .client:
-                    Section("Клиент") { participantsPicker(multiple: false) }
+                    Section("🙋 Клиент") { participantsPicker(multiple: false) }
                 case .group:
                     Section {
                         Picker("Категория", selection: $groupCategory) {
@@ -156,12 +156,12 @@ struct PlannerTrainingEditor: View {
                             }
                         }
                     } header: {
-                        Text(title.isEmpty ? "Какая группа" : "Группа: \(title)")
+                        Text(title.isEmpty ? "👧👦 Какая группа" : "Группа: \(title)")
                     }
                     Section {
                         participantsPicker(multiple: true)
                     } header: {
-                        Text("Клиенты группы")
+                        Text("👥 Клиенты группы")
                     } footer: {
                         Text("Блок можно создать без клиентов и записать их потом.")
                     }
@@ -196,7 +196,7 @@ struct PlannerTrainingEditor: View {
                             TextField("Что нужно сделать (например, купить кастрюли)", text: $title)
                         }
                     } header: {
-                        Text("Дело")
+                        Text("🧳 Дело")
                     }
                 }
 
@@ -237,7 +237,7 @@ struct PlannerTrainingEditor: View {
                     }
                 }
 
-                Section("Заметка") {
+                Section("📝 Заметка") {
                     TextField("Что взять, детали", text: $notes, axis: .vertical)
                         .lineLimit(2...5)
                 }

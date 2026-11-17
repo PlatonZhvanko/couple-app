@@ -72,6 +72,7 @@ struct StatisticsSnapshot {
     /// Списания тренировок с абонементов.
     var charges: [PlannerPayment] = []
     var clients: [UUID: String] = [:]
+    var eventTitles: [UUID: String] = [:]
 
     func name(_ id: UUID) -> String { clients[id] ?? "Клиент" }
 
@@ -94,6 +95,7 @@ struct StatisticsSnapshot {
         )
         let events = ((try? context.fetch(FetchDescriptor<PlannerEvent>())) ?? []).filter { $0.deletedAt == nil }
         let map = PlannerPaymentStore.eventMap(events)
+        snap.eventTitles = map.mapValues(\.plainTitle)
         let live = PlannerPaymentStore.allPayments(context).filter { PlannerPaymentStore.isLive($0, events: map) }
         var byKey: [String: PlannerPayment] = [:]
         for payment in live {
@@ -116,7 +118,7 @@ struct StatisticsSnapshot {
                             id: key, eventTitle: event.plainTitle, day: day, start: start,
                             clientID: clientID, category: event.categoryValue,
                             method: row?.methodValue ?? .none,
-                            amount: row?.amount ?? PlannerPricing.price(for: event.categoryValue)
+                            amount: row?.amount ?? PlannerPaymentStore.price(for: event, context: context)
                         ))
                     }
                 }

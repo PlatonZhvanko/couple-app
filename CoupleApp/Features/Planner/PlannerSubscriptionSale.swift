@@ -5,6 +5,11 @@ import SwiftUI
 struct PlannerSubscriptionSaleSheet: View {
     let month: Date
 
+    init(month: Date, client: PlannerClientDirectory.Entry? = nil) {
+        self.month = month
+        _client = State(initialValue: client)
+    }
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
@@ -15,6 +20,7 @@ struct PlannerSubscriptionSaleSheet: View {
     @State private var selectedType: PlannerSubscriptionType?
     @State private var amountText = ""
     @State private var validText = "30"
+    @State private var chargeText = "500"
     @State private var query = ""
     @State private var typeQuery = ""
     @State private var client: PlannerClientDirectory.Entry?
@@ -38,7 +44,7 @@ struct PlannerSubscriptionSaleSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Вид абонемента") {
+                Section("📜 Вид абонемента") {
                     if types.isEmpty {
                         Text("Видов пока нет. Добавь их в разделе «Клиенты» → «Абонементы».")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -61,6 +67,7 @@ struct PlannerSubscriptionSaleSheet: View {
                                 typeQuery = ""
                                 amountText = "\(Int(type.price.rounded()))"
                                 validText = "\(type.validDays)"
+                                chargeText = "\(Int(type.charge.rounded()))"
                             } label: {
                                 HStack {
                                     Text(type.name).foregroundStyle(Color.primary)
@@ -88,9 +95,18 @@ struct PlannerSubscriptionSaleSheet: View {
                             .frame(width: 60)
                         Text("дн.").foregroundStyle(.secondary)
                     }
+                    HStack {
+                        Text("Списание за занятие")
+                        Spacer()
+                        TextField("500", text: $chargeText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 70)
+                        Text("₽").foregroundStyle(.secondary)
+                    }
                 }
 
-                Section("Клиент") {
+                Section("🙋 Клиент") {
                     if let client {
                         HStack {
                             Label(client.name, systemImage: "person.fill")
@@ -138,7 +154,8 @@ struct PlannerSubscriptionSaleSheet: View {
         guard let client, let amount else { return }
         PlannerPaymentStore.saveSubscription(
             context, clientID: client.id, month: month, amount: max(0, amount),
-            kindName: selectedType?.name, validDays: Int(validText) ?? 30
+            kindName: selectedType?.name, validDays: Int(validText) ?? 30,
+            charge: Double(chargeText)
         )
         sync.requestSync()
         dismiss()
@@ -185,7 +202,7 @@ struct PlannerSubscriptionSettingsView: View {
                         .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty || Double(newPrice) == nil)
                 }
             } header: {
-                Text("Виды абонементов")
+                Text("📜 Виды абонементов")
             }
 
             Section {
@@ -193,6 +210,9 @@ struct PlannerSubscriptionSettingsView: View {
                     Text("Пока никому не продан.").foregroundStyle(.secondary)
                 }
                 ForEach(sold) { item in
+                    NavigationLink {
+                        PlannerSubscriptionSaleEditor(sale: item, clientName: names[item.clientID] ?? "Клиент")
+                    } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text(names[item.clientID] ?? "Клиент").font(.body.weight(.medium))
@@ -204,9 +224,14 @@ struct PlannerSubscriptionSettingsView: View {
                         Text("Заработано с клиента всего: \(PlannerPricing.format(earned[item.clientID] ?? 0))")
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                    }
+                }
+                .onDelete { offsets in
+                    for index in offsets { PlannerSubscriptionTypeStore.deleteSale(context, sub: sold[index]) }
+                    sync.requestSync()
                 }
             } header: {
-                Text("Кому продан")
+                Text("🧾 Кому продан")
             }
         }
         .onAppear {
@@ -245,6 +270,7 @@ struct PlannerSubscriptionTypeEditor: View {
     @State private var name: String
     @State private var price: String
     @State private var validDays: String
+    @State private var charge: String
     @State private var deleted = false
 
     init(type: PlannerSubscriptionType) {
@@ -252,6 +278,7 @@ struct PlannerSubscriptionTypeEditor: View {
         _name = State(initialValue: type.name)
         _price = State(initialValue: "\(Int(type.price.rounded()))")
         _validDays = State(initialValue: "\(type.validDays)")
+        _charge = State(initialValue: "\(Int(type.charge.rounded()))")
     }
 
     var body: some View {
@@ -276,6 +303,15 @@ struct PlannerSubscriptionTypeEditor: View {
                         .frame(width: 60)
                     Text("дн.").foregroundStyle(.secondary)
                 }
+                HStack {
+                    Text("Списание за занятие")
+                    Spacer()
+                    TextField("500", text: $charge)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 70)
+                    Text("₽").foregroundStyle(.secondary)
+                }
             }
             Section {
                 Button("Удалить вид", role: .destructive) {
@@ -296,7 +332,88 @@ struct PlannerSubscriptionTypeEditor: View {
             if !clean.isEmpty { type.name = clean }
             if let value = Double(price) { type.price = value }
             if let days = Int(validDays), days > 0 { type.validDays = days }
+            if let value = Double(charge) { type.charge = max(0, value) }
             type.markChanged()
+            try? context.save()
+            sync.requestSync()
+        }
+    }
+}
+
+/// Правка проданного абонемента: сумма, срок, списание за занятие, удаление.
+struct PlannerSubscriptionSaleEditor: View {
+    let sale: PlannerSubscription
+    let clientName: String
+
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var amount: String
+    @State private var charge: String
+    @State private var kindName: String
+    @State private var expires: Date
+    @State private var deleted = false
+    @State private var confirmDelete = false
+
+    init(sale: PlannerSubscription, clientName: String) {
+        self.sale = sale
+        self.clientName = clientName
+        _amount = State(initialValue: "\(Int(sale.amount.rounded()))")
+        _charge = State(initialValue: "\(Int(sale.charge.rounded()))")
+        _kindName = State(initialValue: sale.kindName)
+        _expires = State(initialValue: sale.expiresAt)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Клиент", value: clientName)
+                TextField("Вид абонемента", text: $kindName)
+                HStack {
+                    Text("Сумма")
+                    Spacer()
+                    TextField("0", text: $amount)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 90)
+                    Text("₽").foregroundStyle(.secondary)
+                }
+                HStack {
+                    Text("Списание за занятие")
+                    Spacer()
+                    TextField("500", text: $charge)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 70)
+                    Text("₽").foregroundStyle(.secondary)
+                }
+                DatePicker("Действует до", selection: $expires, displayedComponents: .date)
+            }
+            Section {
+                Button("Удалить продажу", role: .destructive) { confirmDelete = true }
+            } footer: {
+                Text("Вместе с продажей удалятся списания с неё.")
+            }
+        }
+        .navigationTitle("Абонемент")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Удалить продажу?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) {
+                deleted = true
+                PlannerSubscriptionTypeStore.deleteSale(context, sub: sale)
+                sync.requestSync()
+                dismiss()
+            }
+        }
+        .onDisappear {
+            guard !deleted else { return }
+            if let value = Double(amount) { sale.amount = max(0, value) }
+            if let value = Double(charge) { sale.charge = max(0, value) }
+            sale.kindName = kindName.trimmingCharacters(in: .whitespaces)
+            let cal = PlannerCalendar.calendar
+            sale.expiresAt = cal.startOfDay(for: expires).addingTimeInterval(86400 - 1)
+            sale.markChanged()
             try? context.save()
             sync.requestSync()
         }

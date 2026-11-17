@@ -115,12 +115,12 @@ struct ClientsClientDetailView: View {
                 LabeledContent("Дата рождения", value: client.birthday.map { $0.formatted(.dateTime.day().month(.wide).year()) } ?? "не указана")
             }
 
-            Section("Заметки") {
+            Section("📝 Заметки") {
                 Text(client.note.isEmpty ? "Пока пусто" : client.note)
                     .foregroundStyle(client.note.isEmpty ? .secondary : .primary)
             }
 
-            Section("Итоги") {
+            Section("📊 Итоги") {
                 let planner = PlannerClientDirectory.stats(for: client.syncID, context: context)
                 LabeledContent("Визитов", value: "\(done.count + planner.visits)")
                 LabeledContent("Заработано", value: ClientsFormat.money(done.reduce(0) { $0 + $1.price } + planner.earned))
