@@ -37,7 +37,7 @@
         },
         {
           "title": "Принять основу в main (PR 1)",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Создать проект Supabase и подключить ключи",
