@@ -21,7 +21,8 @@ struct PlannerEventEditor: View {
     @State private var reminder: Int
     @State private var confirmDelete = false
 
-    init(event: PlannerEvent?, day: Date) {
+    /// `time` — начало нового события (нажатие на время в планировщике).
+    init(event: PlannerEvent?, day: Date, at time: Date? = nil) {
         self.event = event
         let cal = PlannerCalendar.calendar
         if let event {
@@ -38,7 +39,7 @@ struct PlannerEventEditor: View {
             // Новое событие: сегодня со следующего часа, иначе в 10:00.
             let now = Date.now
             let hour = cal.isDateInToday(day) ? min(cal.component(.hour, from: now) + 1, 23) : 10
-            let begin = cal.date(bySettingHour: hour, minute: 0, second: 0, of: day) ?? day
+            let begin = time ?? cal.date(bySettingHour: hour, minute: 0, second: 0, of: day) ?? day
             _title = State(initialValue: "")
             _notes = State(initialValue: "")
             _start = State(initialValue: begin)

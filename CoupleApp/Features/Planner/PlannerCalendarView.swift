@@ -29,6 +29,8 @@ enum PlannerFilter: String, CaseIterable, Identifiable {
 /// Календарь: сетка месяца или недели и список на выбранный день.
 struct PlannerCalendarView: View {
     enum Mode: String { case month, week }
+    /// Планировщик (время по часам) или обычный календарь (сетка месяца).
+    enum Style: String { case planner, calendar }
 
     @Environment(AccountStore.self) private var account
     @Environment(SyncCoordinator.self) private var sync
@@ -40,6 +42,9 @@ struct PlannerCalendarView: View {
     private var allTasks: [PlannerTask]
 
     @AppStorage("planner.mode") private var mode: Mode = .month
+    @AppStorage("planner.style") private var style: Style = .planner
+    /// В планировщике: открыт один день вместо недели.
+    @AppStorage("planner.dayFocus") private var dayFocus = false
     @AppStorage("planner.filter") private var filter: PlannerFilter = .all
     @State private var selectedDay = PlannerCalendar.calendar.startOfDay(for: .now)
     @State private var editorTarget: EditorTarget?
@@ -50,6 +55,7 @@ struct PlannerCalendarView: View {
         let id = UUID()
         let event: PlannerEvent?
         let day: Date
+        var time: Date? = nil
     }
 
     private var cal: Calendar { PlannerCalendar.calendar }
@@ -68,6 +74,13 @@ struct PlannerCalendarView: View {
             .sorted { $0.start < $1.start }
     }
 
+    /// Меняется при листании и после синхронизации: тогда перечитываем записи других разделов.
+    private var externalItemsKey: String {
+        let first = days.first?.timeIntervalSince1970 ?? 0
+        let synced = sync.lastSyncedAt?.timeIntervalSince1970 ?? 0
+        return "\(first)-\(days.count)-\(synced)"
+    }
+
     private func loadExternalItems() {
         guard let first = days.first, let last = days.last else { return }
         let interval = DateInterval(start: first, end: PlannerCalendar.addDays(1, to: last))
@@ -75,10 +88,117 @@ struct PlannerCalendarView: View {
     }
 
     private var days: [Date] {
-        mode == .month ? PlannerCalendar.monthGrid(selectedDay) : PlannerCalendar.week(containing: selectedDay)
+        if style == .planner {
+            return dayFocus ? [cal.startOfDay(for: selectedDay)] : PlannerCalendar.week(containing: selectedDay)
+        }
+        return mode == .month ? PlannerCalendar.monthGrid(selectedDay) : PlannerCalendar.week(containing: selectedDay)
     }
 
     var body: some View {
+        Group {
+            if style == .planner {
+                plannerBody
+            } else {
+                calendarBody
+            }
+        }
+        .task(id: externalItemsKey) {
+            loadExternalItems()
+        }
+        .onAppear(perform: loadExternalItems)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Сегодня") {
+                    withAnimation { selectedDay = cal.startOfDay(for: .now) }
+                }
+            }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    withAnimation { style = style == .planner ? .calendar : .planner }
+                } label: {
+                    Image(systemName: style == .planner ? "calendar" : "calendar.day.timeline.left")
+                }
+                .accessibilityLabel(style == .planner ? "Обычный календарь" : "Планировщик")
+                Button {
+                    editorTarget = EditorTarget(event: nil, day: selectedDay)
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Новое событие")
+            }
+        }
+        .sheet(item: $editorTarget) { target in
+            PlannerEventEditor(event: target.event, day: target.day, at: target.time)
+        }
+    }
+
+    // MARK: - Планировщик
+
+    private var plannerBody: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { movePlanner(-1) } label: { Image(systemName: "chevron.left") }
+                Spacer()
+                if dayFocus {
+                    Button {
+                        withAnimation { dayFocus = false }
+                    } label: {
+                        Label("Неделя", systemImage: "rectangle.split.3x1")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
+                Text(PlannerCalendar.monthTitle(selectedDay))
+                    .font(.headline)
+                Spacer()
+                Menu {
+                    Picker("Показывать", selection: $filter) {
+                        ForEach(PlannerFilter.allCases) { Text($0.title(account)).tag($0) }
+                    }
+                } label: {
+                    Image(systemName: filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                }
+                Button { movePlanner(1) } label: { Image(systemName: "chevron.right") }
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+
+            PlannerTimelineView(
+                days: days,
+                isDayMode: dayFocus,
+                events: events,
+                externalItems: { items(on: $0) },
+                onHeaderTap: { day in
+                    withAnimation(.snappy) {
+                        selectedDay = day
+                        dayFocus.toggle()
+                    }
+                },
+                onSlotTap: { start in
+                    selectedDay = cal.startOfDay(for: start)
+                    editorTarget = EditorTarget(event: nil, day: start, time: start)
+                },
+                onEventTap: { event in
+                    editorTarget = EditorTarget(event: event, day: selectedDay)
+                }
+            )
+            .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.5 else { return }
+                if value.translation.width < -60 { movePlanner(1) }
+                if value.translation.width > 60 { movePlanner(-1) }
+            })
+        }
+    }
+
+    private func movePlanner(_ step: Int) {
+        withAnimation {
+            selectedDay = PlannerCalendar.addDays(step * (dayFocus ? 1 : 7), to: cal.startOfDay(for: selectedDay))
+        }
+    }
+
+    // MARK: - Обычный календарь
+
+    private var calendarBody: some View {
         ScrollView {
             VStack(spacing: 16) {
                 header
@@ -94,28 +214,6 @@ struct PlannerCalendarView: View {
             .padding()
         }
         .refreshable { await sync.syncNow() }
-        .task(id: "\(days.first?.timeIntervalSince1970 ?? 0)-\(days.count)-\(sync.lastSyncedAt?.timeIntervalSince1970 ?? 0)") {
-            loadExternalItems()
-        }
-        .onAppear(perform: loadExternalItems)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Сегодня") {
-                    withAnimation { selectedDay = cal.startOfDay(for: .now) }
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    editorTarget = EditorTarget(event: nil, day: selectedDay)
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel("Новое событие")
-            }
-        }
-        .sheet(item: $editorTarget) { target in
-            PlannerEventEditor(event: target.event, day: target.day)
-        }
     }
 
     // MARK: - Шапка
