@@ -182,6 +182,7 @@ final class PlannerSubscription: SyncableModel {
         var clientID: UUID
         var month: Date
         var amount: Double
+        var kindName: String? = nil
     }
 
     static let recordKind = "planner.subscription"
@@ -191,6 +192,8 @@ final class PlannerSubscription: SyncableModel {
     /// Первый день месяца.
     var month: Date = Date.now
     var amount: Double = 0
+    /// Название вида абонемента, по которому он продан.
+    var kindName: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -207,12 +210,13 @@ final class PlannerSubscription: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(clientID: clientID, month: month, amount: amount) }
+    var payload: Payload { Payload(clientID: clientID, month: month, amount: amount, kindName: kindName) }
 
     func apply(_ payload: Payload) {
         clientID = payload.clientID
         month = payload.month
         amount = payload.amount
+        kindName = payload.kindName ?? ""
     }
 
     static func makeID(clientID: UUID, month: Date) -> UUID {
@@ -331,7 +335,7 @@ enum PlannerPaymentStore {
     }
 
     /// Оформить (или изменить) абонемент клиента на месяц и сразу списать им тренировки месяца.
-    static func saveSubscription(_ context: ModelContext, clientID: UUID, month: Date, amount: Double) {
+    static func saveSubscription(_ context: ModelContext, clientID: UUID, month: Date, amount: Double, kindName: String? = nil) {
         let monthStart = PlannerCalendar.startOfMonth(month)
         let id = PlannerSubscription.makeID(clientID: clientID, month: monthStart)
         let found = try? context.fetch(FetchDescriptor<PlannerSubscription>(predicate: #Predicate { $0.syncID == id }))
@@ -340,8 +344,10 @@ enum PlannerPaymentStore {
             item = existing
             item.deletedAt = nil
             item.amount = amount
+            if let kindName { item.kindName = kindName }
         } else {
             item = PlannerSubscription(clientID: clientID, month: monthStart, amount: amount)
+            item.kindName = kindName ?? ""
             context.insert(item)
         }
         item.markChanged()
@@ -507,5 +513,61 @@ enum PlannerGroupKindStore {
         }
         try? context.save()
         return item
+    }
+}
+
+
+// MARK: - Виды абонементов
+
+/// Готовый вид абонемента (например «Абонемент Ноябрь», 5000 ₽) для быстрой продажи.
+@Model
+final class PlannerSubscriptionType: SyncableModel {
+    struct Payload: Codable {
+        var name: String
+        var price: Double
+    }
+
+    static let recordKind = "planner.subscriptionType"
+
+    var syncID: UUID = UUID()
+    var name: String = ""
+    var price: Double = 0
+    var updatedAt: Date = Date.now
+    var deletedAt: Date? = nil
+    var needsSync: Bool = true
+
+    init(name: String, price: Double) {
+        self.syncID = Self.makeID(name: name)
+        self.name = name
+        self.price = price
+    }
+
+    init(syncID: UUID, payload: Payload) {
+        self.syncID = syncID
+        apply(payload)
+    }
+
+    var payload: Payload { Payload(name: name, price: price) }
+
+    func apply(_ payload: Payload) {
+        name = payload.name
+        price = payload.price
+    }
+
+    static func makeID(name: String) -> UUID {
+        PlannerDeterministicID.make("subtype|\(name.lowercased())")
+    }
+}
+
+enum PlannerSubscriptionTypeStore {
+    /// Создаёт «Абонемент Ноябрь» 5000 ₽, если видов ещё нет.
+    @MainActor
+    static func ensureDefault(_ context: ModelContext) {
+        let all = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>())) ?? []
+        guard all.isEmpty else { return }
+        let item = PlannerSubscriptionType(name: "Абонемент Ноябрь", price: 5000)
+        context.insert(item)
+        item.markChanged()
+        try? context.save()
     }
 }

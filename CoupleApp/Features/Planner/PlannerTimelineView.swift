@@ -297,16 +297,12 @@ struct PlannerTimelineView: View {
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 3)
+        .padding(.leading, 3)
+        .padding(.trailing, block.badge.symbol == nil ? 3 : 14)
         .padding(.top, height > 30 ? 13 : 2)
         .padding(.bottom, 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .topTrailing) {
-            if height > 30 && !block.emoji.isEmpty {
-                Text(block.emoji).font(.system(size: 11)).padding(1)
-            }
-        }
-        .overlay(alignment: .topLeading) {
             if let symbol = block.badge.symbol {
                 Text(symbol).font(.system(size: 10)).padding(1)
             }
