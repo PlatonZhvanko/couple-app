@@ -49,11 +49,20 @@ struct ClientsSheetView: View {
 
 struct ClientsHomeView: View {
     enum Page: String, CaseIterable, Identifiable {
-        case schedule = "📅 Расписание"
-        case clients = "🙋 Клиенты"
-        case groups = "👧👦 Группы"
-        case subscriptions = "📜 Абонементы"
+        case schedule = "Расписание"
+        case clients = "Клиенты"
+        case groups = "Группы"
+        case subscriptions = "Абонементы"
         var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .schedule: "📅 Расписание"
+            case .clients: "🙋 Клиенты"
+            case .groups: "👧👦 Группы"
+            case .subscriptions: "📜 Абонементы"
+            }
+        }
     }
 
     let member: CoupleMember
@@ -107,7 +116,7 @@ struct ClientsHomeView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 Picker("Раздел", selection: $tab) {
-                    ForEach(Page.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(Page.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)

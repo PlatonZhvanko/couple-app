@@ -86,7 +86,7 @@ struct StatisticsSnapshot {
     }
 
     @MainActor
-    static func load(_ context: ModelContext, until end: Date) -> StatisticsSnapshot {
+    static func load(_ context: ModelContext, from begin: Date, until end: Date) -> StatisticsSnapshot {
         let cal = PlannerCalendar.calendar
         var snap = StatisticsSnapshot()
         snap.clients = Dictionary(
@@ -106,9 +106,10 @@ struct StatisticsSnapshot {
         snap.charges = live.filter { $0.methodValue == .subscription }
 
         for event in events where PlannerPaymentStore.isTraining(event) && !event.participantIDs.isEmpty {
-            var day = cal.startOfDay(for: event.start)
+            // Считаем только дни периода, а не всю историю повтора.
+            var day = max(cal.startOfDay(for: event.start), cal.startOfDay(for: begin))
             var steps = 0
-            while day < end && steps < 800 {
+            while day < end && steps < 400 {
                 if event.startsOn(day) {
                     let start = PlannerCalendar.combine(day: day, time: event.start)
                     for clientID in event.participantIDs {
