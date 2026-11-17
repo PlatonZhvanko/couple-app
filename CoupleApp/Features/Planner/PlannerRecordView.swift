@@ -77,7 +77,7 @@ struct PlannerRecordView: View {
                 clients = PlannerClientDirectory.all(context)
             }
             .sheet(item: $subscriptionClient) { client in
-                PlannerSubscriptionSheet(client: client, month: day)
+                PlannerSubscriptionSaleSheet(month: day, client: client)
             }
         }
         .environment(\.locale, PlannerCalendar.locale)
@@ -133,7 +133,7 @@ struct PlannerRecordView: View {
                     name: client.name,
                     method: method(of: client),
                     amount: dayPayments.first { $0.clientID == client.id }?.amount
-                        ?? PlannerPricing.price(for: event.categoryValue),
+                        ?? PlannerPaymentStore.price(for: event, context: context),
                     balanceText: balanceText(for: client),
                     canEdit: canEdit,
                     isGroup: event.categoryValue != .personal,
@@ -372,67 +372,5 @@ private struct PlannerPaymentRow: View {
     private static func text(_ value: Double) -> String {
         let rounded = value.rounded()
         return abs(value - rounded) < 0.005 ? "\(Int(rounded))" : String(format: "%.2f", value)
-    }
-}
-
-/// Абонемент клиента на месяц: сумма, остаток.
-struct PlannerSubscriptionSheet: View {
-    let client: PlannerClientDirectory.Entry
-    let month: Date
-
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var context
-    @Environment(SyncCoordinator.self) private var sync
-
-    @State private var amountText = ""
-
-    private var existing: PlannerSubscription? {
-        PlannerPaymentStore.subscription(context, clientID: client.id, month: month)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    HStack {
-                        Text("Сумма абонемента")
-                        Spacer()
-                        TextField("0", text: $amountText)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 90)
-                        Text("₽").foregroundStyle(.secondary)
-                    }
-                    if let existing {
-                        LabeledContent("Остаток", value: PlannerPricing.format(PlannerPaymentStore.balance(context, of: existing)))
-                    }
-                } header: {
-                    Text("\(client.name), \(PlannerCalendar.monthTitle(month))")
-                } footer: {
-                    Text("За каждую тренировку месяца с абонемента списывается \(PlannerPricing.format(PlannerPricing.subscriptionCharge)), галочки не нужны. Если оплатить иначе, поменяй вручную в самой записи.")
-                }
-            }
-            .navigationTitle("Абонемент")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Сохранить", action: save).disabled(Double(amountText.replacingOccurrences(of: ",", with: ".")) == nil)
-                }
-            }
-            .onAppear {
-                let value = existing?.amount ?? PlannerPricing.subscriptionDefault
-                amountText = "\(Int(value.rounded()))"
-            }
-        }
-        .presentationDetents([.medium])
-        .environment(\.locale, PlannerCalendar.locale)
-    }
-
-    private func save() {
-        guard let value = Double(amountText.replacingOccurrences(of: ",", with: ".")) else { return }
-        PlannerPaymentStore.saveSubscription(context, clientID: client.id, month: month, amount: max(0, value))
-        sync.requestSync()
-        dismiss()
     }
 }

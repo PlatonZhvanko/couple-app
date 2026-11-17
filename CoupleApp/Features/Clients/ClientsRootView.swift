@@ -49,10 +49,10 @@ struct ClientsSheetView: View {
 
 struct ClientsHomeView: View {
     enum Page: String, CaseIterable, Identifiable {
-        case schedule = "Расписание"
-        case clients = "Клиенты"
-        case groups = "Группы"
-        case subscriptions = "Абонементы"
+        case schedule = "📅 Расписание"
+        case clients = "🙋 Клиенты"
+        case groups = "👧👦 Группы"
+        case subscriptions = "📜 Абонементы"
         var id: String { rawValue }
     }
 
