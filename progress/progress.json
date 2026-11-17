@@ -40,6 +40,14 @@
           "status": "done"
         },
         {
+          "title": "Собрать все 6 разделов вместе в main",
+          "status": "done"
+        },
+        {
+          "title": "Первая сборка в Xcode (⌘B) и исправление ошибок",
+          "status": "todo"
+        },
+        {
           "title": "Создать проект Supabase и подключить ключи",
           "status": "todo"
         },
