@@ -116,7 +116,7 @@ struct NutritionFoodPicker: View {
         if query.isEmpty {
             ForEach(NutritionFoodData.categories, id: \.self) { category in
                 Section(category) {
-                    ForEach(NutritionFoodData.foods.filter { $0.category == category }, { item in
+                    ForEach(NutritionFoodData.foods.filter { $0.category == category }) { item in
                         row(item.values, subtitle: nil)
                     }
                 }
@@ -124,7 +124,7 @@ struct NutritionFoodPicker: View {
         } else {
             let found = NutritionFoodData.foods.filter { matches($0.values) }
             Section("Найдено: \(found.count)") {
-                ForEach(found, { item in
+                ForEach(found) { item in
                     row(item.values, subtitle: item.category)
                 }
             }
