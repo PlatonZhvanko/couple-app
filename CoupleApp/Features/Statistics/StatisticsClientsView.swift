@@ -35,7 +35,7 @@ struct StatisticsClientsView: View {
             var note: String?
             if current != nil && next == nil && daysLeft <= 7 {
                 note = "Пора продлевать: абонемент заканчивается через \(daysLeft) дн."
-            } else if let current, PlannerPaymentStoreBalance.left(current, visits: snapshot.visits, cal: cal) <= PlannerPricing.subscriptionCharge {
+            } else if let current, snapshot.left(current) <= PlannerPricing.subscriptionCharge {
                 note = "На абонементе почти не осталось денег"
             }
             return Row(id: id, name: snapshot.name(id), visits: mine.count, paid: cash + bought,
@@ -84,16 +84,5 @@ struct StatisticsClientsView: View {
             Spacer()
             Text(PlannerPricing.format(row.paid)).foregroundStyle(.secondary)
         }
-    }
-}
-
-/// Остаток на абонементе по данным отчёта (так же, как в журнале: сумма минус списания месяца).
-enum PlannerPaymentStoreBalance {
-    static func left(_ sub: PlannerSubscription, visits: [StatisticsVisit], cal: Calendar) -> Double {
-        let used = visits
-            .filter { $0.clientID == sub.clientID && $0.method == .subscription
-                && cal.isDate($0.day, equalTo: sub.month, toGranularity: .month) }
-            .reduce(0) { $0 + $1.amount }
-        return sub.amount - used
     }
 }

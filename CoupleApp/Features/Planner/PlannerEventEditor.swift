@@ -15,7 +15,7 @@ struct PlannerEventEditor: View {
     @State private var start: Date
     @State private var end: Date
     @State private var isAllDay: Bool
-    @State private var isShared: Bool
+    @State private var isPrivate: Bool
     @State private var category: PlannerCategory
     @State private var repeatRule: PlannerRepeat
     @State private var reminder: Int
@@ -31,7 +31,7 @@ struct PlannerEventEditor: View {
             _start = State(initialValue: event.start)
             _end = State(initialValue: event.end)
             _isAllDay = State(initialValue: event.isAllDay)
-            _isShared = State(initialValue: event.scopeValue == .shared)
+            _isPrivate = State(initialValue: event.isPrivate)
             _category = State(initialValue: event.categoryValue)
             _repeatRule = State(initialValue: event.repeatValue)
             _reminder = State(initialValue: event.reminderMinutes)
@@ -45,7 +45,7 @@ struct PlannerEventEditor: View {
             _start = State(initialValue: begin)
             _end = State(initialValue: begin.addingTimeInterval(3600))
             _isAllDay = State(initialValue: false)
-            _isShared = State(initialValue: true)
+            _isPrivate = State(initialValue: false)
             _category = State(initialValue: .general)
             _repeatRule = State(initialValue: .none)
             _reminder = State(initialValue: PlannerReminderOption.none)
@@ -73,11 +73,7 @@ struct PlannerEventEditor: View {
 
                 Section {
                     TextField("Название", text: $title)
-                    Picker("Для кого", selection: $isShared) {
-                        Text("Общее").tag(true)
-                        Text("Только моё").tag(false)
-                    }
-                    .pickerStyle(.segmented)
+                    Toggle("Не показывать партнёру", isOn: $isPrivate)
                 }
 
                 Section {
@@ -176,7 +172,8 @@ struct PlannerEventEditor: View {
             target.start = start
             target.end = max(end, start)
         }
-        target.scope = (isShared ? PlannerScope.shared : .personal(account.current)).rawValue
+        if event == nil { target.scope = PlannerScope.personal(account.current).rawValue }
+        target.isPrivate = isPrivate
         target.category = category.rawValue
         target.repeatRule = repeatRule.rawValue
         target.reminderMinutes = reminder

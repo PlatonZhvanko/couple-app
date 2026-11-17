@@ -138,7 +138,7 @@ struct PlannerRecordView: View {
                     canEdit: canEdit,
                     isGroup: event.categoryValue != .personal,
                     hasSubscription: subscriptions.contains {
-                        $0.clientID == client.id && cal.isDate($0.month, equalTo: day, toGranularity: .month)
+                        $0.clientID == client.id && $0.covers(day)
                     },
                     onSelect: { select($0, for: client) },
                     onSubscription: { subscriptionClient = client },

@@ -69,9 +69,20 @@ struct StatisticsSnapshot {
     var visits: [StatisticsVisit] = []
     var cashPayments: [PlannerPayment] = []
     var subscriptions: [PlannerSubscription] = []
+    /// Списания тренировок с абонементов.
+    var charges: [PlannerPayment] = []
     var clients: [UUID: String] = [:]
 
     func name(_ id: UUID) -> String { clients[id] ?? "Клиент" }
+
+    /// Сколько осталось на абонементе (оплачено минус списано за его месяц).
+    func left(_ sub: PlannerSubscription) -> Double {
+        let cal = PlannerCalendar.calendar
+        let used = charges
+            .filter { $0.clientID == sub.clientID && cal.isDate($0.day, equalTo: sub.month, toGranularity: .month) }
+            .reduce(0) { $0 + $1.amount }
+        return max(0, sub.amount - used)
+    }
 
     @MainActor
     static func load(_ context: ModelContext, until end: Date) -> StatisticsSnapshot {
@@ -90,6 +101,7 @@ struct StatisticsSnapshot {
         }
         snap.cashPayments = live.filter { $0.methodValue == .cash || $0.methodValue == .transfer }
         snap.subscriptions = PlannerPaymentStore.allSubscriptions(context)
+        snap.charges = live.filter { $0.methodValue == .subscription }
 
         for event in events where PlannerPaymentStore.isTraining(event) && !event.participantIDs.isEmpty {
             var day = cal.startOfDay(for: event.start)
