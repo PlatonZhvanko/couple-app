@@ -58,7 +58,7 @@ enum PlannerCategory: String, CaseIterable, Identifiable {
     /// Эмодзи для журнала. `nil` у обычных категорий.
     var emoji: String? {
         switch self {
-        case .personal: "🐱🎾"
+        case .personal: "🎾"
         case .group: "👧👦🎾"
         case .school: "🏫🎾"
         case .errand: "🧳"
@@ -315,8 +315,12 @@ final class PlannerTask: SyncableModel {
 extension PlannerEvent {
     /// Название с эмодзи тренировки, если оно есть.
     var displayTitle: String {
-        let name = title.isEmpty ? "Без названия" : title
-        guard let emoji = categoryValue.emoji else { return name }
-        return "\(emoji) \(name)"
+        guard let emoji = categoryValue.emoji else { return plainTitle }
+        return "\(emoji) \(plainTitle)"
+    }
+
+    /// Название без эмодзи (клиент или группа). В узких колонках журнала показываем его.
+    var plainTitle: String {
+        title.isEmpty ? "Без названия" : title
     }
 }

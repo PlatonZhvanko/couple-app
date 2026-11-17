@@ -36,6 +36,9 @@ struct PlannerTrainingEditor: View {
     @State private var query = ""
     @State private var directory: [PlannerClientDirectory.Entry] = []
     @State private var confirmDelete = false
+    @State private var newKindName = ""
+    @Query(filter: #Predicate<PlannerGroupKind> { $0.deletedAt == nil }, sort: \PlannerGroupKind.name)
+    private var groupKinds: [PlannerGroupKind]
 
     /// Какую форму открывать: тренировочную (для Настеньки и для её записей) или обычную.
     static func shouldUse(for event: PlannerEvent?, me: CoupleMember) -> Bool {
@@ -135,7 +138,21 @@ struct PlannerTrainingEditor: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        TextField("Название (необязательно)", text: $title)
+                        groupKindChips
+                        HStack {
+                            TextField("Новая группа", text: $newKindName)
+                                .textInputAutocapitalization(.sentences)
+                                .onSubmit(addGroupKind)
+                            if !trimmedKindName.isEmpty && !kindExists {
+                                Button(action: addGroupKind) {
+                                    Image(systemName: "plus.circle.fill").font(.title3)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Добавить вид группы")
+                            }
+                        }
+                    } header: {
+                        Text(title.isEmpty ? "Какая группа" : "Группа: \(title)")
                     }
                     Section {
                         participantsPicker(multiple: true)
@@ -236,8 +253,80 @@ struct PlannerTrainingEditor: View {
     // MARK: - Клиенты
 
     private func loadDirectory() {
-        directory = PlannerClientDirectory.all(context)
+        // Сначала те, кого записывали недавно, потом остальные по алфавиту.
+        let recent = (try? context.fetch(FetchDescriptor<PlannerEvent>(
+            predicate: #Predicate { $0.deletedAt == nil },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        ))) ?? []
+        var rank: [UUID: Int] = [:]
+        for event in recent {
+            for id in event.participantIDs where rank[id] == nil { rank[id] = rank.count }
+        }
+        directory = PlannerClientDirectory.all(context).sorted { lhs, rhs in
+            let l = rank[lhs.id] ?? Int.max
+            let r = rank[rhs.id] ?? Int.max
+            if l != r { return l < r }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
         participants = participantIDs.compactMap { id in directory.first { $0.id == id } }
+    }
+
+    // MARK: - Виды групп
+
+    private var trimmedKindName: String { newKindName.trimmingCharacters(in: .whitespaces) }
+
+    private var kindExists: Bool {
+        groupKinds.contains { $0.name.caseInsensitiveCompare(trimmedKindName) == .orderedSame }
+    }
+
+    private var groupKindChips: some View {
+        Group {
+            if groupKinds.isEmpty {
+                Text("Пока нет групп. Впиши название и нажми +, дальше она будет в быстром выборе.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(groupKinds) { kind in
+                            let selected = title == kind.name
+                            Button {
+                                selectGroupKind(kind)
+                            } label: {
+                                Text("\(kind.categoryValue.emoji ?? "") \(kind.name)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .background(Capsule().fill(selected ? kind.categoryValue.color.opacity(0.35) : Color.secondary.opacity(0.15)))
+                                    .overlay(Capsule().strokeBorder(selected ? kind.categoryValue.color : Color.clear, lineWidth: 1.5))
+                                    .foregroundStyle(Color.primary)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private func selectGroupKind(_ kind: PlannerGroupKind) {
+        title = kind.name
+        groupCategory = kind.categoryValue
+        // Подставляем клиентов из прошлой записи этой группы.
+        if participants.isEmpty {
+            let ids = PlannerGroupKindStore.lastParticipants(context, groupName: kind.name)
+            participants = ids.compactMap { id in directory.first { $0.id == id } }
+        }
+    }
+
+    private func addGroupKind() {
+        let name = trimmedKindName
+        guard !name.isEmpty else { return }
+        let kind = PlannerGroupKindStore.ensure(context, name: name, category: groupCategory)
+        sync.requestSync()
+        newKindName = ""
+        selectGroupKind(kind)
     }
 
     private var suggestions: [PlannerClientDirectory.Entry] {
@@ -285,6 +374,11 @@ struct PlannerTrainingEditor: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            if trimmedQuery.isEmpty && !suggestions.isEmpty {
+                Text("Недавние")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             ForEach(suggestions) { client in
                 Button {
                     select(client, multiple: multiple)
@@ -311,7 +405,7 @@ struct PlannerTrainingEditor: View {
             return
         }
         let created = PlannerClientDirectory.add(name: name, member: account.current, context: context)
-        directory.append(created)
+        directory.insert(created, at: 0)
         sync.requestSync()
         select(created, multiple: multiple)
     }
@@ -337,7 +431,11 @@ struct PlannerTrainingEditor: View {
             target.title = participants.first?.name ?? ""
             target.participantIDs = participants.prefix(1).map(\.id)
         case .group:
-            let custom = title.trimmingCharacters(in: .whitespaces)
+            var custom = title.trimmingCharacters(in: .whitespaces)
+            if !trimmedKindName.isEmpty { custom = trimmedKindName }
+            if !custom.isEmpty {
+                PlannerGroupKindStore.ensure(context, name: custom, category: groupCategory)
+            }
             target.title = custom.isEmpty ? groupCategory.title : custom
             target.participantIDs = participants.map(\.id)
         case .errand:

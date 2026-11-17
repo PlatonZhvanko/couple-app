@@ -45,6 +45,28 @@ enum PlannerPayMethod: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Смайлик способа: банкнота, карта, свиток абонемента, крестик.
+    var emoji: String {
+        switch self {
+        case .none: "⚪️"
+        case .cash: "💵"
+        case .transfer: "💳"
+        case .subscription: "📜"
+        case .unpaid: "❌"
+        }
+    }
+
+    /// Короткая подпись для кнопок выбора.
+    var chipTitle: String {
+        switch self {
+        case .none: "Сбросить"
+        case .cash: "Наличные"
+        case .transfer: "Перевод"
+        case .subscription: "Абонемент"
+        case .unpaid: "Не оплатил"
+        }
+    }
+
     var isPaid: Bool { self == .cash || self == .transfer || self == .subscription }
 }
 
@@ -336,7 +358,8 @@ enum PlannerPaymentStore {
     static func autoCharge(_ context: ModelContext, events: [PlannerEvent], days: [Date]) {
         let subs = ((try? context.fetch(FetchDescriptor<PlannerSubscription>())) ?? []).filter { $0.deletedAt == nil }
         guard !subs.isEmpty else { return }
-        for event in events where isTraining(event) && !event.participantIDs.isEmpty {
+        // Абонемент действует только на группы и школу.
+        for event in events where isTraining(event) && event.categoryValue != .personal && !event.participantIDs.isEmpty {
             for day in days where event.startsOn(day) {
                 for clientID in event.participantIDs {
                     let hasSubscription = subs.contains {
@@ -408,5 +431,86 @@ enum PlannerMover {
             }
         }
         try? context.save()
+    }
+}
+
+// MARK: - Виды групп
+
+/// Название группы («Олимпик Взрослые»), которое можно быстро выбрать при создании записи.
+@Model
+final class PlannerGroupKind: SyncableModel {
+    struct Payload: Codable {
+        var name: String
+        var category: String
+    }
+
+    static let recordKind = "planner.group_kind"
+
+    var syncID: UUID = UUID()
+    var name: String = ""
+    /// `group` или `school`.
+    var category: String = PlannerCategory.group.rawValue
+    var updatedAt: Date = Date.now
+    var deletedAt: Date? = nil
+    var needsSync: Bool = true
+
+    init(name: String, category: PlannerCategory) {
+        self.syncID = Self.makeID(name: name)
+        self.name = name
+        self.category = category.rawValue
+    }
+
+    init(syncID: UUID, payload: Payload) {
+        self.syncID = syncID
+        apply(payload)
+    }
+
+    var payload: Payload { Payload(name: name, category: category) }
+
+    func apply(_ payload: Payload) {
+        name = payload.name
+        category = payload.category
+    }
+
+    var categoryValue: PlannerCategory { category == PlannerCategory.school.rawValue ? .school : .group }
+
+    /// Одинаковое название даёт одинаковый id, поэтому на двух телефонах не двоится.
+    static func makeID(name: String) -> UUID {
+        PlannerDeterministicID.make("gk|" + name.trimmingCharacters(in: .whitespaces).lowercased())
+    }
+}
+
+@MainActor
+enum PlannerGroupKindStore {
+    /// Добавить вид группы, если такого ещё нет (или вернуть существующий).
+    @discardableResult
+    static func ensure(_ context: ModelContext, name: String, category: PlannerCategory) -> PlannerGroupKind {
+        let clean = name.trimmingCharacters(in: .whitespaces)
+        let id = PlannerGroupKind.makeID(name: clean)
+        let found = try? context.fetch(FetchDescriptor<PlannerGroupKind>(predicate: #Predicate { $0.syncID == id }))
+        let item: PlannerGroupKind
+        if let existing = found?.first {
+            item = existing
+            if item.deletedAt != nil || item.category != category.rawValue {
+                item.deletedAt = nil
+                item.category = category.rawValue
+                item.markChanged()
+            }
+        } else {
+            item = PlannerGroupKind(name: clean, category: category)
+            item.markChanged()
+            context.insert(item)
+        }
+        try? context.save()
+        return item
+    }
+
+    /// Клиенты, которые были в последней записи с таким названием группы.
+    static func lastParticipants(_ context: ModelContext, groupName: String) -> [UUID] {
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(
+            predicate: #Predicate { $0.deletedAt == nil },
+            sortBy: [SortDescriptor(\.start, order: .reverse)]
+        ))) ?? []
+        return events.first { $0.title == groupName && !$0.participantIDs.isEmpty }?.participantIDs ?? []
     }
 }
