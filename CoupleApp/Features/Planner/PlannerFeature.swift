@@ -1,16 +1,18 @@
 import SwiftUI
 
-/// Раздел «Планер».
+/// Раздел «Планер»: общий календарь и списки дел.
 ///
 /// Всё, что относится к разделу, лежит в папке `Features/Planner/`:
 /// модели данных, экраны, логика. Наружу отдаётся только `feature`.
+/// Описание функций: `docs/planner.md`.
 enum PlannerFeature {
     static let feature = Feature(
         id: "planner",
         title: "Планер",
         systemImage: "calendar",
         models: [
-            // Сюда добавлять модели SwiftData раздела, например: PlannerEntry.self
+            PlannerEvent.self,
+            PlannerTask.self,
         ]
     ) {
         PlannerRootView()

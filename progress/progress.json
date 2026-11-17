@@ -141,26 +141,42 @@
       "tasks": [
         {
           "title": "Обсудить: общий и личные календари, задачи",
-          "status": "doing"
+          "status": "done"
         },
         {
           "title": "Модель событий и задач, синхронизация",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Календарь: месяц, неделя, день",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Добавление и правка событий",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Общие события пары и личные",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Список дел с галочками",
+          "status": "done"
+        },
+        {
+          "title": "Повторы и напоминания о событиях",
+          "status": "done"
+        },
+        {
+          "title": "Проверить календарь на iPhone",
+          "status": "todo"
+        },
+        {
+          "title": "Записи клиентов в календаре",
+          "status": "todo"
+        },
+        {
+          "title": "События из календаря iPhone (просмотр)",
           "status": "todo"
         }
       ]
