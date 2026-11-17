@@ -199,22 +199,42 @@
       "tasks": [
         {
           "title": "Обсудить, что учитывать (заправки, ТО, документы)",
-          "status": "doing"
+          "status": "done"
         },
         {
           "title": "Модель данных и синхронизация",
-          "status": "todo"
+          "status": "done"
+        },
+        {
+          "title": "Несколько машин",
+          "status": "done"
         },
         {
           "title": "Заправки и расходы",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "ТО, ремонт и напоминания",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Документы и сроки (страховка, техосмотр)",
+          "status": "done"
+        },
+        {
+          "title": "Уведомления о сроках на телефоне",
+          "status": "done"
+        },
+        {
+          "title": "Итоги: месяц, год, расход топлива, кто платил",
+          "status": "done"
+        },
+        {
+          "title": "Проверить сборку в Xcode и на iPhone",
+          "status": "todo"
+        },
+        {
+          "title": "Фото чеков и документов",
           "status": "todo"
         }
       ]
