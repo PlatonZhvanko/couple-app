@@ -1,37 +1,32 @@
 import SwiftData
 import SwiftUI
 
-/// Главный экран раздела «Планер»: календарь и дела.
+/// Главный экран раздела «Планер»: журнал «Личный» и «Общий».
 struct PlannerRootView: View {
     enum Page: String, CaseIterable, Identifiable {
-        case calendar, tasks
+        case personal, everyone
         var id: String { rawValue }
-        var title: String { self == .calendar ? "Календарь" : "Дела" }
+        var title: String { self == .personal ? "Личный" : "Общий" }
     }
 
     @Environment(AccountStore.self) private var account
-    @AppStorage("planner.page") private var page: Page = .calendar
+    @AppStorage("planner.journal") private var page: Page = .personal
     @Query(filter: #Predicate<PlannerEvent> { $0.deletedAt == nil })
     private var events: [PlannerEvent]
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch page {
-                case .calendar: PlannerCalendarView()
-                case .tasks: PlannerTasksView()
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Picker("Раздел", selection: $page) {
-                        ForEach(Page.allCases) { Text($0.title).tag($0) }
+            PlannerCalendarView(showsEveryone: page == .everyone)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        Picker("Журнал", selection: $page) {
+                            ForEach(Page.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 200)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 220)
                 }
-            }
         }
         .environment(\.locale, PlannerCalendar.locale)
         // При любых изменениях событий (в том числе со второго телефона)

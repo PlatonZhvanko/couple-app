@@ -108,6 +108,7 @@ extension PlannerEvent {
         let day = cal.startOfDay(for: day)
         let firstDay = cal.startOfDay(for: start)
         guard day >= firstDay else { return false }
+        if skippedDays.contains(where: { cal.isDate($0, inSameDayAs: day) }) { return false }
         switch repeatValue {
         case .none:
             return day == firstDay
