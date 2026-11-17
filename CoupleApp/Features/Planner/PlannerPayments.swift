@@ -53,7 +53,6 @@ enum PlannerPayMethod: String, CaseIterable, Identifiable {
         case .transfer: "💳"
         case .subscription: "📜"
         case .unpaid: "❌"
-        case .unknown: "❓"
         }
     }
 
@@ -110,6 +109,7 @@ enum PlannerPayBadge {
         case .paid: "💵"
         case .partial: "💲"
         case .unpaid: "❌"
+        case .unknown: "❓"
         }
     }
 }
