@@ -2,6 +2,9 @@ import SwiftUI
 
 /// Раздел «Авто».
 ///
+/// Машины, журнал трат и заправок, напоминания о сроках.
+/// Спецификация: `docs/features/car.md`.
+///
 /// Всё, что относится к разделу, лежит в папке `Features/Car/`:
 /// модели данных, экраны, логика. Наружу отдаётся только `feature`.
 enum CarFeature {
@@ -10,7 +13,9 @@ enum CarFeature {
         title: "Авто",
         systemImage: "car.fill",
         models: [
-            // Сюда добавлять модели SwiftData раздела, например: CarEntry.self
+            CarVehicle.self,
+            CarEntry.self,
+            CarReminder.self,
         ]
     ) {
         CarRootView()

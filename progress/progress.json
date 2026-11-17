@@ -40,6 +40,14 @@
           "status": "done"
         },
         {
+          "title": "Собрать все 6 разделов вместе в main",
+          "status": "done"
+        },
+        {
+          "title": "Первая сборка в Xcode (⌘B) и исправление ошибок",
+          "status": "todo"
+        },
+        {
           "title": "Создать проект Supabase и подключить ключи",
           "status": "todo"
         },
@@ -63,23 +71,47 @@
       "emoji": "🥗",
       "tasks": [
         {
-          "title": "Обсудить, что именно учитывать (продукты, калории, вода)",
-          "status": "doing"
+          "title": "Обсудить, что именно учитывать (калории, БЖУ, вода)",
+          "status": "done"
         },
         {
           "title": "Модель данных и синхронизация",
-          "status": "todo"
+          "status": "done"
         },
         {
-          "title": "Экран дня: добавить приём пищи",
-          "status": "todo"
+          "title": "Экран дня: еда по приёмам пищи и вода",
+          "status": "done"
         },
         {
           "title": "История и итоги за неделю",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Свои цели у каждого из нас",
+          "status": "done"
+        },
+        {
+          "title": "Избранные блюда для быстрого добавления",
+          "status": "done"
+        },
+        {
+          "title": "Проверить на iPhone и поправить по отзывам",
+          "status": "todo"
+        },
+        {
+          "title": "База продуктов и сканер штрихкода",
+          "status": "todo"
+        },
+        {
+          "title": "Фото еды",
+          "status": "todo"
+        },
+        {
+          "title": "Вес и график веса",
+          "status": "todo"
+        },
+        {
+          "title": "Общее: список покупок и меню на неделю",
           "status": "todo"
         }
       ]
@@ -91,18 +123,34 @@
       "tasks": [
         {
           "title": "Обсудить, что учитывать (время, качество, Здоровье)",
-          "status": "doing"
+          "status": "done"
         },
         {
           "title": "Модель данных и синхронизация",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Запись сна: лёг, встал, как спалось",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "График сна за неделю и месяц",
+          "status": "done"
+        },
+        {
+          "title": "Цель сна и средние значения",
+          "status": "done"
+        },
+        {
+          "title": "Проверить раздел на iPhone через Xcode",
+          "status": "todo"
+        },
+        {
+          "title": "Импорт сна из Apple Здоровье",
+          "status": "todo"
+        },
+        {
+          "title": "Напоминание «пора спать»",
           "status": "todo"
         }
       ]
@@ -114,22 +162,38 @@
       "tasks": [
         {
           "title": "Обсудить шкалу и что видит партнёр",
-          "status": "doing"
+          "status": "done"
         },
         {
           "title": "Модель данных и синхронизация",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Быстрая отметка настроения за день",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Настроение партнёра и общая история",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Напоминание отметить настроение",
+          "status": "done"
+        },
+        {
+          "title": "Поддержка партнёра (❤️ 🤗 ☕️)",
+          "status": "done"
+        },
+        {
+          "title": "Приватные заметки «только для меня»",
+          "status": "done"
+        },
+        {
+          "title": "Принять в main и проверить на iPhone",
+          "status": "doing"
+        },
+        {
+          "title": "Связь настроения со сном и питанием",
           "status": "todo"
         }
       ]
@@ -141,26 +205,42 @@
       "tasks": [
         {
           "title": "Обсудить: общий и личные календари, задачи",
-          "status": "doing"
+          "status": "done"
         },
         {
           "title": "Модель событий и задач, синхронизация",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Календарь: месяц, неделя, день",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Добавление и правка событий",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Общие события пары и личные",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Список дел с галочками",
+          "status": "done"
+        },
+        {
+          "title": "Повторы и напоминания о событиях",
+          "status": "done"
+        },
+        {
+          "title": "Проверить календарь на iPhone",
+          "status": "todo"
+        },
+        {
+          "title": "Место в календаре для записей клиентов",
+          "status": "done"
+        },
+        {
+          "title": "События из календаря iPhone (просмотр)",
           "status": "todo"
         }
       ]
@@ -172,22 +252,34 @@
       "tasks": [
         {
           "title": "Обсудить, кто ведёт клиентов и что о них хранить",
-          "status": "doing"
+          "status": "done"
         },
         {
           "title": "Модель клиентов и записей, синхронизация",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Карточки клиентов",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Записи на время и расписание",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Оплаты и итоги за месяц",
+          "status": "done"
+        },
+        {
+          "title": "Напоминания о записи и кнопки WhatsApp / SMS",
+          "status": "done"
+        },
+        {
+          "title": "Проверить раздел на iPhone и поправить по отзывам",
+          "status": "todo"
+        },
+        {
+          "title": "Показывать записи клиентов в календаре",
           "status": "todo"
         }
       ]
@@ -199,22 +291,42 @@
       "tasks": [
         {
           "title": "Обсудить, что учитывать (заправки, ТО, документы)",
-          "status": "doing"
+          "status": "done"
         },
         {
           "title": "Модель данных и синхронизация",
-          "status": "todo"
+          "status": "done"
+        },
+        {
+          "title": "Несколько машин",
+          "status": "done"
         },
         {
           "title": "Заправки и расходы",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "ТО, ремонт и напоминания",
-          "status": "todo"
+          "status": "done"
         },
         {
           "title": "Документы и сроки (страховка, техосмотр)",
+          "status": "done"
+        },
+        {
+          "title": "Уведомления о сроках на телефоне",
+          "status": "done"
+        },
+        {
+          "title": "Итоги: месяц, год, расход топлива, кто платил",
+          "status": "done"
+        },
+        {
+          "title": "Проверить сборку в Xcode и на iPhone",
+          "status": "todo"
+        },
+        {
+          "title": "Фото чеков и документов",
           "status": "todo"
         }
       ]

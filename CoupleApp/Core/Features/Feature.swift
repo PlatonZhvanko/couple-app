@@ -18,6 +18,9 @@ struct Feature: Identifiable {
     /// Кому показывать вкладку. По умолчанию обоим.
     /// Например, `availableFor: [.owner]` — вкладка только у владельца.
     let availableFor: Set<CoupleMember>
+    /// Что раздел показывает в общем календаре (например, записи клиентов).
+    /// См. `Core/Calendar/CalendarItem.swift`. `nil` — ничего.
+    let calendarItems: CalendarItemProvider?
     let makeRootView: @MainActor () -> AnyView
 
     init<Content: View>(
@@ -26,6 +29,7 @@ struct Feature: Identifiable {
         systemImage: String,
         models: [any PersistentModel.Type] = [],
         availableFor: Set<CoupleMember> = Set(CoupleMember.allCases),
+        calendarItems: CalendarItemProvider? = nil,
         @ViewBuilder rootView: @escaping @MainActor () -> Content
     ) {
         self.id = id
@@ -33,6 +37,7 @@ struct Feature: Identifiable {
         self.systemImage = systemImage
         self.models = models
         self.availableFor = availableFor
+        self.calendarItems = calendarItems
         self.makeRootView = { AnyView(rootView()) }
     }
 
