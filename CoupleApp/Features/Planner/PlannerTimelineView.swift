@@ -121,7 +121,7 @@ struct PlannerTimelineView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(isToday ? Color.accentColor : Color.primary)
+                .foregroundStyle(isToday ? Color.plannerToday : Color.primary)
             } else {
                 VStack(spacing: 2) {
                     Text(weekday)
@@ -131,7 +131,7 @@ struct PlannerTimelineView: View {
                         .font(.headline)
                         .frame(width: 30, height: 30)
                         .background {
-                            if isToday { Circle().fill(Color.accentColor) }
+                            if isToday { Circle().fill(Color.plannerToday) }
                         }
                         .foregroundStyle(isToday ? Color.white : (isWeekend ? Color.red : Color.primary))
                 }
@@ -252,7 +252,7 @@ struct PlannerTimelineView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(isToday ? Color.accentColor.opacity(0.08) : Color.clear)
+        .background(isToday ? Color.plannerToday.opacity(0.09) : Color.clear)
         .overlay(alignment: .leading) {
             Rectangle().fill(Color.secondary.opacity(0.3)).frame(width: 0.5)
         }
@@ -286,9 +286,11 @@ struct PlannerTimelineView: View {
         let tall = height > 40
         let content = VStack(alignment: .leading, spacing: 1) {
             Text(block.title)
-                .font(isDayMode ? .callout.weight(.semibold) : .caption2.weight(.bold))
-                .lineLimit(tall ? 4 : 1)
-            if tall || isDayMode {
+                .font(isDayMode ? .callout.weight(.semibold) : .system(size: 9.5, weight: .bold))
+                .lineLimit(isDayMode ? (tall ? 4 : 1) : (tall ? 4 : 2))
+                .minimumScaleFactor(0.7)
+                .multilineTextAlignment(.leading)
+            if isDayMode && tall {
                 Text("\(PlannerCalendar.time(block.start))–\(PlannerCalendar.time(block.end))")
                     .font(.system(size: 9))
                     .opacity(0.75)
@@ -392,7 +394,7 @@ struct PlannerTimelineView: View {
             let end = min(max(occurrence.end, start.addingTimeInterval(minimum)), dayEnd)
             raw.append(PlannerTimelineBlock(
                 id: occurrence.id, source: .event(occurrence.event),
-                title: occurrence.event.displayTitle,
+                title: isDayMode ? occurrence.event.displayTitle : occurrence.event.plainTitle,
                 color: occurrence.event.categoryValue.color, start: start, end: end,
                 badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event)
             ))

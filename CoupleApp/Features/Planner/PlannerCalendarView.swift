@@ -354,9 +354,9 @@ struct PlannerCalendarView: View {
                     .frame(width: 34, height: 34)
                     .background {
                         if isSelected {
-                            Circle().fill(isToday ? Color.accentColor : Color.primary)
+                            Circle().fill(isToday ? Color.plannerToday : Color.primary)
                         } else if isToday {
-                            Circle().stroke(Color.accentColor, lineWidth: 1.5)
+                            Circle().stroke(Color.plannerToday, lineWidth: 1.5)
                         }
                     }
                     .foregroundStyle(isSelected ? Color(.systemBackground) : (inMonth ? Color.primary : Color.secondary.opacity(0.5)))

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Календарь раздела: русский язык, неделя с понедельника.
 enum PlannerCalendar {
@@ -149,4 +150,9 @@ extension Array where Element == PlannerEvent {
                 return lhs.event.title < rhs.event.title
             }
     }
+}
+
+extension Color {
+    /// Подсветка сегодняшнего дня: мягкий розовый.
+    static let plannerToday = Color(red: 1.0, green: 0.45, blue: 0.62)
 }

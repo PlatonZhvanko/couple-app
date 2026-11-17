@@ -19,7 +19,6 @@ struct PlannerRecordView: View {
     @Query(filter: #Predicate<PlannerSubscription> { $0.deletedAt == nil })
     private var subscriptions: [PlannerSubscription]
 
-    @AppStorage("planner.lastPayMethod") private var lastPayMethod = PlannerPayMethod.cash.rawValue
     @State private var clients: [PlannerClientDirectory.Entry] = []
     @State private var subscriptionClient: PlannerClientDirectory.Entry?
 
@@ -120,15 +119,17 @@ struct PlannerRecordView: View {
                         ?? PlannerPricing.price(for: event.categoryValue),
                     balanceText: balanceText(for: client),
                     canEdit: canEdit,
-                    onCycle: { cycle(client) },
+                    isGroup: event.categoryValue != .personal,
                     onSelect: { select($0, for: client) },
                     onSubscription: { subscriptionClient = client },
                     onAmount: { setAmount($0, for: client) }
                 )
             }
             if canEdit && participants.count > 1 {
-                Button {
-                    markAllPaid()
+                Menu {
+                    ForEach(bulkMethods) { item in
+                        Button("\(item.emoji) \(item.title)") { markAllPaid(with: item) }
+                    }
                 } label: {
                     Label("Все оплатили", systemImage: "checkmark.circle.fill")
                 }
@@ -137,7 +138,7 @@ struct PlannerRecordView: View {
             Text("Оплата")
         } footer: {
             if canEdit && !participants.isEmpty {
-                Text("Нажми на кружок: оплачено, потом крестик. Удерживай, чтобы выбрать способ.")
+                Text("Нажми на кружок и выбери, как оплатили.")
             }
         }
     }
@@ -148,24 +149,12 @@ struct PlannerRecordView: View {
         return "Абонемент: остаток \(PlannerPricing.format(balance))"
     }
 
-    private func cycle(_ client: PlannerClientDirectory.Entry) {
-        guard canEdit else { return }
-        let next: PlannerPayMethod
-        switch method(of: client) {
-        case .none: next = PlannerPayMethod(rawValue: lastPayMethod) ?? .cash
-        case .cash, .transfer, .subscription: next = .unpaid
-        case .unpaid: next = .none
-        }
-        apply(next, for: client)
-    }
-
     private func select(_ method: PlannerPayMethod, for client: PlannerClientDirectory.Entry) {
         guard canEdit else { return }
         apply(method, for: client)
     }
 
     private func apply(_ method: PlannerPayMethod, for client: PlannerClientDirectory.Entry) {
-        if method == .cash || method == .transfer { lastPayMethod = method.rawValue }
         PlannerPaymentStore.set(context, event: event, day: day, clientID: client.id, method: method)
         sync.requestSync()
     }
@@ -176,10 +165,14 @@ struct PlannerRecordView: View {
         sync.requestSync()
     }
 
-    private func markAllPaid() {
-        let paid = PlannerPayMethod(rawValue: lastPayMethod) ?? .cash
-        for client in participants where method(of: client) == .none {
-            PlannerPaymentStore.set(context, event: event, day: day, clientID: client.id, method: paid)
+    /// Способы для кнопки «Все оплатили»: у групп ещё абонемент.
+    private var bulkMethods: [PlannerPayMethod] {
+        event.categoryValue == .personal ? [.cash, .transfer] : [.cash, .transfer, .subscription]
+    }
+
+    private func markAllPaid(with method: PlannerPayMethod) {
+        for client in participants where self.method(of: client) == .none {
+            PlannerPaymentStore.set(context, event: event, day: day, clientID: client.id, method: method)
         }
         sync.requestSync()
     }
@@ -210,18 +203,20 @@ struct PlannerRecordView: View {
     }
 }
 
-/// Строка клиента: кружок оплаты, имя, сумма.
+/// Строка клиента: кружок оплаты, имя, сумма. По нажатию на кружок снизу
+/// появляется выбор способа: наличные, перевод, абонемент (у групп), не оплатил.
 private struct PlannerPaymentRow: View {
     let name: String
     let method: PlannerPayMethod
     let amount: Double
     let balanceText: String?
     let canEdit: Bool
-    let onCycle: () -> Void
+    let isGroup: Bool
     let onSelect: (PlannerPayMethod) -> Void
     let onSubscription: () -> Void
     let onAmount: (Double) -> Void
 
+    @State private var expanded = false
     @State private var amountText = ""
     @FocusState private var amountFocused: Bool
 
@@ -231,60 +226,78 @@ private struct PlannerPaymentRow: View {
         return .secondary
     }
 
+    private var choices: [PlannerPayMethod] {
+        isGroup ? [.cash, .transfer, .subscription, .unpaid] : [.cash, .transfer, .unpaid]
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            Menu {
-                ForEach([PlannerPayMethod.cash, .transfer, .subscription, .unpaid, .none]) { item in
-                    Button {
-                        onSelect(item)
-                    } label: {
-                        Label(item == .none ? "Сбросить" : item.title, systemImage: item.systemImage)
-                    }
-                }
-                Divider()
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
                 Button {
-                    onSubscription()
+                    guard canEdit else { return }
+                    withAnimation(.snappy) { expanded.toggle() }
                 } label: {
-                    Label("Абонемент клиента…", systemImage: "ticket")
+                    Image(systemName: method == .none ? "circle" : (method.isPaid ? "checkmark.circle.fill" : "xmark.circle.fill"))
+                        .font(.title)
+                        .foregroundStyle(color)
                 }
-            } label: {
-                Image(systemName: method == .none ? "circle" : (method.isPaid ? "checkmark.circle.fill" : "xmark.circle.fill"))
-                    .font(.title)
-                    .foregroundStyle(color)
-            } primaryAction: {
-                onCycle()
-            }
-            .disabled(!canEdit)
+                .buttonStyle(.borderless)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.body.weight(.medium))
-                if method != .none {
-                    HStack(spacing: 4) {
-                        Image(systemName: method.systemImage)
-                        Text(method == .unpaid ? "не оплачено" : method.title)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name).font(.body.weight(.medium))
+                    if method != .none {
+                        Text("\(method.emoji) \(method == .unpaid ? "не оплачено" : method.title)")
+                            .font(.caption)
+                            .foregroundStyle(color)
                     }
-                    .font(.caption)
-                    .foregroundStyle(color)
+                    if let balanceText {
+                        Text(balanceText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                if let balanceText {
-                    Text(balanceText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+
+                Spacer()
+
+                HStack(spacing: 2) {
+                    TextField("0", text: $amountText)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 64)
+                        .focused($amountFocused)
+                        .disabled(!canEdit)
+                    Text("₽").foregroundStyle(.secondary)
                 }
             }
 
-            Spacer()
-
-            HStack(spacing: 2) {
-                TextField("0", text: $amountText)
-                    .keyboardType(.numberPad)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 64)
-                    .focused($amountFocused)
-                    .disabled(!canEdit)
-                Text("₽").foregroundStyle(.secondary)
+            if expanded && canEdit {
+                HStack(spacing: 8) {
+                    ForEach(choices) { item in chip(item) }
+                }
+                HStack {
+                    if isGroup {
+                        Button {
+                            onSubscription()
+                        } label: {
+                            Label("Абонемент клиента…", systemImage: "ticket")
+                                .font(.footnote)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    Spacer()
+                    if method != .none {
+                        Button("Сбросить") {
+                            onSelect(.none)
+                            withAnimation(.snappy) { expanded = false }
+                        }
+                        .font(.footnote)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
+        .padding(.vertical, 2)
         .onAppear { amountText = Self.text(amount) }
         .onChange(of: amount) { _, newValue in
             if !amountFocused { amountText = Self.text(newValue) }
@@ -292,6 +305,26 @@ private struct PlannerPaymentRow: View {
         .onChange(of: amountFocused) { _, focused in
             if !focused { commitAmount() }
         }
+    }
+
+    private func chip(_ item: PlannerPayMethod) -> some View {
+        let selected = method == item
+        let tint: Color = item == .unpaid ? .red : .green
+        return Button {
+            onSelect(item)
+            withAnimation(.snappy) { expanded = false }
+        } label: {
+            VStack(spacing: 2) {
+                Text(item.emoji).font(.title3)
+                Text(item.chipTitle).font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 10).fill(selected ? tint.opacity(0.25) : Color.secondary.opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? tint : Color.clear, lineWidth: 1.5))
+            .foregroundStyle(Color.primary)
+        }
+        .buttonStyle(.borderless)
     }
 
     private func commitAmount() {
