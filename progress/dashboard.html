@@ -1,0 +1,285 @@
+<title>Прогресс «Вдвоём»</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap">
+<style>
+/* Layout: hero with the mascot and the whole-app ring, then a grid of area cards that open into checklists. */
+:root {
+  --bg: #fbf6f1;
+  --surface: #ffffff;
+  --surface-2: #f5ece3;
+  --fg: #2b211b;
+  --muted: #7d6b5f;
+  --line: #eadccf;
+  --accent: #d9773f;
+  --body: #e8834a;
+  --body-shade: #c9652f;
+  --ink: #2b1a12;
+  --cheek: #ff9b8a;
+  --leaf: #6cbf4f;
+  --t-white: #ffffff;
+  --t-red: #e5484d;
+  --t-orange: #f08a3a;
+  --t-yellow: #f2c218;
+  --t-lime: #a6d83a;
+  --t-green: #2fae66;
+  --white-edge: #d8c9bc;
+  --font-display: "Fredoka", "Nunito", ui-rounded, system-ui, sans-serif;
+  --font-body: "Nunito", ui-rounded, system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1512; --surface: #251d18; --surface-2: #30261f; --fg: #f6ebe2; --muted: #b8a597;
+    --line: #3d3128; --accent: #f0955a; --white-edge: #8b7a6d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1512; --surface: #251d18; --surface-2: #30261f; --fg: #f6ebe2; --muted: #b8a597;
+  --line: #3d3128; --accent: #f0955a; --white-edge: #8b7a6d; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+
+/* Hero */
+.hero {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 28px;
+  padding: 22px; display: grid; grid-template-columns: auto 1fr; gap: 22px; align-items: center;
+}
+.mascot { width: 190px; height: 190px; }
+.hero-main { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.hero h1 { font-size: 26px; font-weight: 700; }
+.big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.big .num { font-family: var(--font-display); font-weight: 700; font-size: 64px; line-height: 1; font-variant-numeric: tabular-nums; }
+.tier-pill { font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--white-edge); color: #2b211b; }
+.say { font-size: 16px; color: var(--fg); font-weight: 600; }
+.say small { display: block; color: var(--muted); font-weight: 400; font-size: 13px; }
+
+.scale { position: relative; padding-top: 14px; }
+.scale-bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; border: 1px solid var(--white-edge); }
+.scale-bar span { display: block; height: 100%; }
+.scale-marker { position: absolute; top: 0; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 10px solid var(--fg); transform: translateX(-7px); transition: left .8s ease; }
+.scale-ticks { position: relative; height: 16px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.scale-ticks span { position: absolute; transform: translateX(-50%); }
+.scale-ticks span:first-child { transform: none; }
+.scale-ticks span:last-child { transform: translateX(-100%); }
+
+button.toggle {
+  align-self: flex-start; font: inherit; font-weight: 800; color: var(--fg); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; cursor: pointer;
+}
+button.toggle:hover { border-color: var(--accent); }
+button:focus-visible, .card-head:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* All-tasks panel */
+.all { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 18px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 28px; }
+.all h3 { font-size: 16px; display: flex; justify-content: space-between; gap: 8px; }
+.all h3 span { color: var(--muted); font-family: var(--font-body); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Area cards */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; align-items: start; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; overflow: hidden; }
+.card-head { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; padding: 14px 16px; cursor: pointer; width: 100%; background: none; border: 0; text-align: left; font: inherit; color: inherit; }
+.card-head svg { width: 64px; height: 64px; }
+.card-title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.card-title h2 { font-size: 18px; font-weight: 600; }
+.card-title .pct { font-family: var(--font-display); font-weight: 700; font-size: 22px; font-variant-numeric: tabular-nums; }
+.bar { height: 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; margin-top: 6px; }
+.bar i { display: block; height: 100%; border-radius: 999px; transition: width .8s ease; }
+.meta { margin-top: 6px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.chev { transition: transform .2s; display: inline-block; }
+.card.open .chev { transform: rotate(90deg); }
+.card .list { border-top: 1px dashed var(--line); padding: 10px 16px 14px; }
+
+ul.tasks { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+ul.tasks li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; font-size: 14px; }
+.mark { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 13px; font-weight: 800; border: 1.5px solid var(--line); margin-top: 1px; }
+li.done .mark { background: var(--t-green); border-color: var(--t-green); color: #fff; }
+li.doing .mark { background: var(--t-yellow); border-color: var(--t-yellow); color: #2b211b; }
+li.done .t { color: var(--muted); }
+li.doing .t::after { content: " · в работе"; color: var(--accent); font-weight: 700; font-size: 12px; }
+
+.foot { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.err { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+
+@keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
+@keyframes zz { 0% { opacity: 0; transform: translate(0,0) } 30% { opacity: 1 } 100% { opacity: 0; transform: translate(6px,-10px) } }
+@keyframes twinkle { 0%,100% { opacity: .2; transform: scale(.7) } 50% { opacity: 1; transform: scale(1) } }
+.m-body { animation: bob 3s ease-in-out infinite; transform-box: fill-box; }
+.m-z { animation: zz 2.4s ease-in-out infinite; }
+.m-spark { animation: twinkle 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@media (prefers-reduced-motion: reduce) { .m-body, .m-z, .m-spark { animation: none; } .bar i, .scale-marker { transition: none; } }
+
+@media (max-width: 560px) {
+  .hero { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .hero-main { align-items: stretch; width: 100%; }
+  .big { justify-content: center; }
+  button.toggle { align-self: center; }
+  .mascot { width: 160px; height: 160px; }
+}
+</style>
+
+<div class="wrap" id="app">
+  <div class="err" id="loading">Загружаю прогресс…</div>
+</div>
+
+<script>
+const TIERS = [
+  { max: 10,  name: "Белый",    color: "var(--t-white)",  mood: "sleepy",   say: "Рыжик ещё спит", sub: "Почти всё впереди. Самое время начинать." },
+  { max: 20,  name: "Красный",  color: "var(--t-red)",    mood: "worried",  say: "Рыжик волнуется", sub: "Первые шаги сделаны, но работы много." },
+  { max: 45,  name: "Оранжевый",color: "var(--t-orange)", mood: "focused",  say: "Рыжик засучил рукава", sub: "Дело пошло, держим темп." },
+  { max: 60,  name: "Жёлтый",   color: "var(--t-yellow)", mood: "happy",    say: "Рыжик улыбается", sub: "Половина пути позади." },
+  { max: 85,  name: "Лайм",     color: "var(--t-lime)",   mood: "excited",  say: "Рыжик в восторге", sub: "Уже можно пользоваться, доводим детали." },
+  { max: 101, name: "Зелёный",  color: "var(--t-green)",  mood: "party",    say: "Рыжик празднует", sub: "Почти всё готово!" }
+];
+const tierOf = p => TIERS.find(t => p < t.max) || TIERS[TIERS.length - 1];
+const SCORE = { done: 1, doing: 0.5, todo: 0 };
+
+function pctOf(tasks) {
+  let w = 0, s = 0;
+  for (const t of tasks) { const wt = t.weight ?? 1; w += wt; s += wt * (SCORE[t.status] ?? 0); }
+  return w ? Math.round((s / w) * 100) : 0;
+}
+
+/* Original mascot "Рыжик": a round orange creature with a sprout. Expression follows the tier. */
+function mascot(p, opts = {}) {
+  const tier = tierOf(p);
+  const mood = p >= 100 ? "party" : tier.mood;
+  const ink = "var(--ink)";
+  let eyes = "", brows = "", mouth = "", extra = "", arms;
+  const dotEye = (x) => `<circle cx="${x}" cy="64" r="5" fill="${ink}"/><circle cx="${x + 1.6}" cy="62.2" r="1.6" fill="#fff"/>`;
+  const armsDown = `<ellipse cx="22" cy="80" rx="7" ry="10" fill="var(--body)" transform="rotate(20 22 80)"/><ellipse cx="98" cy="80" rx="7" ry="10" fill="var(--body)" transform="rotate(-20 98 80)"/>`;
+  const armsUp = `<ellipse cx="20" cy="50" rx="7" ry="11" fill="var(--body)" transform="rotate(-30 20 50)"/><ellipse cx="100" cy="50" rx="7" ry="11" fill="var(--body)" transform="rotate(30 100 50)"/>`;
+  arms = armsDown;
+  const spark = (x, y, s, d) => `<path class="m-spark" style="animation-delay:${d}s" d="M${x} ${y - s} L${x + s * .3} ${y - s * .3} L${x + s} ${y} L${x + s * .3} ${y + s * .3} L${x} ${y + s} L${x - s * .3} ${y + s * .3} L${x - s} ${y} L${x - s * .3} ${y - s * .3} Z" fill="var(--t-yellow)"/>`;
+  switch (mood) {
+    case "sleepy":
+      eyes = `<path d="M40 64 q6 5 12 0 M68 64 q6 5 12 0" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+      mouth = `<ellipse cx="60" cy="81" rx="3.5" ry="3" fill="${ink}"/>`;
+      if (!opts.mini) extra = `<g font-family="Fredoka, sans-serif" font-weight="700" fill="var(--muted)"><text class="m-z" x="92" y="34" font-size="14">z</text><text class="m-z" style="animation-delay:.8s" x="102" y="22" font-size="11">z</text></g>`;
+      break;
+    case "worried":
+      eyes = dotEye(46) + dotEye(74);
+      brows = `<path d="M39 55 L51 51 M69 51 L81 55" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
+      mouth = `<path d="M50 84 q5 -5 10 0 q5 5 10 0" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+      extra = `<path d="M88 46 q5 8 0 11 q-5 -3 0 -11z" fill="#7cc7ff"/>`;
+      break;
+    case "focused":
+      eyes = dotEye(46) + dotEye(74);
+      brows = `<path d="M39 52 L51 56 M69 56 L81 52" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
+      mouth = `<path d="M52 81 q8 4 16 0" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+      break;
+    case "happy":
+      eyes = dotEye(46) + dotEye(74);
+      mouth = `<path d="M49 78 q11 11 22 0" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+      break;
+    case "excited":
+      eyes = dotEye(46) + dotEye(74);
+      mouth = `<path d="M47 76 q13 18 26 0 z" fill="${ink}"/><path d="M54 84 q6 4 12 0 q-6 -4 -12 0z" fill="var(--cheek)"/>`;
+      arms = armsUp;
+      if (!opts.mini) extra = spark(14, 26, 6, 0) + spark(106, 30, 5, .6);
+      break;
+    case "party":
+      eyes = `<path d="M40 66 q6 -8 12 0 M68 66 q6 -8 12 0" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+      mouth = `<path d="M46 75 q14 20 28 0 z" fill="${ink}"/><path d="M54 84 q6 4 12 0 q-6 -4 -12 0z" fill="var(--cheek)"/>`;
+      arms = armsUp;
+      extra = spark(14, 26, 6, 0) + spark(106, 28, 6, .5) + spark(10, 60, 4, 1);
+      break;
+  }
+  const size = opts.mini ? 64 : 190;
+  return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" role="img" aria-label="${tier.say}, ${p}%">
+    <circle cx="60" cy="66" r="52" fill="${tier.color}" opacity="${mood === "sleepy" ? 1 : .28}" stroke="var(--white-edge)" stroke-width="${mood === "sleepy" ? 1 : 0}"/>
+    <g class="${opts.mini ? "" : "m-body"}">
+      ${arms}
+      <ellipse cx="46" cy="104" rx="9" ry="5" fill="var(--body-shade)"/>
+      <ellipse cx="74" cy="104" rx="9" ry="5" fill="var(--body-shade)"/>
+      <path d="M60 30 C88 30 98 50 98 70 C98 92 82 104 60 104 C38 104 22 92 22 70 C22 50 32 30 60 30 Z" fill="var(--body)"/>
+      <path d="M36 44 C42 36 50 33 58 33" stroke="#fff" stroke-opacity=".45" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M60 31 C60 24 61 20 63 17" stroke="var(--leaf)" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M63 18 C70 10 80 12 82 15 C76 21 69 22 63 18 Z" fill="var(--leaf)"/>
+      <ellipse cx="37" cy="75" rx="6" ry="4" fill="var(--cheek)" opacity=".55"/>
+      <ellipse cx="83" cy="75" rx="6" ry="4" fill="var(--cheek)" opacity=".55"/>
+      ${brows}${eyes}${mouth}
+    </g>
+    ${extra}
+  </svg>`;
+}
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const statusMark = { done: "✓", doing: "…", todo: "" };
+const taskList = tasks => `<ul class="tasks">${
+  [...tasks].sort((a, b) => ["done", "doing", "todo"].indexOf(a.status) - ["done", "doing", "todo"].indexOf(b.status))
+    .map(t => `<li class="${esc(t.status)}"><span class="mark">${statusMark[t.status] ?? ""}</span><span class="t">${esc(t.title)}</span></li>`).join("")
+}</ul>`;
+const countText = tasks => { const d = tasks.filter(t => t.status === "done").length; return `${d} из ${tasks.length} готово`; };
+
+let openAll = false;
+const openCards = new Set();
+try { const s = JSON.parse(localStorage.getItem("vdvoem-open") || "{}"); openAll = !!s.all; (s.cards || []).forEach(c => openCards.add(c)); } catch (e) {}
+const saveOpen = () => { try { localStorage.setItem("vdvoem-open", JSON.stringify({ all: openAll, cards: [...openCards] })); } catch (e) {} };
+
+function render(data) {
+  const areas = data.areas.map(a => ({ ...a, pct: pctOf(a.tasks) }));
+  const all = areas.flatMap(a => a.tasks);
+  const total = pctOf(all);
+  const tier = tierOf(total);
+  const segs = [[0, 10, "--t-white"], [10, 20, "--t-red"], [20, 45, "--t-orange"], [45, 60, "--t-yellow"], [60, 85, "--t-lime"], [85, 100, "--t-green"]];
+  const updated = data.updated ? new Date(data.updated + "T12:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) : "";
+
+  document.getElementById("app").innerHTML = `
+    <section class="hero">
+      <div class="mascot">${mascot(total)}</div>
+      <div class="hero-main">
+        <div class="eyebrow">Готовность приложения «Вдвоём»</div>
+        <div class="big"><span class="num">${total}%</span><span class="tier-pill" style="background:${tier.color}">${tier.name}</span></div>
+        <div class="say">${tier.say}<small>${tier.sub} ${countText(all)}.</small></div>
+        <div class="scale" aria-hidden="true">
+          <div class="scale-marker" style="left:${Math.min(total, 100)}%"></div>
+          <div class="scale-bar">${segs.map(([a, b, c]) => `<span style="width:${b - a}%;background:var(${c})"></span>`).join("")}</div>
+          <div class="scale-ticks">${[0, 10, 20, 45, 60, 85, 100].map(v => `<span style="left:${v}%">${v}</span>`).join("")}</div>
+        </div>
+        <button class="toggle" id="toggleAll" aria-expanded="${openAll}">${openAll ? "Скрыть список" : "Что сделано и что впереди"}</button>
+      </div>
+    </section>
+    <section class="all" id="allPanel" ${openAll ? "" : "hidden"}>
+      ${areas.map(a => `<div><h3>${esc(a.emoji || "")} ${esc(a.title)} <span>${a.pct}%</span></h3>${taskList(a.tasks)}</div>`).join("")}
+    </section>
+    <section class="grid">
+      ${areas.map(a => {
+        const t = tierOf(a.pct); const open = openCards.has(a.id);
+        return `<article class="card ${open ? "open" : ""}" data-id="${esc(a.id)}">
+          <button class="card-head" aria-expanded="${open}">
+            ${mascot(a.pct, { mini: true })}
+            <div style="min-width:0">
+              <div class="card-title"><h2>${esc(a.emoji || "")} ${esc(a.title)}</h2><span class="pct">${a.pct}%</span></div>
+              <div class="bar"><i style="width:${Math.max(a.pct, 2)}%;background:${t.color};${t.max === 10 ? "box-shadow:inset 0 0 0 1px var(--white-edge)" : ""}"></i></div>
+              <div class="meta"><span>${countText(a.tasks)}</span><span>Список <span class="chev">›</span></span></div>
+            </div>
+          </button>
+          <div class="list" ${open ? "" : "hidden"}>${taskList(a.tasks)}</div>
+        </article>`;
+      }).join("")}
+    </section>
+    <div class="foot"><span>Обновлено ${esc(updated)}</span><span>Готово = 1, в работе = ½, впереди = 0. Новые идеи сразу добавляются в список.</span></div>
+  `;
+
+  document.getElementById("toggleAll").onclick = () => { openAll = !openAll; saveOpen(); render(data); };
+  document.querySelectorAll(".card-head").forEach(btn => btn.onclick = () => {
+    const id = btn.closest(".card").dataset.id;
+    openCards.has(id) ? openCards.delete(id) : openCards.add(id); saveOpen(); render(data);
+  });
+}
+
+fetch("progress.json", { cache: "no-store" })
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(render)
+  .catch(() => { document.getElementById("loading").textContent = "Не получилось загрузить файл прогресса. Обновите страницу."; });
+</script>
