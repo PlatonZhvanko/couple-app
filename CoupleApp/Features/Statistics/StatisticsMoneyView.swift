@@ -18,8 +18,15 @@ struct StatisticsMoneyView: View {
     private func sum(_ list: [PlannerPayment]) -> Double { list.reduce(0) { $0 + $1.amount } }
     private var sold: Double { soldList.reduce(0) { $0 + $1.amount } }
 
-    private var inPeriod: [StatisticsVisit] {
-        snapshot.visits.filter { period.contains($0.day) && $0.start <= .now }.sorted { $0.start > $1.start }
+    /// Занятия периода считаются один раз при создании экрана.
+    private let inPeriod: [StatisticsVisit]
+
+    init(snapshot: StatisticsSnapshot, period: StatisticsPeriod) {
+        self.snapshot = snapshot
+        self.period = period
+        self.inPeriod = snapshot.visits
+            .filter { period.contains($0.day) && $0.start <= .now }
+            .sorted { $0.start > $1.start }
     }
     private var paidVisits: [StatisticsVisit] { inPeriod.filter { $0.method.isPaid } }
     private var refusedVisits: [StatisticsVisit] { inPeriod.filter { $0.method == .unpaid } }

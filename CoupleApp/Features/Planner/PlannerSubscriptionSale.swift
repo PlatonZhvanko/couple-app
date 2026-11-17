@@ -239,9 +239,13 @@ struct PlannerSubscriptionSettingsView: View {
             names = Dictionary(PlannerClientDirectory.all(context).map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         }
         .task(id: sold.count) {
+            // Один проход по оплатам для всех клиентов сразу.
             var result: [UUID: Double] = [:]
-            for id in Set(sold.map(\.clientID)) {
-                result[id] = PlannerClientDirectory.stats(for: id, context: context).earned
+            for payment in PlannerPaymentStore.cashPayments(context) {
+                result[payment.clientID, default: 0] += payment.amount
+            }
+            for sub in PlannerPaymentStore.allSubscriptions(context) {
+                result[sub.clientID, default: 0] += sub.amount
             }
             earned = result
         }

@@ -46,11 +46,11 @@ struct StatisticsRootView: View {
     }
 
     private var reloadKey: String {
-        "\(events.count)-\(payments.count)-\(subscriptions.count)-\(events.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(payments.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(period.interval.end.timeIntervalSince1970)"
+        "\(events.count)-\(payments.count)-\(subscriptions.count)-\(events.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(payments.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(period.interval.start.timeIntervalSince1970)-\(period.interval.end.timeIntervalSince1970)"
     }
 
     private func reload() {
-        snapshot = StatisticsSnapshot.load(context, until: period.interval.end)
+        snapshot = StatisticsSnapshot.load(context, from: period.interval.start, until: period.interval.end)
     }
 
     private var periodBar: some View {
