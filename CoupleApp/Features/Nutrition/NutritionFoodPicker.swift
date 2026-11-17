@@ -251,7 +251,8 @@ struct NutritionFoodPicker: View {
                 food: food,
                 showsMeal: diary != nil,
                 meal: diary?.meal ?? .snack,
-                confirmTitle: diary != nil ? "Записать" : "Добавить"
+                confirmTitle: diary != nil ? "Записать" : "Добавить",
+                onSaveFood: { saveCustom($0) }
             ) { values, grams, meal in
                 if let web { cache(web) }
                 confirm(values, grams, meal)
@@ -285,6 +286,21 @@ struct NutritionFoodPicker: View {
             onPickIngredient?(values, grams)
         }
         dismiss()
+    }
+
+    /// Сохранить исправленный продукт как свой.
+    private func saveCustom(_ values: NutritionFoodValues) {
+        let food = NutritionFood(member: account.current)
+        food.name = values.name
+        food.brand = values.brand
+        food.kcal = values.kcal
+        food.protein = values.protein
+        food.fat = values.fat
+        food.carbs = values.carbs
+        food.pieceGrams = values.pieceGrams
+        context.insert(food)
+        try? context.save()
+        sync.requestSync()
     }
 
     /// Запоминаем найденный в интернете продукт, чтобы он был и без сети.

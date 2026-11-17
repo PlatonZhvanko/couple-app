@@ -9,14 +9,27 @@ struct NutritionPortionView: View {
     var confirmTitle: String
     /// Что сделать при подтверждении: продукт, граммы, приём пищи.
     var onConfirm: (NutritionFoodValues, Double, NutritionMealType) -> Void
+    /// Если задано, можно сохранить исправленный продукт как свой.
+    var onSaveFood: ((NutritionFoodValues) -> Void)?
 
     @State private var grams: Double?
     @State private var meal: NutritionMealType
+    @State private var kcal100: Double?
+    @State private var protein100: Double?
+    @State private var fat100: Double?
+    @State private var carbs100: Double?
+    @State private var saveAsMine = false
 
     init(food: NutritionFoodValues, initialGrams: Double? = nil, showsMeal: Bool = true,
          meal: NutritionMealType = .snack, confirmTitle: String = "Записать",
+         onSaveFood: ((NutritionFoodValues) -> Void)? = nil,
          onConfirm: @escaping (NutritionFoodValues, Double, NutritionMealType) -> Void) {
         self.food = food
+        self.onSaveFood = onSaveFood
+        _kcal100 = State(initialValue: food.kcal)
+        _protein100 = State(initialValue: food.protein)
+        _fat100 = State(initialValue: food.fat)
+        _carbs100 = State(initialValue: food.carbs)
         let start = initialGrams ?? food.defaultGrams
         self.initialGrams = start
         self.showsMeal = showsMeal
@@ -28,17 +41,38 @@ struct NutritionPortionView: View {
     }
 
     private var current: Double { max(grams ?? 0, 0) }
-    private var totals: NutritionTotals { food.totals(grams: current) }
+    /// Продукт с учётом поправленных значений на 100 г.
+    private var edited: NutritionFoodValues {
+        var copy = food
+        copy.kcal = max(kcal100 ?? 0, 0)
+        copy.protein = max(protein100 ?? 0, 0)
+        copy.fat = max(fat100 ?? 0, 0)
+        copy.carbs = max(carbs100 ?? 0, 0)
+        return copy
+    }
+    private var totals: NutritionTotals { edited.totals(grams: current) }
+    private var isChanged: Bool { edited != food }
 
     var body: some View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(food.displayName).font(.headline)
-                    Text("На 100 г: \(food.kcal.nutritionText) ккал · Б \(food.protein.nutritionText) · Ж \(food.fat.nutritionText) · У \(food.carbs.nutritionText)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
+            }
+
+            Section {
+                valueField("Калории", "ккал", $kcal100)
+                valueField("Белки", "г", $protein100)
+                valueField("Жиры", "г", $fat100)
+                valueField("Углеводы", "г", $carbs100)
+                if onSaveFood != nil && isChanged {
+                    Toggle("Сохранить как мой продукт", isOn: $saveAsMine)
+                }
+            } header: {
+                Text("На 100 г")
+            } footer: {
+                Text("Значения можно поправить по упаковке: пересчёт порции идёт сразу.")
             }
 
             Section("Вес порции") {
@@ -94,9 +128,24 @@ struct NutritionPortionView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button(confirmTitle) { onConfirm(food, current, meal) }
+                Button(confirmTitle) {
+                    if saveAsMine, isChanged { onSaveFood?(edited) }
+                    onConfirm(edited, current, meal)
+                }
                     .disabled(current <= 0)
             }
+        }
+    }
+
+    private func valueField(_ title: String, _ unit: String, _ value: Binding<Double?>) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            TextField("0", value: value, format: .number)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 100)
+            Text(unit).foregroundStyle(.secondary)
         }
     }
 
