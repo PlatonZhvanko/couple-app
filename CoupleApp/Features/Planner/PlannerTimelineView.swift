@@ -300,39 +300,29 @@ struct PlannerTimelineView: View {
         _ block: PlannerTimelineBlock, height: CGFloat, day: Date, index: Int,
         range: Range<Int>, slotHeight: CGFloat, columnWidth: CGFloat
     ) -> some View {
-        // Фамилия сверху, имя снизу. Шрифт берём самый крупный из тех, что помещаются
-        // по высоте и ширине блока, так что многоточий не бывает.
+        // Фамилия сверху, имя снизу, обе строки одного размера и всегда ниже значка оплаты.
+        // Шрифт берём самый крупный из тех, что помещаются по высоте и ширине блока.
         let narrow = block.columns > 1
         let words = block.title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-        let twoLines = words.count >= 2 && height >= 24
+        let topInset: CGFloat = height >= 22 ? 11 : 1
+        let twoLines = words.count >= 2 && height - topInset >= 22
         let first = words.first ?? block.title
         let rest = words.dropFirst().joined(separator: " ")
         let lineCount: CGFloat = twoLines ? 2 : 1
-        let textWidth = max(10, columnWidth / CGFloat(max(block.columns, 1)) - 7)
+        let textWidth = max(10, columnWidth / CGFloat(max(block.columns, 1)) - 6)
         let longest = CGFloat(max(1, twoLines ? max(first.count, rest.count) : block.title.count))
-        let byHeight = (height - 5) / (lineCount * 1.2)
-        let byWidth = textWidth / (longest * 0.6)
+        let byHeight = (height - topInset - 3) / (lineCount * 1.2)
+        let byWidth = textWidth / (longest * 0.64)
         let maxFont: CGFloat = isDayMode ? 22 : 17
         let fontSize = max(8, min(maxFont, byHeight, byWidth))
-        let showTime = !narrow && height - 5 > fontSize * lineCount * 1.2 + 14
+        let showTime = !narrow && height - topInset - 3 > fontSize * lineCount * 1.2 + 14
         let content = VStack(alignment: .leading, spacing: 0) {
-            if twoLines {
-                Text(first)
-                    .font(.system(size: fontSize, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .padding(.trailing, block.badge.symbol == nil ? 0 : 11)
-                Text(rest)
-                    .font(.system(size: fontSize, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-            } else {
-                Text(block.title)
-                    .font(.system(size: fontSize, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .padding(.trailing, block.badge.symbol == nil ? 0 : 11)
-            }
+            // Одним текстом, чтобы при нехватке места обе строки уменьшались вместе.
+            Text(twoLines ? first + "\n" + rest : block.title)
+                .font(.system(size: fontSize, weight: .bold))
+                .lineLimit(Int(lineCount))
+                .minimumScaleFactor(0.5)
+                .multilineTextAlignment(.leading)
             if showTime {
                 Text("\(PlannerCalendar.time(block.start))–\(PlannerCalendar.time(block.end))")
                     .font(.system(size: isDayMode ? 12 : 10, weight: .medium))
@@ -343,7 +333,7 @@ struct PlannerTimelineView: View {
         }
         .padding(.leading, 3)
         .padding(.trailing, 1)
-        .padding(.top, 2)
+        .padding(.top, topInset)
         .padding(.bottom, 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .topTrailing) {
