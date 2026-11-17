@@ -7,6 +7,8 @@ struct PlannerTimelineView: View {
     let days: [Date]
     let isDayMode: Bool
     let events: [PlannerEvent]
+    /// Цвет записи (свой, по группе, делу, клиенту или по виду).
+    let colorFor: (PlannerEvent) -> Color
     let externalItems: (Date) -> [CalendarItem]
     /// Значок оплаты записи за этот день.
     let badge: (PlannerEvent, Date) -> PlannerPayBadge
@@ -22,6 +24,8 @@ struct PlannerTimelineView: View {
     let onEventTap: (PlannerEvent, Date) -> Void
     /// Запись перетащили: событие, начало этого раза, новое начало.
     let onMove: (PlannerEvent, Date, Date) -> Void
+    /// Смахнули влево (1) или вправо (-1): листаем неделю или день.
+    var onSwipe: (Int) -> Void = { _ in }
 
     static let slotMinutes = 30
     private let timeColumnWidth: CGFloat = 46
@@ -36,6 +40,8 @@ struct PlannerTimelineView: View {
     @State private var dragID: String?
     @State private var dragDay: Date?
     @State private var dragOffset: CGSize = .zero
+    /// Блок двигали: такой жест не считаем листанием.
+    @State private var blockWasDragged = false
 
     private var cal: Calendar { PlannerCalendar.calendar }
 
@@ -82,6 +88,17 @@ struct PlannerTimelineView: View {
                 .scrollDisabled(!showFullDay && fit >= 14 && dragID == nil)
             }
         }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 30)
+                .onEnded { value in
+                    defer { blockWasDragged = false }
+                    guard !blockWasDragged, dragID == nil else { return }
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    guard abs(dx) > 70, abs(dx) > abs(dy) * 2 else { return }
+                    onSwipe(dx < 0 ? 1 : -1)
+                }
+        )
     }
 
     // MARK: - Шапка с днями
@@ -283,23 +300,29 @@ struct PlannerTimelineView: View {
         _ block: PlannerTimelineBlock, height: CGFloat, day: Date, index: Int,
         range: Range<Int>, slotHeight: CGFloat, columnWidth: CGFloat
     ) -> some View {
-        let tall = height > 40
+        // Блоки, которые делят время, становятся узкими: шрифт чуть меньше, но всё равно крупный.
+        let narrow = block.columns > 1
+        let fontSize: CGFloat = isDayMode ? (narrow ? 15 : 19) : (narrow ? 11.5 : 14)
+        let lineHeight = fontSize * 1.2
+        let topInset: CGFloat = height > 34 ? 13 : 2
+        let lines = max(1, Int((height - topInset - 4) / lineHeight))
+        let showTime = height > 52 && !narrow
         let content = VStack(alignment: .leading, spacing: 1) {
             Text(block.title)
-                .font(isDayMode ? .body.weight(.semibold) : .system(size: 11, weight: .bold))
-                .lineLimit(isDayMode ? (tall ? 4 : 1) : (tall ? 4 : 2))
-                .minimumScaleFactor(0.7)
+                .font(.system(size: fontSize, weight: .bold))
+                .lineLimit(showTime ? max(1, lines - 1) : lines)
+                .minimumScaleFactor(0.65)
                 .multilineTextAlignment(.leading)
-            if isDayMode && tall {
+            if showTime {
                 Text("\(PlannerCalendar.time(block.start))–\(PlannerCalendar.time(block.end))")
-                    .font(.system(size: 9))
+                    .font(.system(size: isDayMode ? 12 : 10, weight: .medium))
                     .opacity(0.75)
                     .lineLimit(1)
             }
         }
-        .padding(.leading, 3)
-        .padding(.trailing, block.badge.symbol == nil ? 3 : 14)
-        .padding(.top, height > 30 ? 13 : 2)
+        .padding(.leading, 4)
+        .padding(.trailing, block.badge.symbol == nil ? 3 : 15)
+        .padding(.top, topInset)
         .padding(.bottom, 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .topTrailing) {
@@ -353,6 +376,7 @@ struct PlannerTimelineView: View {
             .onChanged { value in
                 if case .second(true, let drag?) = value {
                     dragID = block.id
+                    blockWasDragged = true
                     dragDay = days[index]
                     dragOffset = drag.translation
                 }
@@ -396,7 +420,7 @@ struct PlannerTimelineView: View {
             raw.append(PlannerTimelineBlock(
                 id: occurrence.id, source: .event(occurrence.event),
                 title: occurrence.event.plainTitle,
-                color: occurrence.event.categoryValue.color, start: start, end: end,
+                color: colorFor(occurrence.event), start: start, end: end,
                 badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event),
                 emoji: occurrence.event.categoryValue.emoji ?? ""
             ))

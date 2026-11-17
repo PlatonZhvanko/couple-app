@@ -20,6 +20,8 @@ struct PlannerCalendarView: View {
     @Query(filter: #Predicate<PlannerPayment> { $0.deletedAt == nil })
     private var payments: [PlannerPayment]
     @State private var showSale = false
+    @Query(filter: #Predicate<PlannerColorRule> { $0.deletedAt == nil })
+    private var colorRules: [PlannerColorRule]
     @Query(filter: #Predicate<PlannerSubscription> { $0.deletedAt == nil })
     private var subscriptions: [PlannerSubscription]
 
@@ -267,6 +269,7 @@ struct PlannerCalendarView: View {
                 days: days,
                 isDayMode: dayFocus,
                 events: events,
+                colorFor: { PlannerColorStore.color(for: $0, rules: colorRules) },
                 externalItems: { items(on: $0) },
                 badge: { event, day in PlannerPaymentStore.badge(for: event, day: day, payments: payments) },
                 ownerLetter: { ownerLetter($0) },
@@ -289,7 +292,8 @@ struct PlannerCalendarView: View {
                     guard moving == nil else { return }
                     sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
                 },
-                onMove: { event, from, to in moveByDrag(event, from: from, to: to) }
+                onMove: { event, from, to in moveByDrag(event, from: from, to: to) },
+                onSwipe: { movePlanner($0) }
             )
             .overlay(alignment: .bottomTrailing) {
                 Text("Сегодня 💰 \(Int(todayEarned)) ₽")

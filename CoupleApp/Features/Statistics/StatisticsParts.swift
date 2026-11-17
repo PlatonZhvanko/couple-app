@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Одна строка отчёта, которая раскрывается и показывает, из чего сложилась сумма.
+/// Одна строка отчёта: по нажатию открывается отдельное окно со списком, из чего сложилась сумма.
 struct StatisticsLine<Details: View>: View {
     let title: String
     let value: String
@@ -8,8 +8,16 @@ struct StatisticsLine<Details: View>: View {
     @ViewBuilder let details: () -> Details
 
     var body: some View {
-        DisclosureGroup {
-            details()
+        NavigationLink {
+            List {
+                Section {
+                    details()
+                } footer: {
+                    Text("Итого: \(value)")
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
         } label: {
             HStack {
                 Text(title)

@@ -17,6 +17,7 @@ enum PlannerFeature {
             PlannerSubscription.self,
             PlannerGroupKind.self, PlannerSubscriptionType.self,
             PlannerErrandKind.self,
+            PlannerColorRule.self,
         ]
     ) {
         PlannerRootView()

@@ -53,6 +53,7 @@ struct ClientsHomeView: View {
         case clients = "Клиенты"
         case groups = "Группы"
         case subscriptions = "Абонементы"
+        case colors = "Цвета"
         var id: String { rawValue }
 
         var title: String {
@@ -61,6 +62,7 @@ struct ClientsHomeView: View {
             case .clients: "🙋 Клиенты"
             case .groups: "👧👦 Группы"
             case .subscriptions: "📜 Абонементы"
+            case .colors: "🎨 Цвета"
             }
         }
     }
@@ -112,15 +114,28 @@ struct ClientsHomeView: View {
                     PlannerGroupSettingsView()
                 case .subscriptions:
                     PlannerSubscriptionSettingsView()
+                case .colors:
+                    PlannerColorSettingsView()
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                Picker("Раздел", selection: $tab) {
-                    ForEach(Page.allCases) { Text($0.title).tag($0) }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Page.allCases) { page in
+                            Button { tab = page } label: {
+                                Text(page.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Capsule().fill(tab == page ? Color.appAccent.opacity(0.3) : Color.secondary.opacity(0.15)))
+                                    .foregroundStyle(Color.primary)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
                 .background(.bar)
             }
             .navigationTitle("Клиенты")
