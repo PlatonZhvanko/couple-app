@@ -1,0 +1,248 @@
+import SwiftData
+import SwiftUI
+
+/// Список клиентов с поиском.
+struct ClientsListView: View {
+    let clients: [ClientsClient]
+    let appointments: [ClientsAppointment]
+    let onAdd: () -> Void
+
+    @State private var search = ""
+
+    private var visible: [ClientsClient] {
+        let query = search.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return clients }
+        let digits = query.filter(\.isNumber)
+        return clients.filter {
+            $0.name.localizedCaseInsensitiveContains(query)
+                || (!digits.isEmpty && $0.phoneDigits.contains(digits))
+        }
+    }
+
+    /// Дата последнего визита и число визитов по клиенту.
+    private var stats: [UUID: (visits: Int, last: Date?)] {
+        var result: [UUID: (visits: Int, last: Date?)] = [:]
+        for item in appointments where item.status == .done {
+            guard let id = item.clientID else { continue }
+            var entry = result[id] ?? (0, nil)
+            entry.visits += 1
+            if entry.last == nil || item.start > entry.last! { entry.last = item.start }
+            result[id] = entry
+        }
+        return result
+    }
+
+    var body: some View {
+        let stats = self.stats
+        List {
+            ForEach(visible) { client in
+                NavigationLink(value: client) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(client.name)
+                            .font(.body.weight(.medium))
+                        let info = stats[client.syncID]
+                        let details = [
+                            client.phone.isEmpty ? nil : client.phone,
+                            info.map { "визитов: \($0.visits)" },
+                            info?.last.map { "был \($0.formatted(date: .abbreviated, time: .omitted))" },
+                        ].compactMap { $0 }
+                        if !details.isEmpty {
+                            Text(details.joined(separator: " · "))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .searchable(text: $search, prompt: "Имя или телефон")
+        .overlay {
+            if clients.isEmpty {
+                ContentUnavailableView {
+                    Label("Клиентов пока нет", systemImage: "person.2")
+                } description: {
+                    Text("Добавьте клиента или сразу создайте запись: клиент добавится сам.")
+                } actions: {
+                    Button("Новый клиент", action: onAdd)
+                        .buttonStyle(.borderedProminent)
+                }
+            } else if visible.isEmpty {
+                ContentUnavailableView.search(text: search)
+            }
+        }
+    }
+}
+
+/// Карточка клиента: контакты, заметки, итоги и история записей.
+struct ClientsClientDetailView: View {
+    let client: ClientsClient
+    let member: CoupleMember
+
+    @Environment(\.openURL) private var openURL
+    @Environment(\.dismiss) private var dismiss
+    @Query private var history: [ClientsAppointment]
+    @State private var sheet: ClientsSheet?
+
+    init(client: ClientsClient, member: CoupleMember) {
+        self.client = client
+        self.member = member
+        let id: UUID? = client.syncID
+        _history = Query(
+            filter: #Predicate<ClientsAppointment> { $0.deletedAt == nil && $0.clientID == id },
+            sort: \ClientsAppointment.start,
+            order: .reverse
+        )
+    }
+
+    private var done: [ClientsAppointment] { history.filter { $0.status == .done } }
+
+    var body: some View {
+        List {
+            if !client.phone.isEmpty {
+                Section {
+                    LabeledContent("Телефон", value: client.phone)
+                    HStack(spacing: 12) {
+                        contactButton("Позвонить", "phone.fill", ClientsContact.call(client.phone))
+                        contactButton("WhatsApp", "message.fill", ClientsContact.whatsApp(client.phone))
+                        contactButton("SMS", "bubble.left.fill", ClientsContact.sms(client.phone))
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+
+            if !client.note.isEmpty {
+                Section("Заметки") {
+                    Text(client.note)
+                }
+            }
+
+            Section("Итоги") {
+                LabeledContent("Визитов", value: "\(done.count)")
+                LabeledContent("Заработано", value: ClientsFormat.money(done.reduce(0) { $0 + $1.price }))
+                let noShows = history.filter { $0.status == .noShow }.count
+                if noShows > 0 {
+                    LabeledContent("Не пришёл", value: "\(noShows)")
+                }
+            }
+
+            Section {
+                Button("Новая запись", systemImage: "calendar.badge.plus") {
+                    sheet = .newAppointment(clientID: client.syncID)
+                }
+                ForEach(history) { item in
+                    NavigationLink(value: item) {
+                        ClientsAppointmentRow(appointment: item, clientName: item.service.isEmpty ? "Запись" : item.service, showDate: true)
+                    }
+                }
+            } header: {
+                Text("Записи")
+            }
+        }
+        .navigationTitle(client.name)
+        .toolbar {
+            Button("Изменить") { sheet = .editClient(client) }
+        }
+        .sheet(item: $sheet) { sheet in
+            ClientsSheetView(sheet: sheet, member: member)
+        }
+        .onChange(of: client.deletedAt) { _, deleted in
+            if deleted != nil { dismiss() }
+        }
+    }
+
+    private func contactButton(_ title: String, _ image: String, _ url: URL?) -> some View {
+        Button {
+            if let url { openURL(url) }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: image).font(.title3)
+                Text(title).font(.caption)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+        }
+        .disabled(url == nil)
+    }
+}
+
+/// Добавление и правка клиента.
+struct ClientsClientEditor: View {
+    let member: CoupleMember
+    let client: ClientsClient?
+
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var phone = ""
+    @State private var note = ""
+    @State private var confirmDelete = false
+
+    init(member: CoupleMember, client: ClientsClient?) {
+        self.member = member
+        self.client = client
+        _name = State(initialValue: client?.name ?? "")
+        _phone = State(initialValue: client?.phone ?? "")
+        _note = State(initialValue: client?.note ?? "")
+    }
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Имя", text: $name)
+                        .textContentType(.name)
+                    TextField("Телефон", text: $phone)
+                        .keyboardType(.phonePad)
+                        .textContentType(.telephoneNumber)
+                }
+                Section("Заметки") {
+                    TextField("Пожелания, особенности", text: $note, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+                if client != nil {
+                    Section {
+                        Button("Удалить клиента", role: .destructive) { confirmDelete = true }
+                    } footer: {
+                        Text("Записи клиента останутся в истории и итогах.")
+                    }
+                }
+            }
+            .navigationTitle(client == nil ? "Новый клиент" : "Клиент")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Сохранить", action: save)
+                        .disabled(trimmedName.isEmpty)
+                }
+            }
+            .confirmationDialog("Удалить клиента?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Удалить", role: .destructive, action: delete)
+            }
+        }
+    }
+
+    private func save() {
+        let target = client ?? ClientsClient(name: trimmedName, member: member)
+        target.name = trimmedName
+        target.phone = phone.trimmingCharacters(in: .whitespaces)
+        target.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.markChanged()
+        if client == nil { context.insert(target) }
+        try? context.save()
+        sync.requestSync()
+        dismiss()
+    }
+
+    private func delete() {
+        client?.markDeleted()
+        try? context.save()
+        sync.requestSync()
+        dismiss()
+    }
+}

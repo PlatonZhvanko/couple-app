@@ -10,7 +10,8 @@ enum ClientsFeature {
         title: "Клиенты",
         systemImage: "person.2.fill",
         models: [
-            // Сюда добавлять модели SwiftData раздела, например: ClientsEntry.self
+            ClientsClient.self,
+            ClientsAppointment.self,
         ]
     ) {
         ClientsRootView()
