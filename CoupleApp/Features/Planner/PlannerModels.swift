@@ -47,8 +47,24 @@ enum PlannerScope: String, CaseIterable, Identifiable, Codable {
 
 enum PlannerCategory: String, CaseIterable, Identifiable {
     case general, together, work, health, home, travel, celebration
+    /// Тренировки и дела тренера (профиль Настеньки).
+    case personal, group, school, errand
 
     var id: String { rawValue }
+
+    /// Обычные категории событий.
+    static let regular: [PlannerCategory] = [.general, .together, .work, .health, .home, .travel, .celebration]
+
+    /// Эмодзи для журнала. `nil` у обычных категорий.
+    var emoji: String? {
+        switch self {
+        case .personal: "🐱🎾"
+        case .group: "🐱🐱🐱🎾"
+        case .school: "🐱🎽🎾"
+        case .errand: "🧳"
+        default: nil
+        }
+    }
 
     var title: String {
         switch self {
@@ -59,6 +75,10 @@ enum PlannerCategory: String, CaseIterable, Identifiable {
         case .home: "Дом"
         case .travel: "Поездки"
         case .celebration: "Праздники"
+        case .personal: "Персоналка"
+        case .group: "Группа"
+        case .school: "Школа"
+        case .errand: "Дело"
         }
     }
 
@@ -71,6 +91,10 @@ enum PlannerCategory: String, CaseIterable, Identifiable {
         case .home: .orange
         case .travel: .teal
         case .celebration: .purple
+        case .personal: .green
+        case .group: .yellow
+        case .school: .orange
+        case .errand: .pink
         }
     }
 
@@ -83,6 +107,8 @@ enum PlannerCategory: String, CaseIterable, Identifiable {
         case .home: "house.fill"
         case .travel: "airplane"
         case .celebration: "gift.fill"
+        case .personal, .group, .school: "figure.tennis"
+        case .errand: "briefcase.fill"
         }
     }
 }
@@ -153,6 +179,8 @@ final class PlannerEvent: SyncableModel {
         var reminderMinutes: Int
         var createdBy: String
         var createdAt: Date
+        /// Клиенты тренировки (id из раздела «Клиенты»). Нет в старых записях.
+        var participantIDs: [UUID]?
     }
 
     static let recordKind = "planner.event"
@@ -172,6 +200,8 @@ final class PlannerEvent: SyncableModel {
     var reminderMinutes: Int = -1
     var createdBy: String = CoupleMember.owner.rawValue
     var createdAt: Date = Date.now
+    /// Клиенты тренировки (id из раздела «Клиенты»).
+    var participantIDs: [UUID] = []
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -187,7 +217,8 @@ final class PlannerEvent: SyncableModel {
         Payload(
             title: title, notes: notes, start: start, end: end, isAllDay: isAllDay,
             scope: scope, category: category, repeatRule: repeatRule,
-            reminderMinutes: reminderMinutes, createdBy: createdBy, createdAt: createdAt
+            reminderMinutes: reminderMinutes, createdBy: createdBy, createdAt: createdAt,
+            participantIDs: participantIDs
         )
     }
 
@@ -203,6 +234,7 @@ final class PlannerEvent: SyncableModel {
         reminderMinutes = payload.reminderMinutes
         createdBy = payload.createdBy
         createdAt = payload.createdAt
+        participantIDs = payload.participantIDs ?? []
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }
@@ -272,5 +304,14 @@ final class PlannerTask: SyncableModel {
     var isOverdue: Bool {
         guard !isDone, let dueDate else { return false }
         return dueDate < PlannerCalendar.calendar.startOfDay(for: .now)
+    }
+}
+
+extension PlannerEvent {
+    /// Название с эмодзи тренировки, если оно есть.
+    var displayTitle: String {
+        let name = title.isEmpty ? "Без названия" : title
+        guard let emoji = categoryValue.emoji else { return name }
+        return "\(emoji) \(name)"
     }
 }

@@ -1,0 +1,377 @@
+import SwiftData
+import SwiftUI
+
+/// Создание и правка тренировки (профиль Настеньки): клиент, группа или дело.
+struct PlannerTrainingEditor: View {
+    enum Mode: String, CaseIterable, Identifiable {
+        case client, group, errand
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .client: "Клиент"
+            case .group: "Группа"
+            case .errand: "Дело"
+            }
+        }
+    }
+
+    let event: PlannerEvent?
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @Environment(AccountStore.self) private var account
+
+    @State private var mode: Mode
+    @State private var groupCategory: PlannerCategory
+    @State private var title: String
+    @State private var notes: String
+    @State private var start: Date
+    @State private var durationMinutes: Int
+    @State private var isShared: Bool
+    @State private var repeatRule: PlannerRepeat
+    @State private var reminder: Int
+    @State private var participants: [PlannerClientDirectory.Entry] = []
+    @State private var participantIDs: [UUID]
+    @State private var query = ""
+    @State private var directory: [PlannerClientDirectory.Entry] = []
+    @State private var confirmDelete = false
+
+    /// Какую форму открывать: тренировочную (для Настеньки и для её записей) или обычную.
+    static func shouldUse(for event: PlannerEvent?, me: CoupleMember) -> Bool {
+        guard let event else { return me == .partner }
+        return [.personal, .group, .school, .errand].contains(event.categoryValue)
+    }
+
+    init(event: PlannerEvent?, day: Date, at time: Date? = nil) {
+        self.event = event
+        let cal = PlannerCalendar.calendar
+        if let event {
+            let category = event.categoryValue
+            _mode = State(initialValue: category == .errand ? .errand : (category == .personal ? .client : .group))
+            _groupCategory = State(initialValue: category == .school ? .school : .group)
+            _title = State(initialValue: event.title)
+            _notes = State(initialValue: event.notes)
+            _start = State(initialValue: event.start)
+            _durationMinutes = State(initialValue: max(30, Int(event.end.timeIntervalSince(event.start) / 60)))
+            _isShared = State(initialValue: event.scopeValue == .shared)
+            _repeatRule = State(initialValue: event.repeatValue)
+            _reminder = State(initialValue: event.reminderMinutes)
+            _participantIDs = State(initialValue: event.participantIDs)
+        } else {
+            let hour = cal.isDateInToday(day) ? min(cal.component(.hour, from: .now) + 1, 22) : 10
+            let begin = time ?? cal.date(bySettingHour: hour, minute: 0, second: 0, of: day) ?? day
+            _mode = State(initialValue: .client)
+            _groupCategory = State(initialValue: .group)
+            _title = State(initialValue: "")
+            _notes = State(initialValue: "")
+            _start = State(initialValue: begin)
+            _durationMinutes = State(initialValue: 60)
+            _isShared = State(initialValue: false)
+            _repeatRule = State(initialValue: .none)
+            _reminder = State(initialValue: PlannerReminderOption.none)
+            _participantIDs = State(initialValue: [])
+        }
+    }
+
+    private var canEdit: Bool {
+        event?.scopeValue.canEdit(by: account.current) ?? true
+    }
+
+    private var trimmedQuery: String { query.trimmingCharacters(in: .whitespaces) }
+
+    private var category: PlannerCategory {
+        switch mode {
+        case .client: .personal
+        case .group: groupCategory
+        case .errand: .errand
+        }
+    }
+
+    private var isValid: Bool {
+        switch mode {
+        case .client: !participants.isEmpty || !trimmedQuery.isEmpty
+        case .group: true
+        case .errand: !title.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
+    private var endBinding: Binding<Date> {
+        Binding(
+            get: { start.addingTimeInterval(TimeInterval(durationMinutes * 60)) },
+            set: { newEnd in
+                let minutes = Int((newEnd.timeIntervalSince(start) / 60).rounded())
+                durationMinutes = min(max(minutes, 15), 24 * 60)
+            }
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if !canEdit {
+                    Section {
+                        Label("Это запись другого человека, её можно только смотреть.", systemImage: "lock")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section {
+                    Picker("Что записываем", selection: $mode.animation()) {
+                        ForEach(Mode.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                switch mode {
+                case .client:
+                    Section("Клиент") { participantsPicker(multiple: false) }
+                case .group:
+                    Section {
+                        Picker("Категория", selection: $groupCategory) {
+                            ForEach([PlannerCategory.group, .school]) { item in
+                                Text("\(item.emoji ?? "") \(item.title)").tag(item)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        TextField("Название (необязательно)", text: $title)
+                    }
+                    Section {
+                        participantsPicker(multiple: true)
+                    } header: {
+                        Text("Клиенты группы")
+                    } footer: {
+                        Text("Блок можно создать без клиентов и записать их потом.")
+                    }
+                case .errand:
+                    Section("Дело") {
+                        TextField("Название дела", text: $title)
+                    }
+                }
+
+                Section {
+                    DatePicker("Дата", selection: $start, displayedComponents: [.date])
+                    HStack {
+                        Text("Время")
+                        Spacer()
+                        DatePicker("Начало", selection: $start, displayedComponents: [.hourAndMinute])
+                            .labelsHidden()
+                        Text("–")
+                        DatePicker("Конец", selection: endBinding, displayedComponents: [.hourAndMinute])
+                            .labelsHidden()
+                    }
+                    HStack {
+                        Text("Длительность")
+                        Spacer()
+                        Text(durationText)
+                            .foregroundStyle(.secondary)
+                        Button { durationMinutes = max(30, durationMinutes - 30) } label: {
+                            Image(systemName: "minus.circle.fill").font(.title2)
+                        }
+                        .disabled(durationMinutes <= 30)
+                        Button { durationMinutes = min(durationMinutes + 30, 24 * 60) } label: {
+                            Image(systemName: "plus.circle.fill").font(.title2)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    Picker("Повтор", selection: $repeatRule) {
+                        ForEach(PlannerRepeat.allCases) { Text($0.title).tag($0) }
+                    }
+                }
+
+                Section {
+                    Picker("Видно", selection: $isShared) {
+                        Text("Общее").tag(true)
+                        Text("Только моё").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    Picker("Напоминание", selection: $reminder) {
+                        ForEach(PlannerReminderOption.options(allDay: false)) { Text($0.title).tag($0.minutes) }
+                    }
+                }
+
+                Section("Заметка") {
+                    TextField("Что взять, детали", text: $notes, axis: .vertical)
+                        .lineLimit(2...5)
+                }
+
+                if event != nil && canEdit {
+                    Section {
+                        Button("Удалить", role: .destructive) { confirmDelete = true }
+                    }
+                }
+            }
+            .disabled(!canEdit)
+            .navigationTitle(event == nil ? "Новая тренировка" : "Тренировка")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if canEdit {
+                    ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Сохранить", action: save).disabled(!isValid)
+                    }
+                } else {
+                    ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } }
+                }
+            }
+            .confirmationDialog("Удалить запись?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Удалить", role: .destructive, action: delete)
+            }
+            .onAppear(perform: loadDirectory)
+        }
+        .environment(\.locale, PlannerCalendar.locale)
+    }
+
+    private var durationText: String {
+        let hours = durationMinutes / 60
+        let minutes = durationMinutes % 60
+        switch (hours, minutes) {
+        case (0, _): return "\(minutes) мин"
+        case (_, 0): return "\(hours) ч"
+        default: return "\(hours) ч \(minutes) мин"
+        }
+    }
+
+    // MARK: - Клиенты
+
+    private func loadDirectory() {
+        directory = PlannerClientDirectory.all(context)
+        participants = participantIDs.compactMap { id in directory.first { $0.id == id } }
+    }
+
+    private var suggestions: [PlannerClientDirectory.Entry] {
+        let selected = Set(participants.map(\.id))
+        let pool = directory.filter { !selected.contains($0.id) }
+        guard !trimmedQuery.isEmpty else { return Array(pool.prefix(5)) }
+        return Array(pool.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(6))
+    }
+
+    private var queryMatchesExisting: Bool {
+        directory.contains { $0.name.caseInsensitiveCompare(trimmedQuery) == .orderedSame }
+    }
+
+    @ViewBuilder
+    private func participantsPicker(multiple: Bool) -> some View {
+        ForEach(participants) { client in
+            HStack {
+                Label(client.name, systemImage: "person.fill")
+                Spacer()
+                Button {
+                    participants.removeAll { $0.id == client.id }
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+
+        if multiple || participants.isEmpty {
+            HStack {
+                TextField(multiple ? "Добавить клиента" : "Найти клиента", text: $query)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .onSubmit(addTypedClient)
+                if !trimmedQuery.isEmpty && !queryMatchesExisting {
+                    Button(action: addTypedClient) {
+                        Image(systemName: "plus.circle.fill").font(.title3)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Новый клиент")
+                }
+            }
+            if !trimmedQuery.isEmpty && !queryMatchesExisting {
+                Text("Такого клиента нет. Нажми +, чтобы добавить «\(trimmedQuery)» в базу.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(suggestions) { client in
+                Button {
+                    select(client, multiple: multiple)
+                } label: {
+                    Label(client.name, systemImage: "person")
+                }
+            }
+        }
+    }
+
+    private func select(_ client: PlannerClientDirectory.Entry, multiple: Bool) {
+        if multiple { participants.append(client) } else { participants = [client] }
+        query = ""
+    }
+
+    /// Если такой клиент уже есть, выбираем его, иначе заводим нового в общей базе.
+    private func addTypedClient() {
+        let name = trimmedQuery
+        guard !name.isEmpty else { return }
+        let multiple = mode == .group
+        if let existing = directory.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+            if !participants.contains(where: { $0.id == existing.id }) { select(existing, multiple: multiple) }
+            query = ""
+            return
+        }
+        let created = PlannerClientDirectory.add(name: name, member: account.current, context: context)
+        directory.append(created)
+        sync.requestSync()
+        select(created, multiple: multiple)
+    }
+
+    // MARK: - Сохранение
+
+    private func save() {
+        // Если имя набрано, но плюс не нажат, добавляем клиента сами.
+        if mode != .errand, !trimmedQuery.isEmpty, mode == .client || !queryMatchesExisting {
+            addTypedClient()
+        }
+
+        let target = event ?? {
+            let new = PlannerEvent()
+            new.createdBy = account.current.rawValue
+            new.createdAt = .now
+            context.insert(new)
+            return new
+        }()
+
+        switch mode {
+        case .client:
+            target.title = participants.first?.name ?? ""
+            target.participantIDs = participants.prefix(1).map(\.id)
+        case .group:
+            let custom = title.trimmingCharacters(in: .whitespaces)
+            target.title = custom.isEmpty ? groupCategory.title : custom
+            target.participantIDs = participants.map(\.id)
+        case .errand:
+            target.title = title.trimmingCharacters(in: .whitespaces)
+            target.participantIDs = []
+        }
+        target.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.isAllDay = false
+        target.start = start
+        target.end = start.addingTimeInterval(TimeInterval(durationMinutes * 60))
+        target.scope = (isShared ? PlannerScope.shared : .personal(account.current)).rawValue
+        target.category = category.rawValue
+        target.repeatRule = repeatRule.rawValue
+        target.reminderMinutes = reminder
+        target.markChanged()
+        try? context.save()
+        sync.requestSync()
+        if reminder >= 0 {
+            let me = account.current
+            let context = context
+            Task { @MainActor in
+                await PlannerReminders.requestPermission()
+                let all = (try? context.fetch(FetchDescriptor<PlannerEvent>())) ?? []
+                PlannerReminders.reschedule(events: all, me: me)
+            }
+        }
+        dismiss()
+    }
+
+    private func delete() {
+        guard let event else { return }
+        event.markDeleted()
+        try? context.save()
+        sync.requestSync()
+        dismiss()
+    }
+}

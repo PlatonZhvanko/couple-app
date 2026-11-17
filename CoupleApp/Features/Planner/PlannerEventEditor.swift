@@ -91,7 +91,7 @@ struct PlannerEventEditor: View {
 
                 Section {
                     Picker("Категория", selection: $category) {
-                        ForEach(PlannerCategory.allCases) { item in
+                        ForEach(PlannerCategory.regular) { item in
                             Label {
                                 Text(item.title)
                             } icon: {
