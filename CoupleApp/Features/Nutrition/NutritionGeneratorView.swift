@@ -53,13 +53,17 @@ struct NutritionGeneratorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } }
             }
-            .onChange(of: target) { regenerate() }
-            .onAppear { if drafts.isEmpty { regenerate() } }
+            .onChange(of: target) { regenerate(daily: true) }
+            .onAppear { if drafts.isEmpty { regenerate(daily: true) } }
         }
     }
 
-    private func regenerate() {
-        drafts = NutritionGenerator.generate(meal: diary.meal, targetCalories: target, avoiding: shown)
+    /// Первый показ зависит от даты: сегодня одни варианты, завтра другие.
+    /// Кнопка «другие варианты» даёт случайные новые.
+    private func regenerate(daily: Bool = false) {
+        let seed = daily ? NutritionRNG.seed(from: "\(diary.dayKey)-\(diary.meal.rawValue)-\(Int(target))") : nil
+        drafts = NutritionGenerator.generate(meal: diary.meal, targetCalories: target,
+                                             avoiding: daily ? [] : shown, seed: seed)
         shown.formUnion(drafts.map(\.name))
     }
 }
