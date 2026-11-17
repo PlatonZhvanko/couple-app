@@ -121,7 +121,11 @@ struct NutritionDayView: View {
                             fat: entry.fat100, carbs: entry.carbs100
                         ),
                         initialGrams: entry.grams, meal: entry.mealType, confirmTitle: "Сохранить"
-                    ) { _, grams, meal in
+                    ) { values, grams, meal in
+                        entry.kcal100 = values.kcal
+                        entry.protein100 = values.protein
+                        entry.fat100 = values.fat
+                        entry.carbs100 = values.carbs
                         entry.grams = grams
                         entry.meal = meal.rawValue
                         entry.recalculate()
