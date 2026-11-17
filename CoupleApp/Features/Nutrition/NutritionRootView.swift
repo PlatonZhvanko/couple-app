@@ -137,6 +137,12 @@ struct NutritionDayView: View {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Отмена") { sheet = nil }
                         }
+                        ToolbarItem(placement: .bottomBar) {
+                            Button("Удалить из приёма пищи", role: .destructive) {
+                                remove(entry)
+                                sheet = nil
+                            }
+                        }
                     }
                 }
             }
@@ -192,8 +198,21 @@ struct NutritionDayView: View {
                     NutritionEntryRow(entry: entry)
                 }
                 .foregroundStyle(.primary)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        remove(entry)
+                    } label: {
+                        Label("Удалить", systemImage: "trash")
+                    }
+                }
+                .contextMenu {
+                    Button(role: .destructive) {
+                        remove(entry)
+                    } label: {
+                        Label("Удалить из приёма пищи", systemImage: "trash")
+                    }
+                }
             }
-            .onDelete { offsets in delete(items, at: offsets) }
 
             HStack {
                 Button {
@@ -220,8 +239,8 @@ struct NutritionDayView: View {
         }
     }
 
-    private func delete(_ items: [NutritionEntry], at offsets: IndexSet) {
-        for index in offsets { items[index].markDeleted() }
+    private func remove(_ entry: NutritionEntry) {
+        entry.markDeleted()
         saveAndSync()
     }
 
