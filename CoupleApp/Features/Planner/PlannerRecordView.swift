@@ -25,6 +25,7 @@ struct PlannerRecordView: View {
 
     private var cal: Calendar { PlannerCalendar.calendar }
     private var canEdit: Bool { event.scopeValue.canEdit(by: account.current) }
+    private var isCancelled: Bool { event.isCancelled(on: day) }
     private var showsPayments: Bool { PlannerPaymentStore.isTraining(event) }
 
     private var participants: [PlannerClientDirectory.Entry] {
@@ -48,7 +49,7 @@ struct PlannerRecordView: View {
             List {
                 headerSection
                 if showsPayments {
-                    paymentsSection
+                    if isCancelled { finesSection } else { paymentsSection }
                 }
                 actionsSection
             }
@@ -117,6 +118,46 @@ struct PlannerRecordView: View {
         let duration = event.end.timeIntervalSince(event.start)
         let start = PlannerCalendar.combine(day: day, time: event.start)
         return "\(PlannerCalendar.time(start))–\(PlannerCalendar.time(start.addingTimeInterval(duration)))"
+    }
+
+    // MARK: - Отмена и штрафы
+
+    private var finesSection: some View {
+        Section {
+            Label("Занятие отменено", systemImage: "nosign")
+                .foregroundStyle(.secondary)
+            ForEach(participants) { client in
+                PlannerFineRow(
+                    name: client.name,
+                    method: method(of: client),
+                    amount: dayPayments.first { $0.clientID == client.id }?.amount
+                        ?? PlannerPaymentStore.price(for: event, context: context),
+                    canEdit: canEdit,
+                    onSelect: { select($0, for: client) },
+                    onAmount: { setAmount($0, for: client) }
+                )
+            }
+        } header: {
+            Text("🚫 Отмена")
+        } footer: {
+            Text("Без отметки это отмена без штрафа. Штраф идёт в прибыль, неоплаченный попадает в статистику отмен.")
+        }
+    }
+
+    private func cancelOccurrence() {
+        PlannerPaymentStore.purge(context, eventID: event.syncID, day: day)
+        event.setCancelled(true, on: day)
+        event.markChanged()
+        try? context.save()
+        sync.requestSync()
+    }
+
+    private func restoreOccurrence() {
+        PlannerPaymentStore.purge(context, eventID: event.syncID, day: day)
+        event.setCancelled(false, on: day)
+        event.markChanged()
+        try? context.save()
+        sync.requestSync()
     }
 
     // MARK: - Оплата
@@ -225,6 +266,17 @@ struct PlannerRecordView: View {
                     onEdit()
                 } label: {
                     Label("Изменить", systemImage: "pencil")
+                }
+                if showsPayments {
+                    if isCancelled {
+                        Button(action: restoreOccurrence) {
+                            Label("Вернуть занятие", systemImage: "arrow.uturn.backward")
+                        }
+                    } else {
+                        Button(role: .destructive, action: cancelOccurrence) {
+                            Label("Отменить занятие", systemImage: "nosign")
+                        }
+                    }
                 }
             } else {
                 Label("Это запись другого человека, её можно только смотреть.", systemImage: "lock")
@@ -372,5 +424,66 @@ private struct PlannerPaymentRow: View {
     private static func text(_ value: Double) -> String {
         let rounded = value.rounded()
         return abs(value - rounded) < 0.005 ? "\(Int(rounded))" : String(format: "%.2f", value)
+    }
+}
+
+/// Строка клиента в отменённом занятии: без штрафа, штраф наличными, переводом или не оплачен.
+private struct PlannerFineRow: View {
+    let name: String
+    let method: PlannerPayMethod
+    let amount: Double
+    let canEdit: Bool
+    let onSelect: (PlannerPayMethod) -> Void
+    let onAmount: (Double) -> Void
+
+    @State private var amountText = ""
+
+    private let options: [(PlannerPayMethod, String, String)] = [
+        (.none, "🚫", "Без штрафа"),
+        (.cash, "💰", "Нал"),
+        (.transfer, "🏦", "Перевод"),
+        (.unpaid, "⏳", "Не оплачен"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(name).font(.body.weight(.medium))
+            HStack(spacing: 6) {
+                ForEach(0..<options.count, id: \.self) { index in
+                    let item = options[index]
+                    let selected = method == item.0
+                    Button { onSelect(item.0) } label: {
+                        VStack(spacing: 2) {
+                            Text(item.1).font(.title3)
+                            Text(item.2).font(.caption2)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.appAccent.opacity(0.3) : Color.secondary.opacity(0.12)))
+                        .foregroundStyle(Color.primary)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!canEdit)
+                }
+            }
+            if method != .none {
+                HStack {
+                    Text("Штраф")
+                    Spacer()
+                    TextField("0", text: $amountText)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                        .onSubmit { if let value = Double(amountText) { onAmount(value) } }
+                    Text("₽").foregroundStyle(.secondary)
+                }
+                .font(.subheadline)
+            }
+        }
+        .padding(.vertical, 2)
+        .onAppear { amountText = "\(Int(amount.rounded()))" }
+        .onChange(of: amountText) { _, text in
+            if let value = Double(text) { onAmount(value) }
+        }
     }
 }

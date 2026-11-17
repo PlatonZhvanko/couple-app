@@ -102,6 +102,12 @@ enum PlannerPayBadge {
     case unpaid
     /// Ничего не отмечено (вопросик).
     case unknown
+    /// Отменено без штрафа.
+    case cancelled
+    /// Штраф не оплачен.
+    case fineUnpaid
+    /// Штраф оплачен.
+    case finePaid
 
     var symbol: String? {
         switch self {
@@ -110,6 +116,9 @@ enum PlannerPayBadge {
         case .partial: "💲"
         case .unpaid: "❌"
         case .unknown: "❓"
+        case .cancelled: "🚫"
+        case .fineUnpaid: "⏳"
+        case .finePaid: "💰"
         }
     }
 }
@@ -381,10 +390,17 @@ enum PlannerPaymentStore {
 
     /// Значок оплаты записи за конкретный день.
     static func badge(for event: PlannerEvent, day: Date, payments: [PlannerPayment]) -> PlannerPayBadge {
-        guard isTraining(event), !event.participantIDs.isEmpty else { return .none }
+        guard isTraining(event) else { return .none }
         let rows = payments.filter {
             $0.eventID == event.syncID && $0.deletedAt == nil && cal.isDate($0.day, inSameDayAs: day)
         }
+        if event.isCancelled(on: day) {
+            // Отмена: штраф не оплачен, оплачен, или просто отмена.
+            if rows.contains(where: { $0.methodValue == .unpaid }) { return .fineUnpaid }
+            if rows.contains(where: { $0.methodValue == .cash || $0.methodValue == .transfer }) { return .finePaid }
+            return .cancelled
+        }
+        guard !event.participantIDs.isEmpty else { return .none }
         let ids = event.participantIDs
         let paid = ids.filter { id in rows.contains { $0.clientID == id && $0.methodValue.isPaid } }.count
         let unpaid = ids.filter { id in rows.contains { $0.clientID == id && $0.methodValue == .unpaid } }.count
@@ -453,7 +469,7 @@ enum PlannerPaymentStore {
         guard !subs.isEmpty else { return }
         // Абонемент действует только на группы и школу.
         for event in events where isTraining(event) && event.categoryValue != .personal && !event.participantIDs.isEmpty {
-            for day in days where event.startsOn(day) {
+            for day in days where event.startsOn(day) && !event.isCancelled(on: day) {
                 for clientID in event.participantIDs {
                     let hasSubscription = subs.contains { $0.clientID == clientID && $0.covers(day) }
                     guard hasSubscription,

@@ -59,15 +59,24 @@ struct StatisticsVisit: Identifiable {
     let category: PlannerCategory
     let method: PlannerPayMethod
     let amount: Double
+    /// Занятие отменено: оплата здесь — это штраф.
+    var cancelled = false
 
     /// Занятие уже прошло, а денег за него нет (не отмечено или ❌).
-    var isDebt: Bool { start <= .now && (method == .none || method == .unpaid) }
+    var isDebt: Bool { !cancelled && start <= .now && (method == .none || method == .unpaid) }
+
+    /// Штраф за отмену не оплачен.
+    var isUnpaidFine: Bool { cancelled && method == .unpaid }
+    var isPaidFine: Bool { cancelled && (method == .cash || method == .transfer) }
 }
 
 /// Все данные для отчётов, собранные из журнала один раз.
 struct StatisticsSnapshot {
     var visits: [StatisticsVisit] = []
+    /// Оплаченное наличными и переводом за занятия (без штрафов).
     var cashPayments: [PlannerPayment] = []
+    /// Оплаченные штрафы за отмены.
+    var finePayments: [PlannerPayment] = []
     var subscriptions: [PlannerSubscription] = []
     /// Списания тренировок с абонементов.
     var charges: [PlannerPayment] = []
@@ -101,7 +110,9 @@ struct StatisticsSnapshot {
         for payment in live {
             byKey["\(payment.eventID.uuidString)|\(Int(cal.startOfDay(for: payment.day).timeIntervalSince1970))|\(payment.clientID.uuidString)"] = payment
         }
-        snap.cashPayments = live.filter { $0.methodValue == .cash || $0.methodValue == .transfer }
+        let paid = live.filter { $0.methodValue == .cash || $0.methodValue == .transfer }
+        snap.finePayments = paid.filter { map[$0.eventID]?.isCancelled(on: $0.day) == true }
+        snap.cashPayments = paid.filter { map[$0.eventID]?.isCancelled(on: $0.day) != true }
         snap.subscriptions = PlannerPaymentStore.allSubscriptions(context)
         snap.charges = live.filter { $0.methodValue == .subscription }
 
@@ -119,7 +130,8 @@ struct StatisticsSnapshot {
                             id: key, eventTitle: event.plainTitle, day: day, start: start,
                             clientID: clientID, category: event.categoryValue,
                             method: row?.methodValue ?? .none,
-                            amount: row?.amount ?? PlannerPaymentStore.price(for: event, context: context)
+                            amount: row?.amount ?? PlannerPaymentStore.price(for: event, context: context),
+                            cancelled: event.isCancelled(on: day)
                         ))
                     }
                 }

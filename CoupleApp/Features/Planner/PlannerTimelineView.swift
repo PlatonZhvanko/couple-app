@@ -342,7 +342,9 @@ struct PlannerTimelineView: View {
 
         switch block.source {
         case .event(let event):
+            let cancelled = [.cancelled, .fineUnpaid, .finePaid].contains(block.badge)
             let base = content
+                .opacity(cancelled ? 0.55 : 1)
                 .foregroundStyle(Color.black)
                 .background(RoundedRectangle(cornerRadius: 6).fill(block.color))
                 .contentShape(Rectangle())
