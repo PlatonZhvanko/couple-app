@@ -18,6 +18,10 @@ struct PlannerEventEditor: View {
     @State private var isPrivate: Bool
     @State private var category: PlannerCategory
     @State private var repeatRule: PlannerRepeat
+    @State private var repeatInterval: Int
+    @State private var repeatWeekdays: [Int]
+    @State private var repeatUntil: Date?
+    @State private var colorHex: String
     @State private var reminder: Int
     @State private var confirmDelete = false
 
@@ -34,6 +38,10 @@ struct PlannerEventEditor: View {
             _isPrivate = State(initialValue: event.isPrivate)
             _category = State(initialValue: event.categoryValue)
             _repeatRule = State(initialValue: event.repeatValue)
+            _repeatInterval = State(initialValue: event.repeatInterval)
+            _repeatWeekdays = State(initialValue: event.repeatWeekdays)
+            _repeatUntil = State(initialValue: event.repeatUntil)
+            _colorHex = State(initialValue: event.colorHex)
             _reminder = State(initialValue: event.reminderMinutes)
         } else {
             // Новое событие: сегодня со следующего часа, иначе в 10:00.
@@ -48,6 +56,10 @@ struct PlannerEventEditor: View {
             _isPrivate = State(initialValue: false)
             _category = State(initialValue: .general)
             _repeatRule = State(initialValue: .none)
+            _repeatInterval = State(initialValue: 1)
+            _repeatWeekdays = State(initialValue: [])
+            _repeatUntil = State(initialValue: nil)
+            _colorHex = State(initialValue: "")
             _reminder = State(initialValue: PlannerReminderOption.none)
         }
     }
@@ -74,15 +86,17 @@ struct PlannerEventEditor: View {
                 Section {
                     TextField("Название", text: $title)
                     Toggle("Не показывать партнёру", isOn: $isPrivate)
+                    PlannerColorField(title: "Свой цвет записи", hex: $colorHex, defaultColor: category.color)
                 }
 
                 Section {
                     Toggle("Весь день", isOn: $isAllDay)
                     DatePicker("Начало", selection: $start, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
                     DatePicker("Конец", selection: $end, in: start..., displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
-                    Picker("Повтор", selection: $repeatRule) {
-                        ForEach(PlannerRepeat.allCases) { Text($0.title).tag($0) }
-                    }
+                    PlannerRepeatFields(
+                        rule: $repeatRule, interval: $repeatInterval, weekdays: $repeatWeekdays,
+                        until: $repeatUntil, start: start
+                    )
                 }
 
                 Section {
@@ -176,6 +190,10 @@ struct PlannerEventEditor: View {
         target.isPrivate = isPrivate
         target.category = category.rawValue
         target.repeatRule = repeatRule.rawValue
+        target.repeatInterval = repeatInterval
+        target.repeatWeekdays = repeatWeekdays
+        target.repeatUntil = repeatUntil
+        target.colorHex = colorHex
         target.reminderMinutes = reminder
         target.markChanged()
         try? context.save()

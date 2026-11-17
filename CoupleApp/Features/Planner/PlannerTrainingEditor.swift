@@ -30,6 +30,10 @@ struct PlannerTrainingEditor: View {
     @State private var durationMinutes: Int
     @State private var isPrivate: Bool
     @State private var repeatRule: PlannerRepeat
+    @State private var repeatInterval: Int
+    @State private var repeatWeekdays: [Int]
+    @State private var repeatUntil: Date?
+    @State private var colorHex: String
     @State private var reminder: Int
     @State private var participants: [PlannerClientDirectory.Entry] = []
     @State private var participantIDs: [UUID]
@@ -63,6 +67,10 @@ struct PlannerTrainingEditor: View {
             _durationMinutes = State(initialValue: max(30, Int(event.end.timeIntervalSince(event.start) / 60)))
             _isPrivate = State(initialValue: event.isPrivate)
             _repeatRule = State(initialValue: event.repeatValue)
+            _repeatInterval = State(initialValue: event.repeatInterval)
+            _repeatWeekdays = State(initialValue: event.repeatWeekdays)
+            _repeatUntil = State(initialValue: event.repeatUntil)
+            _colorHex = State(initialValue: event.colorHex)
             _reminder = State(initialValue: event.reminderMinutes)
             _participantIDs = State(initialValue: event.participantIDs)
         } else {
@@ -76,6 +84,10 @@ struct PlannerTrainingEditor: View {
             _durationMinutes = State(initialValue: 60)
             _isPrivate = State(initialValue: false)
             _repeatRule = State(initialValue: .none)
+            _repeatInterval = State(initialValue: 1)
+            _repeatWeekdays = State(initialValue: [])
+            _repeatUntil = State(initialValue: nil)
+            _colorHex = State(initialValue: "")
             _reminder = State(initialValue: PlannerReminderOption.none)
             _participantIDs = State(initialValue: [])
         }
@@ -225,13 +237,15 @@ struct PlannerTrainingEditor: View {
                         }
                     }
                     .buttonStyle(.borderless)
-                    Picker("Повтор", selection: $repeatRule) {
-                        ForEach(PlannerRepeat.allCases) { Text($0.title).tag($0) }
-                    }
+                    PlannerRepeatFields(
+                        rule: $repeatRule, interval: $repeatInterval, weekdays: $repeatWeekdays,
+                        until: $repeatUntil, start: start
+                    )
                 }
 
                 Section {
                     Toggle("Не показывать партнёру", isOn: $isPrivate)
+                    PlannerColorField(title: "Свой цвет записи", hex: $colorHex, defaultColor: category.color)
                     Picker("Напоминание", selection: $reminder) {
                         ForEach(PlannerReminderOption.options(allDay: false)) { Text($0.title).tag($0.minutes) }
                     }
@@ -491,6 +505,10 @@ struct PlannerTrainingEditor: View {
         target.isPrivate = isPrivate
         target.category = category.rawValue
         target.repeatRule = repeatRule.rawValue
+        target.repeatInterval = repeatInterval
+        target.repeatWeekdays = repeatWeekdays
+        target.repeatUntil = repeatUntil
+        target.colorHex = colorHex
         target.reminderMinutes = reminder
         target.markChanged()
         try? context.save()

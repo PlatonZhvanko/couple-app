@@ -184,6 +184,10 @@ final class PlannerEvent: SyncableModel {
         /// Дни повторяющегося события, которые перенесены в другое время.
         var skippedDays: [Date]?
         var isPrivate: Bool?
+        var repeatInterval: Int?
+        var repeatWeekdays: String?
+        var repeatUntil: Date?
+        var colorHex: String?
     }
 
     static let recordKind = "planner.event"
@@ -209,6 +213,14 @@ final class PlannerEvent: SyncableModel {
     var skippedDays: [Date] = []
     /// «Не показывать партнёру»: запись видит только её автор.
     var isPrivate: Bool = false
+    /// Повтор: каждые N (дней, недель, месяцев, лет).
+    var repeatInterval: Int = 1
+    /// Дни недели для недельного повтора, номера через запятую (1 = воскресенье). Пусто — день начала.
+    var repeatWeekdaysRaw: String = ""
+    /// Повторять до этого дня (включительно). Пусто — без конца.
+    var repeatUntil: Date? = nil
+    /// Свой цвет записи в виде #RRGGBB. Пусто — цвет по виду.
+    var colorHex: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -225,7 +237,9 @@ final class PlannerEvent: SyncableModel {
             title: title, notes: notes, start: start, end: end, isAllDay: isAllDay,
             scope: scope, category: category, repeatRule: repeatRule,
             reminderMinutes: reminderMinutes, createdBy: createdBy, createdAt: createdAt,
-            participantIDs: participantIDs, skippedDays: skippedDays, isPrivate: isPrivate
+            participantIDs: participantIDs, skippedDays: skippedDays, isPrivate: isPrivate,
+            repeatInterval: repeatInterval, repeatWeekdays: repeatWeekdaysRaw,
+            repeatUntil: repeatUntil, colorHex: colorHex
         )
     }
 
@@ -244,9 +258,17 @@ final class PlannerEvent: SyncableModel {
         participantIDs = payload.participantIDs ?? []
         skippedDays = payload.skippedDays ?? []
         isPrivate = payload.isPrivate ?? false
+        repeatInterval = max(1, payload.repeatInterval ?? 1)
+        repeatWeekdaysRaw = payload.repeatWeekdays ?? ""
+        repeatUntil = payload.repeatUntil
+        colorHex = payload.colorHex ?? ""
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }
+    var repeatWeekdays: [Int] {
+        get { repeatWeekdaysRaw.split(separator: ",").compactMap { Int($0) } }
+        set { repeatWeekdaysRaw = newValue.sorted().map(String.init).joined(separator: ",") }
+    }
     var categoryValue: PlannerCategory { PlannerCategory(rawValue: category) ?? .general }
     var repeatValue: PlannerRepeat { PlannerRepeat(rawValue: repeatRule) ?? .none }
 }

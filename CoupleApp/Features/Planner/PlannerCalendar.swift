@@ -110,18 +110,30 @@ extension PlannerEvent {
         let firstDay = cal.startOfDay(for: start)
         guard day >= firstDay else { return false }
         if skippedDays.contains(where: { cal.isDate($0, inSameDayAs: day) }) { return false }
+        if let until = repeatUntil, day > cal.startOfDay(for: until) { return false }
+        let step = max(1, repeatInterval)
         switch repeatValue {
         case .none:
             return day == firstDay
         case .daily:
-            return true
+            let days = cal.dateComponents([.day], from: firstDay, to: day).day ?? 0
+            return days % step == 0
         case .weekly:
-            return cal.component(.weekday, from: day) == cal.component(.weekday, from: firstDay)
+            let weekdays = repeatWeekdays.isEmpty ? [cal.component(.weekday, from: firstDay)] : repeatWeekdays
+            guard weekdays.contains(cal.component(.weekday, from: day)) else { return false }
+            let firstWeek = cal.dateInterval(of: .weekOfYear, for: firstDay)?.start ?? firstDay
+            let thisWeek = cal.dateInterval(of: .weekOfYear, for: day)?.start ?? day
+            let weeks = (cal.dateComponents([.day], from: firstWeek, to: thisWeek).day ?? 0) / 7
+            return weeks % step == 0
         case .monthly:
-            return cal.component(.day, from: day) == cal.component(.day, from: firstDay)
+            guard cal.component(.day, from: day) == cal.component(.day, from: firstDay) else { return false }
+            let months = cal.dateComponents([.month], from: firstDay, to: day).month ?? 0
+            return months % step == 0
         case .yearly:
-            return cal.component(.day, from: day) == cal.component(.day, from: firstDay)
-                && cal.component(.month, from: day) == cal.component(.month, from: firstDay)
+            guard cal.component(.day, from: day) == cal.component(.day, from: firstDay)
+                && cal.component(.month, from: day) == cal.component(.month, from: firstDay) else { return false }
+            let years = cal.dateComponents([.year], from: firstDay, to: day).year ?? 0
+            return years % step == 0
         }
     }
 

@@ -35,7 +35,7 @@ struct PlannerSubscriptionSaleSheet: View {
 
     private var typeMatches: [PlannerSubscriptionType] {
         let q = typeQuery.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return Array(types.prefix(3)) }
+        guard !q.isEmpty else { return [] }
         return Array(types.filter { $0.name.localizedCaseInsensitiveContains(q) }.prefix(5))
     }
 
