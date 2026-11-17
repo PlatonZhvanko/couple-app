@@ -51,9 +51,11 @@ extension PlannerClientDirectory {
                 steps += 1
             }
         }
-        let earned = PlannerPaymentStore.allPayments(context)
-            .filter { $0.deletedAt == nil && $0.clientID == clientID && $0.methodValue.isPaid }
-            .reduce(0) { $0 + $1.amount }
+        let cash = PlannerPaymentStore.cashPayments(context)
+            .filter { $0.clientID == clientID }.reduce(0) { $0 + $1.amount }
+        let sold = PlannerPaymentStore.allSubscriptions(context)
+            .filter { $0.clientID == clientID }.reduce(0) { $0 + $1.amount }
+        let earned = cash + sold
         return (visits, earned)
     }
 }

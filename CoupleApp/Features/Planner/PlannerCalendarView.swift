@@ -20,6 +20,8 @@ struct PlannerCalendarView: View {
     @Query(filter: #Predicate<PlannerPayment> { $0.deletedAt == nil })
     private var payments: [PlannerPayment]
     @State private var showSale = false
+    @Query(filter: #Predicate<PlannerSubscription> { $0.deletedAt == nil })
+    private var subscriptions: [PlannerSubscription]
 
     @AppStorage("planner.mode") private var mode: Mode = .month
     @AppStorage("planner.style") private var style: Style = .planner
@@ -215,9 +217,17 @@ struct PlannerCalendarView: View {
 
     /// Сколько денег уже оплачено за сегодня.
     private var todayEarned: Double {
-        payments
-            .filter { $0.deletedAt == nil && $0.methodValue.isPaid && cal.isDateInToday($0.day) }
+        let map = PlannerPaymentStore.eventMap(allEvents)
+        let cash = payments
+            .filter {
+                ($0.methodValue == .cash || $0.methodValue == .transfer)
+                    && PlannerPaymentStore.isLive($0, events: map) && cal.isDateInToday($0.day)
+            }
             .reduce(0) { $0 + $1.amount }
+        let sold = subscriptions
+            .filter { cal.isDateInToday($0.soldAt) }
+            .reduce(0) { $0 + $1.amount }
+        return cash + sold
     }
 
     private var plannerBody: some View {

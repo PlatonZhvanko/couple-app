@@ -186,6 +186,7 @@ final class PlannerSubscription: SyncableModel {
         var month: Date
         var amount: Double
         var kindName: String? = nil
+        var soldAt: Date? = nil
     }
 
     static let recordKind = "planner.subscription"
@@ -197,6 +198,8 @@ final class PlannerSubscription: SyncableModel {
     var amount: Double = 0
     /// Название вида абонемента, по которому он продан.
     var kindName: String = ""
+    /// Когда продан (деньги за абонемент считаются в этот день).
+    var soldAt: Date = Date.now
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -213,13 +216,14 @@ final class PlannerSubscription: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(clientID: clientID, month: month, amount: amount, kindName: kindName) }
+    var payload: Payload { Payload(clientID: clientID, month: month, amount: amount, kindName: kindName, soldAt: soldAt) }
 
     func apply(_ payload: Payload) {
         clientID = payload.clientID
         month = payload.month
         amount = payload.amount
         kindName = payload.kindName ?? ""
+        soldAt = payload.soldAt ?? Date.now
     }
 
     static func makeID(clientID: UUID, month: Date) -> UUID {
@@ -252,6 +256,39 @@ enum PlannerPaymentStore {
 
     static func allPayments(_ context: ModelContext) -> [PlannerPayment] {
         (try? context.fetch(FetchDescriptor<PlannerPayment>())) ?? []
+    }
+
+    /// Оплаты, у которых запись ещё есть в журнале (и день не снят из повтора).
+    /// Если запись удалили, её деньги за этот день не считаются.
+    static func isLive(_ payment: PlannerPayment, events: [UUID: PlannerEvent]) -> Bool {
+        guard payment.deletedAt == nil, let event = events[payment.eventID], event.deletedAt == nil else { return false }
+        return !event.skippedDays.contains { cal.isDate($0, inSameDayAs: payment.day) }
+    }
+
+    static func eventMap(_ events: [PlannerEvent]) -> [UUID: PlannerEvent] {
+        Dictionary(events.map { ($0.syncID, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// Живые оплаты наличными и переводом (списания с абонемента — не деньги, они уже учтены при продаже).
+    static func cashPayments(_ context: ModelContext) -> [PlannerPayment] {
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>())) ?? []
+        let map = eventMap(events)
+        return allPayments(context).filter {
+            ($0.methodValue == .cash || $0.methodValue == .transfer) && isLive($0, events: map)
+        }
+    }
+
+    static func allSubscriptions(_ context: ModelContext) -> [PlannerSubscription] {
+        ((try? context.fetch(FetchDescriptor<PlannerSubscription>())) ?? []).filter { $0.deletedAt == nil }
+    }
+
+    /// Пометить оплаты записи удалёнными (весь повтор или один день).
+    static func purge(_ context: ModelContext, eventID: UUID, day: Date? = nil) {
+        for item in allPayments(context) where item.eventID == eventID && item.deletedAt == nil {
+            if let day, !cal.isDate(item.day, inSameDayAs: day) { continue }
+            item.markDeleted()
+        }
+        try? context.save()
     }
 
     static func payment(_ context: ModelContext, eventID: UUID, day: Date, clientID: UUID) -> PlannerPayment? {

@@ -1,0 +1,118 @@
+import Foundation
+import SwiftData
+
+/// Период для отчётов.
+struct StatisticsPeriod: Equatable {
+    enum Preset: String, CaseIterable, Identifiable {
+        case today = "Сегодня"
+        case week = "Неделя"
+        case month = "Месяц"
+        case lastMonth = "Прошлый месяц"
+        case year = "Год"
+        case custom = "Свой"
+        var id: String { rawValue }
+    }
+
+    var preset: Preset = .month
+    var customStart = Date.now
+    var customEnd = Date.now
+
+    private var cal: Calendar { PlannerCalendar.calendar }
+
+    /// Начало (включительно) и конец (не включительно).
+    var interval: (start: Date, end: Date) {
+        let today = cal.startOfDay(for: .now)
+        switch preset {
+        case .today:
+            return (today, PlannerCalendar.addDays(1, to: today))
+        case .week:
+            let start = PlannerCalendar.addDays(-6, to: today)
+            return (start, PlannerCalendar.addDays(1, to: today))
+        case .month:
+            let start = PlannerCalendar.startOfMonth(today)
+            return (start, cal.date(byAdding: .month, value: 1, to: start) ?? today)
+        case .lastMonth:
+            let thisMonth = PlannerCalendar.startOfMonth(today)
+            return (cal.date(byAdding: .month, value: -1, to: thisMonth) ?? thisMonth, thisMonth)
+        case .year:
+            let start = cal.date(from: cal.dateComponents([.year], from: today)) ?? today
+            return (start, cal.date(byAdding: .year, value: 1, to: start) ?? today)
+        case .custom:
+            let start = cal.startOfDay(for: min(customStart, customEnd))
+            return (start, PlannerCalendar.addDays(1, to: cal.startOfDay(for: max(customStart, customEnd))))
+        }
+    }
+
+    func contains(_ date: Date) -> Bool {
+        let range = interval
+        return date >= range.start && date < range.end
+    }
+}
+
+/// Одно занятие клиента в журнале (запись + день + клиент) со своей оплатой.
+struct StatisticsVisit: Identifiable {
+    let id: String
+    let eventTitle: String
+    let day: Date
+    let start: Date
+    let clientID: UUID
+    let category: PlannerCategory
+    let method: PlannerPayMethod
+    let amount: Double
+
+    /// Занятие уже прошло, а денег за него нет (не отмечено или ❌).
+    var isDebt: Bool { start <= .now && (method == .none || method == .unpaid) }
+}
+
+/// Все данные для отчётов, собранные из журнала один раз.
+struct StatisticsSnapshot {
+    var visits: [StatisticsVisit] = []
+    var cashPayments: [PlannerPayment] = []
+    var subscriptions: [PlannerSubscription] = []
+    var clients: [UUID: String] = [:]
+
+    func name(_ id: UUID) -> String { clients[id] ?? "Клиент" }
+
+    @MainActor
+    static func load(_ context: ModelContext, until end: Date) -> StatisticsSnapshot {
+        let cal = PlannerCalendar.calendar
+        var snap = StatisticsSnapshot()
+        snap.clients = Dictionary(
+            PlannerClientDirectory.all(context).map { ($0.id, $0.name) },
+            uniquingKeysWith: { a, _ in a }
+        )
+        let events = ((try? context.fetch(FetchDescriptor<PlannerEvent>())) ?? []).filter { $0.deletedAt == nil }
+        let map = PlannerPaymentStore.eventMap(events)
+        let live = PlannerPaymentStore.allPayments(context).filter { PlannerPaymentStore.isLive($0, events: map) }
+        var byKey: [String: PlannerPayment] = [:]
+        for payment in live {
+            byKey["\(payment.eventID.uuidString)|\(Int(cal.startOfDay(for: payment.day).timeIntervalSince1970))|\(payment.clientID.uuidString)"] = payment
+        }
+        snap.cashPayments = live.filter { $0.methodValue == .cash || $0.methodValue == .transfer }
+        snap.subscriptions = PlannerPaymentStore.allSubscriptions(context)
+
+        for event in events where PlannerPaymentStore.isTraining(event) && !event.participantIDs.isEmpty {
+            var day = cal.startOfDay(for: event.start)
+            var steps = 0
+            while day < end && steps < 800 {
+                if event.startsOn(day) {
+                    let start = PlannerCalendar.combine(day: day, time: event.start)
+                    for clientID in event.participantIDs {
+                        let key = "\(event.syncID.uuidString)|\(Int(day.timeIntervalSince1970))|\(clientID.uuidString)"
+                        let row = byKey[key]
+                        snap.visits.append(StatisticsVisit(
+                            id: key, eventTitle: event.plainTitle, day: day, start: start,
+                            clientID: clientID, category: event.categoryValue,
+                            method: row?.methodValue ?? .none,
+                            amount: row?.amount ?? PlannerPricing.price(for: event.categoryValue)
+                        ))
+                    }
+                }
+                if event.repeatValue == .none { break }
+                day = PlannerCalendar.addDays(1, to: day)
+                steps += 1
+            }
+        }
+        return snap
+    }
+}
