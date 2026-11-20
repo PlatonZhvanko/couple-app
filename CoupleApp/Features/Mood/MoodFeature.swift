@@ -12,7 +12,9 @@ enum MoodFeature {
         models: [
             MoodEntry.self,
             MoodReaction.self,
-        ]
+            MoodDayCheckIn.self,
+        ],
+        calendarItems: MoodCalendar.items
     ) {
         MoodRootView()
     }
