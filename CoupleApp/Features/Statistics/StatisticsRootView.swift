@@ -34,12 +34,6 @@ struct StatisticsRootView: View {
 
                 periodBar.fixedSize(horizontal: false, vertical: true)
 
-                if section == .money || section == .debts {
-                    CatSaysCard(cat: .gosha, topic: .money)
-                        .padding(.horizontal)
-                        .padding(.bottom, 6)
-                }
-
                 switch section {
                 case .money:
                     StatisticsMoneyView(snapshot: snapshot, period: period)
