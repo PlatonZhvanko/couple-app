@@ -21,6 +21,7 @@ struct MoodRootView: View {
     @State private var insight: (item: MoodInsight, text: String)?
     @State private var editor: EditorTarget?
     @State private var sentEmoji: String?
+    @State private var supportComment = ""
 
     /// Что открыть в редакторе.
     enum EditorTarget: Identifiable {
@@ -129,6 +130,7 @@ struct MoodRootView: View {
                 }
             }
             .navigationTitle("Настроение")
+            .catVisit(.miron, topic: .mood)
             .refreshable { await sync.syncNow() }
             .onAppear(perform: onAppear)
             .sheet(isPresented: $showCheckIn) {
@@ -206,6 +208,10 @@ struct MoodRootView: View {
                 Text(unseenReactions.prefix(3).map { MoodSupport.title(for: $0.emoji) }.joined(separator: ", "))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                ForEach(unseenReactions.filter { !$0.comment.isEmpty }.prefix(2)) { reaction in
+                    Text("«\(reaction.comment)»")
+                        .font(.subheadline.italic())
+                }
             }
             Spacer()
             Button("Спасибо", action: markReactionsSeen)
@@ -215,29 +221,37 @@ struct MoodRootView: View {
     }
 
     private var supportRow: some View {
-        HStack(spacing: 8) {
-            ForEach(MoodSupport.emojis, id: \.self) { emoji in
-                Button {
-                    send(emoji)
-                } label: {
-                    VStack(spacing: 2) {
-                        Text(emoji).font(.title2)
-                        Text(MoodSupport.title(for: emoji))
-                            .font(.caption)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+        VStack(spacing: 10) {
+            TextField("Добавить от себя, по желанию", text: $supportComment, axis: .vertical)
+                .lineLimit(1...3)
+                .textFieldStyle(.roundedBorder)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                ForEach(MoodSupport.emojis, id: \.self) { emoji in
+                    Button {
+                        send(emoji)
+                    } label: {
+                        VStack(spacing: 2) {
+                            Text(emoji).font(.title2)
+                            Text(MoodSupport.title(for: emoji))
+                                .font(.caption)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .padding(.vertical, 4)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
             }
         }
         .sensoryFeedback(.success, trigger: sentEmoji)
     }
 
     private func send(_ emoji: String) {
-        context.insert(MoodReaction(from: me, to: me.other, emoji: emoji))
+        let text = supportComment.trimmingCharacters(in: .whitespacesAndNewlines)
+        context.insert(MoodReaction(from: me, to: me.other, emoji: emoji, comment: text))
+        supportComment = ""
         try? context.save()
         sync.requestSync()
         sentEmoji = emoji

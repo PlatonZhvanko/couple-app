@@ -69,7 +69,8 @@ struct StatisticsClientsView: View {
                 ForEach(list) { clientRow($0) }
             }
             Section("🎾 Ходят без абонемента") {
-                let list = all.filter { !$0.hasSubscription && !$0.visits.isEmpty }
+                // Только те, кто ходит в группы; кто занимается лично, без абонемента — не считаются.
+                let list = all.filter { !$0.hasSubscription && $0.visits.contains { $0.category == .group } }
                 if list.isEmpty { Text("Таких нет").foregroundStyle(.secondary) }
                 ForEach(list) { clientRow($0) }
             }
