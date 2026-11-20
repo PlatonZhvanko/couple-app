@@ -1,5 +1,7 @@
 # Обновления без провода (бесплатно)
 
+Адрес источника для SideStore: `https://raw.githubusercontent.com/PlatonZhvanko/couple-app/sidestore/source.json`
+
 Схема: GitHub сам собирает приложение (`.github/workflows/build-ipa.yml`) → кладёт `Vdvoem.ipa` и `source.json`
 в релиз `latest` → SideStore на телефоне видит новую версию, скачивает и ставит по воздуху.
 
