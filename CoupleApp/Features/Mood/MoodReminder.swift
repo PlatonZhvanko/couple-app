@@ -114,6 +114,7 @@ struct MoodReminderSettingsView: View {
                     Text("Мироня напишет в выбранное время и спросит, как прошёл день. Каждый раз по-разному.")
                 }
             }
+            MoodSleepReminderSection()
         }
         .navigationTitle("Напоминание")
         .navigationBarTitleDisplayMode(.inline)
