@@ -36,7 +36,11 @@ struct CarRootView: View {
             }
             .refreshable { await sync.syncNow() }
         }
-        .onAppear(perform: rescheduleNotifications)
+        .onAppear {
+            CarSeed.seedIfNeeded(context: context)
+            sync.requestSync()
+            rescheduleNotifications()
+        }
         .onChange(of: notificationSignature) { rescheduleNotifications() }
     }
 
@@ -56,6 +60,14 @@ struct CarRootView: View {
         let upcoming = reminders.sortedByUrgency(currentOdometer: odometer)
 
         List {
+            Section {
+                CarModel3DView(name: car.displayName)
+                    .id(car.syncID)
+                    .frame(height: 220)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    .listRowBackground(Color.clear)
+            }
+
             Section {
                 HStack(alignment: .top) {
                     CarStatTile(title: "Пробег", value: odometer > 0 ? CarFormat.km(odometer) : "—")
