@@ -11,43 +11,26 @@ enum CarModelKind {
     }
 }
 
-/// 3D-машина сверху экрана: без фона и пола, крутится пальцем, двери открываются нажатием.
+/// 3D-машина сверху экрана: без фона и пола, крутится пальцем.
 struct CarModel3DView: View {
     let name: String
-    @State private var doorsOpen = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            CarSceneView(kind: .guess(from: name), doorsOpen: doorsOpen)
-            HStack {
-                Text("Крутите пальцем, нажмите на дверь")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    doorsOpen.toggle()
-                } label: {
-                    Label(doorsOpen ? "Закрыть двери" : "Открыть двери", systemImage: "car.side.fill")
-                        .font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-            .padding(.horizontal, 4)
+            CarSceneView(kind: .guess(from: name))
+            Text("Крутите пальцем, щипком меняйте размер")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }
 
 private struct CarSceneView: UIViewRepresentable {
     let kind: CarModelKind
-    let doorsOpen: Bool
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> SCNView {
-        let built = CarSceneBuilder.make(kind: kind)
         let view = SCNView()
-        view.scene = built.scene
+        view.scene = CarSceneBuilder.make(kind: kind)
         view.backgroundColor = .clear
         view.isOpaque = false
         view.allowsCameraControl = true
@@ -56,50 +39,10 @@ private struct CarSceneView: UIViewRepresentable {
         view.defaultCameraController.maximumVerticalAngle = 50
         view.defaultCameraController.minimumVerticalAngle = -2
         view.defaultCameraController.inertiaEnabled = true
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
-        view.addGestureRecognizer(tap)
-        context.coordinator.doors = built.doors
         return view
     }
 
-    func updateUIView(_ view: SCNView, context: Context) {
-        context.coordinator.setAll(open: doorsOpen)
-    }
-
-    final class Coordinator: NSObject {
-        var doors: [SCNNode] = []
-        private var open: Set<String> = []
-        private var lastAll = false
-
-        func setAll(open wantOpen: Bool) {
-            guard wantOpen != lastAll else { return }
-            lastAll = wantOpen
-            for door in doors { set(door, open: wantOpen) }
-        }
-
-        private func set(_ door: SCNNode, open wantOpen: Bool) {
-            guard let name = door.name else { return }
-            if wantOpen { open.insert(name) } else { open.remove(name) }
-            let side: Float = name.contains(".L.") ? 1 : -1
-            let angle: Float = wantOpen ? side * 1.0 : 0
-            door.runAction(.rotateTo(x: 0, y: CGFloat(angle), z: 0, duration: 0.45, usesShortestUnitArc: true))
-        }
-
-        @objc func tapped(_ gesture: UITapGestureRecognizer) {
-            guard let view = gesture.view as? SCNView else { return }
-            let hits = view.hitTest(gesture.location(in: view), options: nil)
-            for hit in hits {
-                var node: SCNNode? = hit.node
-                while let current = node {
-                    if let name = current.name, name.hasPrefix("door.") {
-                        set(current, open: !open.contains(name))
-                        return
-                    }
-                    node = current.parent
-                }
-            }
-        }
-    }
+    func updateUIView(_ view: SCNView, context: Context) {}
 }
 
 // MARK: - Сборка модели
@@ -231,12 +174,68 @@ enum CarSceneBuilder {
 
     // MARK: Сборка
 
-    static func make(kind: CarModelKind) -> (scene: SCNScene, doors: [SCNNode]) {
+    /// Готовая модель из файла, если она лежит в приложении (см. docs/car-models.md).
+    private static func customCar(for kind: CarModelKind) -> SCNNode? {
+        let base = kind == .audiQ3 ? "audi_q3" : "volvo_s40"
+        for ext in ["usdz", "scn", "dae", "obj"] {
+            guard let url = Bundle.main.url(forResource: base, withExtension: ext),
+                  let loaded = try? SCNScene(url: url, options: nil) else { continue }
+            let holder = SCNNode()
+            for child in loaded.rootNode.childNodes { holder.addChildNode(child) }
+            // Привести к размеру ~4.5 м и поставить по центру.
+            let (mn, mx) = holder.boundingBox
+            let size = max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
+            guard size > 0 else { continue }
+            let k = 4.5 / size
+            holder.scale = SCNVector3(k, k, k)
+            let cx = (mn.x + mx.x) / 2 * k
+            let cy = (mn.y + mx.y) / 2 * k
+            let cz = (mn.z + mx.z) / 2 * k
+            let outer = SCNNode()
+            holder.position = SCNVector3(-cx, -cy, -cz)
+            outer.addChildNode(holder)
+            outer.position = SCNVector3(0, 0.05, 0)
+            return outer
+        }
+        return nil
+    }
+
+    /// Ставит машину в сцену: поворот, свет, камера.
+    private static func assemble(car: SCNNode, in scene: SCNScene) {
+        scene.rootNode.addChildNode(car)
+        if car.position.y == 0 { car.position = v(0, -0.85, 0) }
+        car.eulerAngles.y = -0.55
+
+        // Свет
+        let sun = SCNNode()
+        sun.light = SCNLight()
+        sun.light?.type = .directional
+        sun.light?.intensity = 900
+        sun.eulerAngles = SCNVector3(-0.9, 0.7, 0)
+        scene.rootNode.addChildNode(sun)
+
+        // Камера
+        let camNode = SCNNode()
+        camNode.camera = SCNCamera()
+        camNode.camera?.fieldOfView = 30
+        camNode.camera?.zNear = 0.1
+        camNode.camera?.zFar = 100
+        camNode.position = v(0, 1.4, 9.2)
+        camNode.look(at: SCNVector3(0, 0, 0))
+        scene.rootNode.addChildNode(camNode)
+
+    }
+
+    static func make(kind: CarModelKind) -> SCNScene {
         let s = spec(for: kind)
         let scene = SCNScene()
         scene.background.contents = UIColor.clear
         scene.lightingEnvironment.contents = environmentImage()
         scene.lightingEnvironment.intensity = 1.3
+        if let custom = customCar(for: kind) {
+            assemble(car: custom, in: scene)
+            return scene
+        }
 
         let paint = mat(s.paint, metal: s.metal, rough: s.rough, clear: true)
         let glass = mat(UIColor(red: 0.10, green: 0.14, blue: 0.18, alpha: 1), metal: 0.9, rough: 0.05)
@@ -289,47 +288,6 @@ enum CarSceneBuilder {
         }
         slopeGlass(s.windshield.0, s.windshield.1)
         slopeGlass(s.rearGlass.0, s.rearGlass.1)
-
-        // Двери: нижняя панель + стекло, ось у переднего края
-        var doors: [SCNNode] = []
-        for side in [1.0, -1.0] as [CGFloat] {
-            for d in s.doors {
-                let hinge = SCNNode()
-                hinge.name = "door.\(side > 0 ? "L" : "R").\(d.id)"
-                hinge.position = v(d.hingeX, 0, 0)
-
-                // Нижняя панель обходит вырезы под колёса
-                let notch = s.wheelRadius + archR + 0.04
-                let archFront = s.axle - archR
-                let archRear = -s.axle + archR
-                var lowerPts: [CGPoint] = [p(d.hingeX, s.belt)]
-                if d.hingeX > archFront {
-                    lowerPts += [p(d.hingeX, notch), p(archFront, notch), p(archFront, 0.32)]
-                } else {
-                    lowerPts.append(p(d.hingeX, 0.32))
-                }
-                if d.rearX < archRear {
-                    lowerPts += [p(archRear, 0.32), p(archRear, notch), p(d.rearX, notch)]
-                } else {
-                    lowerPts.append(p(d.rearX, 0.32))
-                }
-                lowerPts.append(p(d.rearX, s.belt))
-                let panel = shapeNode(lowerPts, depth: 0.05, chamfer: 0.015, materials: Array(repeating: paint, count: 5))
-                panel.position = v(-d.hingeX, 0, side * (half + 0.015))
-                hinge.addChildNode(panel)
-
-                let win = shapeNode(d.upper, depth: 0.02, chamfer: 0, materials: Array(repeating: glass, count: 3))
-                win.position = v(-d.hingeX, 0, side * (cabinHalf + 0.012))
-                hinge.addChildNode(win)
-
-                let handle = SCNNode(geometry: box(0.16, 0.03, 0.035, chrome))
-                handle.position = v(d.rearX + 0.18 - d.hingeX, s.belt - 0.09, side * (half + 0.055))
-                hinge.addChildNode(handle)
-
-                car.addChildNode(hinge)
-                doors.append(hinge)
-            }
-        }
 
         // Передняя и задняя части
         let front = s.length / 2
@@ -407,29 +365,8 @@ enum CarSceneBuilder {
             }
         }
 
-        car.position = v(0, -0.85, 0)
-        car.eulerAngles.y = -0.55
-        scene.rootNode.addChildNode(car)
-
-        // Свет
-        let sun = SCNNode()
-        sun.light = SCNLight()
-        sun.light?.type = .directional
-        sun.light?.intensity = 900
-        sun.eulerAngles = SCNVector3(-0.9, 0.7, 0)
-        scene.rootNode.addChildNode(sun)
-
-        // Камера
-        let camNode = SCNNode()
-        camNode.camera = SCNCamera()
-        camNode.camera?.fieldOfView = 30
-        camNode.camera?.zNear = 0.1
-        camNode.camera?.zFar = 100
-        camNode.position = v(0, 1.4, 9.2)
-        camNode.look(at: SCNVector3(0, 0, 0))
-        scene.rootNode.addChildNode(camNode)
-
-        return (scene, doors)
+        assemble(car: car, in: scene)
+        return scene
     }
 
     private static func wheel(radius r: CGFloat, x: CGFloat, z: CGFloat, tire: SCNMaterial, alloy: SCNMaterial, dark: SCNMaterial) -> SCNNode {
