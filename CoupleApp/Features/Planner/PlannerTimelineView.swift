@@ -8,8 +8,12 @@ struct PlannerTimelineView: View {
     let isDayMode: Bool
     let events: [PlannerEvent]
     /// Цвет записи (свой, по группе, делу, клиенту или по виду).
-    let colorFor: (PlannerEvent) -> Color
+    let colorFor: (PlannerEvent, Date) -> Color
     let externalItems: (Date) -> [CalendarItem]
+    /// Дни со сменой (красноватая полоса 9:00–23:00).
+    var shiftDays: Set<Date> = []
+    /// Смайлик настроения дня (для обоих), пустая строка — нет.
+    var dayMark: (Date) -> String = { _ in "" }
     /// Значок оплаты записи за этот день.
     let badge: (PlannerEvent, Date) -> PlannerPayBadge
     /// Буква владельца записи (в общем журнале), `nil` — не показывать.
@@ -136,6 +140,7 @@ struct PlannerTimelineView: View {
                 HStack(spacing: 6) {
                     Text(PlannerCalendar.dayTitle(day))
                         .font(.headline)
+                    if !dayMark(day).isEmpty { Text(dayMark(day)) }
                     Image(systemName: "rectangle.split.3x1")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -153,6 +158,9 @@ struct PlannerTimelineView: View {
                             if isToday { Circle().fill(Color.plannerToday) }
                         }
                         .foregroundStyle(isToday ? Color.white : (isWeekend ? Color.red : Color.primary))
+                    if !dayMark(day).isEmpty {
+                        Text(dayMark(day)).font(.system(size: 11))
+                    }
                 }
             }
         }
@@ -228,7 +236,22 @@ struct PlannerTimelineView: View {
         let blocks = layout(day)
         let rangeStart = dayStart.addingTimeInterval(Double(range.lowerBound * Self.slotMinutes * 60))
 
+        let isShift = shiftDays.contains(dayStart) && !isToday
+        let bandStart = dayStart.addingTimeInterval(Double(PlannerShift.startHour) * 3600)
+        let bandTop = max(0, y(of: bandStart, from: rangeStart, slotHeight: slotHeight))
+        let bandBottom = min(
+            slotHeight * CGFloat(range.count),
+            y(of: dayStart.addingTimeInterval(Double(PlannerShift.endHour) * 3600), from: rangeStart, slotHeight: slotHeight)
+        )
+
         return ZStack(alignment: .topLeading) {
+            if isShift, bandBottom > bandTop {
+                Rectangle()
+                    .fill(Color.red.opacity(0.16))
+                    .frame(height: bandBottom - bandTop)
+                    .offset(y: bandTop)
+                    .allowsHitTesting(false)
+            }
             // Сетка и пустые отрезки, на которые можно нажать.
             VStack(spacing: 0) {
                 ForEach(Array(range), id: \.self) { slot in
@@ -436,7 +459,7 @@ struct PlannerTimelineView: View {
             raw.append(PlannerTimelineBlock(
                 id: occurrence.id, source: .event(occurrence.event),
                 title: occurrence.event.plainTitle,
-                color: colorFor(occurrence.event), start: start, end: end,
+                color: colorFor(occurrence.event, day), start: start, end: end,
                 badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event),
                 emoji: occurrence.event.categoryValue.emoji ?? ""
             ))

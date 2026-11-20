@@ -10,6 +10,7 @@ enum FeatureRegistry {
         MoodFeature.feature,
         ClientsFeature.feature,
         PlannerSetupFeature.feature,
+        PlannerOwnerSetupFeature.feature,
         CarFeature.feature,
         PetsFeature.feature,
     ]

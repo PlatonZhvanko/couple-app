@@ -49,7 +49,9 @@ struct PlannerTrainingEditor: View {
 
     /// Какую форму открывать: тренировочную (для Настеньки и для её записей) или обычную.
     static func shouldUse(for event: PlannerEvent?, me: CoupleMember) -> Bool {
-        guard let event else { return me == .partner }
+        // У Платони свой упрощённый редактор: клиентов, групп и оплат нет.
+        guard me == .partner else { return false }
+        guard let event else { return true }
         return [.personal, .group, .school, .errand].contains(event.categoryValue)
     }
 

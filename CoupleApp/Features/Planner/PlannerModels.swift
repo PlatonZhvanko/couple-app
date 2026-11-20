@@ -189,6 +189,12 @@ final class PlannerEvent: SyncableModel {
         var repeatUntil: Date?
         var colorHex: String?
         var cancelledDays: String?
+        /// Деньги записи (профиль Платони): «profit» / «expense», пусто — ничего.
+        var moneyKind: String?
+        var moneyAmount: Double?
+        var moneyType: String?
+        /// Статусы по дням: «день=done|notDone|moved@время».
+        var statuses: String?
     }
 
     static let recordKind = "planner.event"
@@ -224,6 +230,13 @@ final class PlannerEvent: SyncableModel {
     var colorHex: String = ""
     /// Отменённые занятия (дни повтора), метки времени начала дня через запятую.
     var cancelledDaysRaw: String = ""
+    /// Деньги записи: пусто — ничего, «profit» — прибыль, «expense» — трата.
+    var moneyKindRaw: String = ""
+    var moneyAmount: Double = 0
+    /// Название созданного типа денег (например «Продажа»).
+    var moneyType: String = ""
+    /// Статусы по дням (сделано / не сделано / перенесено).
+    var statusRaw: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -242,7 +255,8 @@ final class PlannerEvent: SyncableModel {
             reminderMinutes: reminderMinutes, createdBy: createdBy, createdAt: createdAt,
             participantIDs: participantIDs, skippedDays: skippedDays, isPrivate: isPrivate,
             repeatInterval: repeatInterval, repeatWeekdays: repeatWeekdaysRaw,
-            repeatUntil: repeatUntil, colorHex: colorHex, cancelledDays: cancelledDaysRaw
+            repeatUntil: repeatUntil, colorHex: colorHex, cancelledDays: cancelledDaysRaw,
+            moneyKind: moneyKindRaw, moneyAmount: moneyAmount, moneyType: moneyType, statuses: statusRaw
         )
     }
 
@@ -266,6 +280,10 @@ final class PlannerEvent: SyncableModel {
         repeatUntil = payload.repeatUntil
         colorHex = payload.colorHex ?? ""
         cancelledDaysRaw = payload.cancelledDays ?? ""
+        moneyKindRaw = payload.moneyKind ?? ""
+        moneyAmount = payload.moneyAmount ?? 0
+        moneyType = payload.moneyType ?? ""
+        statusRaw = payload.statuses ?? ""
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }

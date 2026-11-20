@@ -108,6 +108,8 @@ enum PlannerPayBadge {
     case fineUnpaid
     /// Штраф оплачен.
     case finePaid
+    /// Дело сделано / не сделано / перенесено (профиль Платони).
+    case errandDone, errandNotDone, errandMoved
 
     var symbol: String? {
         switch self {
@@ -119,6 +121,9 @@ enum PlannerPayBadge {
         case .cancelled: "🚫"
         case .fineUnpaid: "⏳"
         case .finePaid: "💰"
+        case .errandDone: "✅"
+        case .errandNotDone: "❌"
+        case .errandMoved: "↪️"
         }
     }
 }
