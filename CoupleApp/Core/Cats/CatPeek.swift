@@ -222,12 +222,12 @@ private struct CatPeekModifier: ViewModifier {
     let edge: CatPeekEdge?
     let duration: Double
     @Binding var isPresented: Bool
-    @Environment(CatPeekCenter.self) private var center
+    @Environment(CatPeekCenter.self) private var center: CatPeekCenter?
 
     func body(content: Content) -> some View {
         content.onChange(of: isPresented, initial: true) { _, shown in
             guard shown else { return }
-            center.show(cat, topic: topic, message: message, edge: edge, duration: duration)
+            center?.show(cat, topic: topic, message: message, edge: edge, duration: duration)
             isPresented = false
         }
     }
@@ -260,31 +260,31 @@ private struct CatVisitModifier: ViewModifier {
     let cooldown: TimeInterval?
     var scope: String
     var messages: [String] = []
-    @Environment(CatPeekCenter.self) private var center
+    @Environment(CatPeekCenter.self) private var center: CatPeekCenter?
 
     func body(content: Content) -> some View {
         content.task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled, CatSettings.claim(cat, scope: scope, chance: chance, cooldown: cooldown) else { return }
             // Иногда кот выглядывает рядом с нужным блоком экрана, иногда просто от края.
-            let anchor = Bool.random() ? center.anchorY : nil
-            center.show(cat, topic: topic, message: messages.randomElement(),
+            let anchor = Bool.random() ? center?.anchorY : nil
+            center?.show(cat, topic: topic, message: messages.randomElement(),
                         duration: CatSettings.displaySeconds, anchorY: anchor)
         }
     }
 }
 
 private struct CatAnchorModifier: ViewModifier {
-    @Environment(CatPeekCenter.self) private var center
+    @Environment(CatPeekCenter.self) private var center: CatPeekCenter?
 
     func body(content: Content) -> some View {
         content
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.frame(in: .global).midY
             } action: { y in
-                center.anchorY = y
+                center?.anchorY = y
             }
-            .onDisappear { center.anchorY = nil }
+            .onDisappear { center?.anchorY = nil }
     }
 }
 

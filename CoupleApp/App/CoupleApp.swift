@@ -56,7 +56,6 @@ struct RootView: View {
                 .zIndex(1)
             }
         }
-        .environment(catCenter)
         .catPeek(.miron, topic: .greeting, isPresented: $showGreeting)
         .overlay {
             ZStack {
@@ -67,6 +66,7 @@ struct RootView: View {
             .animation(.spring(response: 0.55, dampingFraction: 0.7), value: catCenter.token)
             .ignoresSafeArea()
         }
+        .environment(catCenter)
         .scrollDismissesKeyboard(.interactively)
         .task {
             // Окно появляется не сразу, поэтому пробуем несколько раз.

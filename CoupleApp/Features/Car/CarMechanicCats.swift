@@ -228,18 +228,18 @@ struct CarCatPeekView: View {
 
 private struct CarCatVisitModifier: ViewModifier {
     let hint: CarCatLines.Hint
-    @Environment(CatPeekCenter.self) private var center
+    @Environment(CatPeekCenter.self) private var center: CatPeekCenter?
 
     func body(content: Content) -> some View {
         content.task {
             try? await Task.sleep(for: .seconds(2))
             let cat = Cat.allCases.randomElement() ?? .miron
             guard !Task.isCancelled, CatSettings.claim(cat, scope: "car") else { return }
-            center.present(AnyView(
+            center?.present(AnyView(
                 CarCatPeekView(
                     cat: cat, edge: CatPeekEdge.allCases.randomElement() ?? .bottom,
                     message: CarCatLines.line(cat: cat, hint: hint), position: Int.random(in: 0...2)
-                ) { center.dismiss() }
+                ) { center?.dismiss() }
             ))
         }
     }
