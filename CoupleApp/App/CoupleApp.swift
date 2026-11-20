@@ -42,7 +42,13 @@ struct RootView: View {
                     withAnimation(.easeOut(duration: 0.45)) { showSplash = false }
                     Task {
                         try? await Task.sleep(for: .seconds(0.8))
-                        showGreeting = true
+                        // Мироня здоровается не чаще раза в несколько часов.
+                        let key = "cat.lastGreeting"
+                        let now = Date.now.timeIntervalSince1970
+                        if now - UserDefaults.standard.double(forKey: key) > 4 * 3600 {
+                            UserDefaults.standard.set(now, forKey: key)
+                            showGreeting = true
+                        }
                     }
                 }
                 .transition(.opacity)

@@ -91,11 +91,6 @@ struct NutritionDayView: View {
     var body: some View {
         List {
             Section {
-                CatSaysCard(cat: .chloe, topic: .food)
-            }
-            .listRowBackground(Color.appBlush.opacity(0.12))
-
-            Section {
                 dayPicker
             }
 

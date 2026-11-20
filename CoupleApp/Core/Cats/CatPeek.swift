@@ -205,30 +205,9 @@ private struct CatVisitModifier: ViewModifier {
 }
 
 extension View {
-    /// Кот изредка заглядывает при открытии экрана: не чаще, чем раз в `cooldown` секунд (по умолчанию 2 минуты)
+    /// Кот изредка заглядывает при открытии экрана: не чаще, чем раз в `cooldown` секунд (по умолчанию 4 часа)
     /// и не каждый раз (`chance` от 0 до 1).
-    func catVisit(_ cat: Cat, topic: CatTopic, chance: Double = 0.85, cooldown: TimeInterval = 120) -> some View {
+    func catVisit(_ cat: Cat, topic: CatTopic, chance: Double = 0.6, cooldown: TimeInterval = 4 * 3600) -> some View {
         modifier(CatVisitModifier(cat: cat, topic: topic, chance: chance, cooldown: cooldown))
-    }
-}
-
-/// Постоянная карточка: кот с подписью и репликой прямо на экране (всегда видна).
-struct CatSaysCard: View {
-    let cat: Cat
-    let topic: CatTopic
-    @State private var text = ""
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            CatAvatar(cat: cat, size: 56)
-                .frame(width: 60, height: 60)
-                .background(Circle().fill(Color.appBlush.opacity(0.25)))
-            CatBubble(cat: cat, text: text)
-            Spacer(minLength: 0)
-        }
-        .onAppear {
-            if text.isEmpty { text = CatPhrases.random(for: cat, topic: topic) }
-        }
-        .onTapGesture { text = CatPhrases.random(for: cat, topic: topic) }
     }
 }

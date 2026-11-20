@@ -84,12 +84,14 @@ struct PersonAvatar: View {
                 .overlay(Ellipse().stroke(Cat.outline.opacity(0.6), lineWidth: lw))
                 .frame(width: head, height: head * 1.1)
                 .offset(y: headY)
-            // лёгкая щетина у Платона
+            // небольшая бородка у Платона
             if kind == .platon {
-                Ellipse().fill(hairDark.opacity(0.3))
-                    .frame(width: head * 0.8, height: head * 0.42)
-                    .offset(y: headY + head * 0.36)
-                    .mask(Ellipse().frame(width: head, height: head * 1.1).offset(y: headY))
+                Ellipse().fill(hairDark.opacity(0.85))
+                    .frame(width: head * 0.26, height: head * 0.16)
+                    .offset(y: headY + head * 0.5)
+                Capsule().fill(hairDark.opacity(0.7))
+                    .frame(width: head * 0.2, height: head * 0.035)
+                    .offset(y: headY + head * 0.3)
             }
             // причёска
             if kind == .platon {
@@ -121,12 +123,17 @@ struct PersonAvatar: View {
             // глаза
             ForEach([-1.0, 1.0], id: \.self) { side in
                 ZStack {
-                    Ellipse().fill(Color.white).frame(width: head * 0.2, height: head * 0.12)
+                    Ellipse().fill(Color.white).frame(width: head * 0.21, height: head * 0.125)
                     Circle().fill(eyeColor).frame(width: head * 0.11, height: head * 0.11)
                     Circle().fill(Color.black.opacity(0.85)).frame(width: head * 0.05, height: head * 0.05)
                     Circle().fill(Color.white).frame(width: head * 0.03, height: head * 0.03)
                         .offset(x: head * 0.02, y: -head * 0.02)
                 }
+                .overlay(
+                    Capsule().fill(Color.black.opacity(kind == .nastya ? 0.75 : 0.45))
+                        .frame(width: head * 0.22, height: head * (kind == .nastya ? 0.025 : 0.015))
+                        .offset(y: -head * 0.06)
+                )
                 .offset(x: CGFloat(side) * head * 0.2, y: headY - head * 0.02)
             }
             // нос, щёки, улыбка
@@ -140,9 +147,14 @@ struct PersonAvatar: View {
                 .frame(width: head * 0.16, height: head * 0.16)
                 .offset(x: head * 0.3, y: headY + head * 0.2)
             CatMouth()
-                .stroke(Color(red: 0.75, green: 0.4, blue: 0.4), style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                .stroke(Color(red: 0.8, green: 0.42, blue: 0.45), style: StrokeStyle(lineWidth: lw * 1.2, lineCap: .round))
                 .frame(width: head * 0.26, height: head * 0.1)
-                .offset(y: headY + head * 0.36)
+                .offset(y: headY + head * 0.34)
+            if kind == .nastya {
+                Capsule().fill(Color(red: 0.9, green: 0.55, blue: 0.58).opacity(0.7))
+                    .frame(width: head * 0.18, height: head * 0.05)
+                    .offset(y: headY + head * 0.38)
+            }
         }
         .frame(width: size, height: size)
     }
