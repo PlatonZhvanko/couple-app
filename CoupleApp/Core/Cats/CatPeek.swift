@@ -187,11 +187,13 @@ private struct CatVisitModifier: ViewModifier {
     let topic: CatTopic
     let chance: Double
     let cooldown: TimeInterval
+    var messages: [String] = []
     @State private var show = false
+    @State private var message: String? = nil
 
     func body(content: Content) -> some View {
         content
-            .catPeek(cat, topic: topic, isPresented: $show)
+            .catPeek(cat, topic: topic, message: message, isPresented: $show)
             .task {
                 let key = "cat.lastVisit.\(cat.rawValue)"
                 let last = UserDefaults.standard.double(forKey: key)
@@ -199,6 +201,7 @@ private struct CatVisitModifier: ViewModifier {
                 guard now - last > cooldown, Double.random(in: 0...1) < chance else { return }
                 try? await Task.sleep(for: .seconds(1.5))
                 UserDefaults.standard.set(now, forKey: key)
+                message = messages.randomElement()
                 show = true
             }
     }
@@ -207,7 +210,10 @@ private struct CatVisitModifier: ViewModifier {
 extension View {
     /// Кот изредка заглядывает при открытии экрана: не чаще, чем раз в `cooldown` секунд (по умолчанию 4 часа)
     /// и не каждый раз (`chance` от 0 до 1).
-    func catVisit(_ cat: Cat, topic: CatTopic, chance: Double = 0.6, cooldown: TimeInterval = 4 * 3600) -> some View {
-        modifier(CatVisitModifier(cat: cat, topic: topic, chance: chance, cooldown: cooldown))
+    func catVisit(
+        _ cat: Cat, topic: CatTopic, chance: Double = 0.6, cooldown: TimeInterval = 4 * 3600,
+        messages: [String] = []
+    ) -> some View {
+        modifier(CatVisitModifier(cat: cat, topic: topic, chance: chance, cooldown: cooldown, messages: messages))
     }
 }

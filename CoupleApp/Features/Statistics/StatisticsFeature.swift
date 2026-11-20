@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Раздел «Статистика». Пока только «Деньги» и «Клиенты».
+/// Раздел «Статистика»: «Финансы», «Загруженность» и «Настроение».
 /// Новые подразделы добавляются в `StatisticsSection` (см. StatisticsRootView.swift).
 enum StatisticsFeature {
     static let feature = Feature(
