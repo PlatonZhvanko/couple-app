@@ -33,7 +33,7 @@ struct PlannerTimelineView: View {
 
     static let slotMinutes = 30
     static let minSlotHeight: CGFloat = 24
-    private let timeColumnWidth: CGFloat = 46
+    private let timeColumnWidth: CGFloat = 44
     private let topPadding: CGFloat = 10
     private let bottomPadding: CGFloat = 16
     /// Стандартный видимый промежуток: с 9:00 до 0:00 (в получасовых отрезках).
@@ -213,14 +213,20 @@ struct PlannerTimelineView: View {
             ForEach(Array(range), id: \.self) { slot in
                 let isHour = slot % 2 == 0
                 Text(slot == 48 ? "0:00" : String(format: "%d:%02d", slot / 2, isHour ? 0 : 30))
-                    .font(isHour ? .caption.weight(.semibold) : .caption2)
+                    // Фиксированный размер: подпись не зависит от крупности шрифта и не переносится.
+                    .font(.system(size: isHour ? 11 : 9, weight: isHour ? .semibold : .regular).monospacedDigit())
                     .foregroundStyle(isHour ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .fixedSize(horizontal: true, vertical: true)
                     .padding(.trailing, 6)
                     .offset(y: CGFloat(slot - range.lowerBound) * slotHeight - 7)
             }
             if range.upperBound == 48 {
                 Text("0:00")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: true)
                     .padding(.trailing, 6)
                     .offset(y: CGFloat(range.count) * slotHeight - 7)
             }
