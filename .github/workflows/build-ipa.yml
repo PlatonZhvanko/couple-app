@@ -1,0 +1,99 @@
+name: Собрать IPA для SideStore
+
+# Запускается сам при каждом изменении приложения в main, либо вручную кнопкой Run workflow.
+on:
+  push:
+    branches: [main]
+    paths: ["CoupleApp/**", "CoupleApp.xcodeproj/**", ".github/workflows/build-ipa.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-ipa
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версия
+        run: |
+          echo "VERSION=0.1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Сборка без подписи (подпишет SideStore на телефоне)
+        run: |
+          xcodebuild build \
+            -project CoupleApp.xcodeproj \
+            -scheme CoupleApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Упаковка в Vdvoem.ipa
+        run: |
+          APP=$(find build/Build/Products -name "CoupleApp.app" -maxdepth 3 | head -1)
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -qry Vdvoem.ipa Payload
+          ls -l Vdvoem.ipa
+
+      - name: Файл-источник для SideStore (source.json)
+        run: |
+          SIZE=$(stat -f%z Vdvoem.ipa)
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/latest"
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          cat > source.json <<JSON
+          {
+            "name": "Вдвоём",
+            "identifier": "com.couple.vdvoem.source",
+            "apps": [
+              {
+                "name": "Вдвоём",
+                "bundleIdentifier": "com.couple.vdvoem",
+                "developerName": "Платоня",
+                "subtitle": "Приложение для двоих",
+                "localizedDescription": "Планер, питание, сон, настроение, клиенты и авто.",
+                "version": "${VERSION}",
+                "versionDate": "${DATE}",
+                "downloadURL": "${BASE}/Vdvoem.ipa",
+                "size": ${SIZE},
+                "versions": [
+                  {
+                    "version": "${VERSION}",
+                    "buildVersion": "${GITHUB_RUN_NUMBER}",
+                    "date": "${DATE}",
+                    "downloadURL": "${BASE}/Vdvoem.ipa",
+                    "size": ${SIZE},
+                    "minOSVersion": "18.0"
+                  }
+                ]
+              }
+            ],
+            "news": []
+          }
+          JSON
+          python3 -c "import json;json.load(open('source.json'))"
+
+      - name: Выложить в релиз «latest»
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest Vdvoem.ipa source.json \
+            --title "Последняя сборка ${VERSION}" \
+            --notes "Сборка ${VERSION} из коммита ${GITHUB_SHA::7}"
+
+      - name: Сохранить IPA и в Actions (на случай приватного репозитория)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vdvoem-ipa
+          path: Vdvoem.ipa
+          retention-days: 14
