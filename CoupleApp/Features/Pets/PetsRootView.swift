@@ -42,6 +42,7 @@ struct PetsRootView: View {
             }
             .refreshable { await sync.syncNow() }
         }
+        .petsCatVisit()
         .onAppear {
             PetsSeed.seedIfNeeded(context: context)
             sync.requestSync()
