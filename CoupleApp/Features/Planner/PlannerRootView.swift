@@ -4,9 +4,9 @@ import SwiftUI
 /// Главный экран раздела «Планер»: журнал «Личный» и «Общий».
 struct PlannerRootView: View {
     enum Page: String, CaseIterable, Identifiable {
-        case personal, everyone
+        case personal, partner
         var id: String { rawValue }
-        var title: String { self == .personal ? "Личный" : "Общий" }
+        
     }
 
     @Environment(AccountStore.self) private var account
@@ -16,16 +16,18 @@ struct PlannerRootView: View {
 
     var body: some View {
         NavigationStack {
-            PlannerCalendarView(showsEveryone: page == .everyone)
+            PlannerCalendarView(showsPartner: page == .partner)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
                         Picker("Журнал", selection: $page) {
-                            ForEach(Page.allCases) { Text($0.title).tag($0) }
+                            ForEach(Page.allCases) { item in
+                                Text(item == .personal ? "Мой" : "Планнер \(account.partnerName)").tag(item)
+                            }
                         }
                         .pickerStyle(.segmented)
                         .controlSize(.small)
-                        .frame(width: 130)
+                        .frame(width: 210)
                     }
                 }
         }
