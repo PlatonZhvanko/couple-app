@@ -223,17 +223,8 @@ struct MoodCheckInView: View {
         NavigationStack {
             Form {
                 Section {
-                    HStack(alignment: .top, spacing: 12) {
-                        MoodMironAvatar(size: 48)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Мироня")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(MoodMiron.question(for: .now))
-                                .font(.headline)
-                        }
-                    }
-                    .listRowBackground(Color.clear)
+                    MoodMironSpeech(text: MoodMiron.question(for: .now)) { EmptyView() }
+                        .listRowBackground(Color.clear)
                 }
 
                 Section("Как прошёл день в целом") {
@@ -258,24 +249,25 @@ struct MoodCheckInView: View {
                             Text(sleepProblem ? "проверьте время" : SleepFormat.duration(sleepDuration))
                                 .foregroundStyle(sleepProblem ? .red : .primary)
                         }
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Мироня: как спалось?")
-                                .font(.subheadline)
+                        MoodMironSpeech(text: "Как спалось?") {
                             HStack {
                                 ForEach(1...5, id: \.self) { value in
                                     Button {
                                         sleepQuality = value
                                     } label: {
                                         Text(SleepFormat.emoji(for: value))
-                                            .font(.title)
+                                            .font(.title2)
                                             .opacity(sleepQuality == value ? 1 : 0.35)
+                                            .scaleEffect(sleepQuality == value ? 1.15 : 1)
                                             .frame(maxWidth: .infinity)
                                     }
                                     .buttonStyle(.plain)
                                     .accessibilityLabel(SleepFormat.title(for: value))
                                 }
                             }
+                            .frame(maxWidth: 230)
                         }
+                        .padding(.vertical, 4)
                     }
                 } header: {
                     Text("Сон прошлой ночью")
