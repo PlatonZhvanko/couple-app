@@ -54,6 +54,8 @@ jobs:
           {
             "name": "Вдвоём",
             "identifier": "com.couple.vdvoem.source",
+            "iconURL": "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/sidestore/icon.png",
+            "tintColor": "E8567F",
             "sourceURL": "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/sidestore/source.json",
             "apps": [
               {
@@ -61,6 +63,11 @@ jobs:
                 "bundleIdentifier": "com.couple.vdvoem",
                 "developerName": "Платоня",
                 "subtitle": "Приложение для двоих",
+                "iconURL": "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/sidestore/icon.png",
+                "tintColor": "E8567F",
+                "screenshotURLs": [],
+                "screenshots": [],
+                "permissions": [],
                 "localizedDescription": "Планер, питание, сон, настроение, клиенты и авто.",
                 "version": "${VERSION}",
                 "versionDate": "${DATE}",
@@ -97,10 +104,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           cp source.json /tmp/source.json
+          cp CoupleApp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png /tmp/icon.png
           git checkout --orphan sidestore
           git rm -rf --quiet . || true
           cp /tmp/source.json source.json
-          git add source.json
+          cp /tmp/icon.png icon.png
+          git add source.json icon.png
           git commit -qm "source.json ${VERSION}"
           git push -f origin sidestore
 
