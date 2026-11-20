@@ -15,6 +15,10 @@ struct CarRootView: View {
 
     @AppStorage("car.selectedCarID") private var selectedCarID: String = ""
     @State private var sheet: CarSheet?
+    /// Выбранная на входе машина. Каждый раз при входе в раздел сначала выбор.
+    @State private var chosenID: UUID?
+
+    private var chosenCar: CarVehicle? { cars.first { $0.syncID == chosenID } }
 
     private var selectedCar: CarVehicle? {
         cars.first { $0.syncID.uuidString == selectedCarID } ?? cars.first
@@ -23,13 +27,19 @@ struct CarRootView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let car = selectedCar {
+                if let car = chosenCar {
                     dashboard(for: car)
-                } else {
+                        .carCatVisit(hint: catHint(for: car))
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else if cars.isEmpty {
                     emptyState
+                } else {
+                    picker
+                        .transition(.opacity)
                 }
             }
-            .navigationTitle(selectedCar?.displayName ?? "Авто")
+            .animation(.easeInOut(duration: 0.35), value: chosenID)
+            .navigationTitle(chosenCar?.displayName ?? "Авто")
             .toolbar { toolbar }
             .sheet(item: $sheet) { sheet in
                 CarSheetView(sheet: sheet, currentOdometer: currentOdometer)
@@ -42,6 +52,15 @@ struct CarRootView: View {
             rescheduleNotifications()
         }
         .onChange(of: notificationSignature) { rescheduleNotifications() }
+    }
+
+    /// О чём напомнить котам-механикам: давно не было пробега, есть сроки или просто привет.
+    private func catHint(for car: CarVehicle) -> CarCatLines.Hint {
+        let entries = allEntries.of(car)
+        let month = Date.now.addingTimeInterval(-30 * 86400)
+        if !entries.contains(where: { $0.odometer > 0 && $0.date > month }) { return .odometer }
+        if allReminders.of(car).contains(where: { !$0.isDone }) { return .service }
+        return .general
     }
 
     private var currentOdometer: Int {
@@ -63,10 +82,11 @@ struct CarRootView: View {
             Section {
                 CarModel3DView(name: car.displayName)
                     .id(car.syncID)
-                    .frame(height: 220)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    .frame(height: 280)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
                     .listRowBackground(Color.clear)
             }
+            .listRowSeparator(.hidden)
 
             Section {
                 HStack(alignment: .top) {
@@ -149,6 +169,45 @@ struct CarRootView: View {
         }
     }
 
+    // MARK: - Выбор машины
+
+    private var picker: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Какая машина?")
+                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ForEach(cars) { car in
+                    Button {
+                        selectedCarID = car.syncID.uuidString
+                        chosenID = car.syncID
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "car.side.fill")
+                                .font(.system(size: 38))
+                                .foregroundStyle(CarModelKind.guess(from: car.displayName) == .audiQ3 ? Color.gray : Color(white: 0.15))
+                                .frame(width: 70)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(car.displayName).font(.headline)
+                                if car.year > 0 { Text("\(car.year) год").font(.subheadline).foregroundStyle(.secondary) }
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                        }
+                        .padding(18)
+                        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemBackground)))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button("Добавить машину", systemImage: "plus") { sheet = .car(nil) }
+                    .buttonStyle(.bordered)
+                    .padding(.top, 8)
+            }
+            .padding()
+        }
+        .carCatVisit(hint: .general)
+    }
+
     private func quickButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
@@ -174,6 +233,11 @@ struct CarRootView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            if chosenCar != nil {
+                Button("Выбор", systemImage: "chevron.left") { chosenID = nil }
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 if cars.count > 1 {
@@ -196,7 +260,7 @@ struct CarRootView: View {
     private var carSelection: Binding<String> {
         Binding(
             get: { selectedCar?.syncID.uuidString ?? "" },
-            set: { selectedCarID = $0 }
+            set: { selectedCarID = $0; chosenID = UUID(uuidString: $0) }
         )
     }
 
