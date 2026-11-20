@@ -28,6 +28,7 @@ struct PlannerTimelineView: View {
     var onSwipe: (Int) -> Void = { _ in }
 
     static let slotMinutes = 30
+    static let minSlotHeight: CGFloat = 24
     private let timeColumnWidth: CGFloat = 46
     private let topPadding: CGFloat = 10
     private let bottomPadding: CGFloat = 16
@@ -71,7 +72,8 @@ struct PlannerTimelineView: View {
                 let range = slotRange
                 let columnWidth = (geo.size.width - timeColumnWidth) / CGFloat(max(days.count, 1))
                 let fit = (geo.size.height - topPadding - bottomPadding) / CGFloat(range.count)
-                let slotHeight: CGFloat = showFullDay ? 34 : max(fit, 14)
+                // Не меньше 24 пт на получас: так блоки и подписи времени не слипаются.
+                let slotHeight: CGFloat = showFullDay ? 34 : max(fit, Self.minSlotHeight)
                 ScrollView {
                     HStack(alignment: .top, spacing: 0) {
                         timeColumn(range: range, slotHeight: slotHeight)
@@ -85,7 +87,7 @@ struct PlannerTimelineView: View {
                     .padding(.top, topPadding)
                     .padding(.bottom, bottomPadding)
                 }
-                .scrollDisabled(!showFullDay && fit >= 14 && dragID == nil)
+                .scrollDisabled(!showFullDay && fit >= Self.minSlotHeight && dragID == nil)
             }
         }
         .simultaneousGesture(
@@ -304,8 +306,8 @@ struct PlannerTimelineView: View {
         // Шрифт берём самый крупный из тех, что помещаются по высоте и ширине блока.
         let narrow = block.columns > 1
         let words = block.title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-        let topInset: CGFloat = height >= 22 ? 11 : 1
-        let twoLines = words.count >= 2 && height - topInset >= 22
+        let topInset: CGFloat = height >= 34 ? 11 : 1
+        let twoLines = words.count >= 2 && height - topInset >= 24
         let first = words.first ?? block.title
         let rest = words.dropFirst().joined(separator: " ")
         let lineCount: CGFloat = twoLines ? 2 : 1
@@ -336,6 +338,7 @@ struct PlannerTimelineView: View {
         .padding(.top, topInset)
         .padding(.bottom, 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .topTrailing) {
             if let symbol = block.badge.symbol {
                 Text(symbol).font(.system(size: 10)).padding(1)
