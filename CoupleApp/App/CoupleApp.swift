@@ -23,16 +23,32 @@ struct CoupleApp: App {
     }
 }
 
-/// Показывает экран входа, пока никто не вошёл, и вкладки после входа.
+/// Показывает заставку при запуске, затем экран входа или вкладки.
 struct RootView: View {
     @Environment(AccountStore.self) private var account
+    @State private var showSplash = true
+    @State private var showGreeting = false
 
     var body: some View {
-        if let me = account.me {
-            RootTabView(me: me)
-                .id(me) // при смене аккаунта экраны пересоздаются
-        } else {
-            LoginView()
+        ZStack {
+            if let me = account.me {
+                RootTabView(me: me)
+                    .id(me) // при смене аккаунта экраны пересоздаются
+            } else {
+                LoginView()
+            }
+            if showSplash {
+                SplashView {
+                    withAnimation(.easeOut(duration: 0.45)) { showSplash = false }
+                    Task {
+                        try? await Task.sleep(for: .seconds(0.8))
+                        showGreeting = true
+                    }
+                }
+                .transition(.opacity)
+                .zIndex(1)
+            }
         }
+        .catPeek(.miron, topic: .greeting, isPresented: $showGreeting)
     }
 }
