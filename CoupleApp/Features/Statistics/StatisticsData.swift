@@ -62,8 +62,13 @@ struct StatisticsVisit: Identifiable {
     /// Занятие отменено: оплата здесь — это штраф.
     var cancelled = false
 
-    /// Занятие уже прошло, а денег за него нет (не отмечено или ❌).
-    var isDebt: Bool { !cancelled && start <= .now && (method == .none || method == .unpaid) }
+    /// Долг: явно отмечено «не оплачено» (сразу, даже если занятие сегодня позже),
+    /// либо занятие уже прошло, а оплата так и не отмечена.
+    var isDebt: Bool {
+        guard !cancelled else { return false }
+        if method == .unpaid { return true }
+        return method == .none && start <= .now
+    }
 
     /// Штраф за отмену не оплачен.
     var isUnpaidFine: Bool { cancelled && method == .unpaid }
