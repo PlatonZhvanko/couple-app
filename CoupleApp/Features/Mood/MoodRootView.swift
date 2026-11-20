@@ -18,6 +18,11 @@ struct MoodRootView: View {
 
     @AppStorage("mood.checkin.autoPromptDay") private var autoPromptDay = ""
     @State private var showCheckIn = false
+    @State private var showAllSupport = false
+    @State private var showSleep = false
+    @State private var newWishEmoji = ""
+    @State private var newWishText = ""
+    @AppStorage("mood.support.custom") private var customSupportRaw = ""
     @State private var insight: (item: MoodInsight, text: String)?
     @State private var editor: EditorTarget?
     @State private var sentEmoji: String?
@@ -88,14 +93,6 @@ struct MoodRootView: View {
                     }
                 }
 
-                Section("Отметить настроение") {
-                    MoodLevelPicker(selection: Binding(
-                        get: { .okay },
-                        set: { editor = .new($0) }
-                    ), showsSelection: false)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
-                }
-
                 Section("Мои отметки за сегодня") {
                     let mine = today(of: me)
                     if mine.isEmpty {
@@ -117,6 +114,9 @@ struct MoodRootView: View {
                     } label: {
                         Label("История и графики", systemImage: "chart.xyaxis.line")
                     }
+                    Button { showSleep = true } label: {
+                        Label("Сон: записи и график", systemImage: "bed.double")
+                    }
                     NavigationLink {
                         MoodInsightsView()
                     } label: {
@@ -130,9 +130,17 @@ struct MoodRootView: View {
                 }
             }
             .navigationTitle("Настроение")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { editor = .new(.okay) } label: { Label("Быстрая отметка", systemImage: "plus") }
+                }
+            }
             .catVisit(.miron, topic: Calendar.current.component(.hour, from: .now) >= 20 ? .goodNight : .mood)
             .refreshable { await sync.syncNow() }
             .onAppear(perform: onAppear)
+            .sheet(isPresented: $showSleep) {
+                SleepRootView()
+            }
             .sheet(isPresented: $showCheckIn) {
                 MoodCheckInView(existing: checkIn(of: me))
             }
@@ -149,10 +157,12 @@ struct MoodRootView: View {
 
     private func onAppear() {
         MoodReminder.refreshIfEnabled()
+        MoodSleepReminder.refreshIfEnabled()
         let days = MoodInsights.collect(context: context, member: me)
         let list = MoodInsights.insights(from: days)
         let good = (days.last?.mood ?? 0) >= 4
-        insight = MoodInsights.gentleInsight(list, goodMood: good)
+        let shortSleep = (days.last.flatMap { Calendar.current.isDateInToday($0.day) ? $0.sleepHours : nil } ?? 8) < 6.5
+        insight = MoodInsights.gentleInsight(list, goodMood: good, preferSleep: shortSleep)
 
         // Вечером при первом заходе за день Мироня сам спрашивает итог дня.
         let key = MoodDayKey.key(for: .now)
@@ -220,36 +230,90 @@ struct MoodRootView: View {
         .padding(.vertical, 4)
     }
 
+    private static let quickEmojis = Array(MoodSupport.emojis.prefix(3))
+
+    /// Свои пожелания: строки «эмодзи|текст», хранятся на этом телефоне.
+    private var customWishes: [(emoji: String, text: String)] {
+        customSupportRaw.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "|", maxSplits: 1).map(String.init)
+            return parts.count == 2 ? (parts[0], parts[1]) : nil
+        }
+    }
+
+    private func supportButton(_ emoji: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Text(emoji).font(.title2)
+                Text(title)
+                    .font(.caption)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.bordered)
+    }
+
     private var supportRow: some View {
-        VStack(spacing: 10) {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+        let shownEmojis = showAllSupport ? MoodSupport.emojis : Self.quickEmojis
+        return VStack(spacing: 10) {
             TextField("Добавить от себя, по желанию", text: $supportComment, axis: .vertical)
                 .lineLimit(1...3)
                 .textFieldStyle(.roundedBorder)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                ForEach(MoodSupport.emojis, id: \.self) { emoji in
-                    Button {
-                        send(emoji)
-                    } label: {
-                        VStack(spacing: 2) {
-                            Text(emoji).font(.title2)
-                            Text(MoodSupport.title(for: emoji))
-                                .font(.caption)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .padding(.vertical, 4)
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(shownEmojis, id: \.self) { emoji in
+                    supportButton(emoji, title: MoodSupport.title(for: emoji)) { send(emoji) }
+                }
+                if showAllSupport {
+                    ForEach(Array(customWishes.enumerated()), id: \.offset) { _, wish in
+                        supportButton(wish.emoji, title: wish.text) { send(wish.emoji, comment: wish.text) }
                     }
-                    .buttonStyle(.bordered)
                 }
             }
+            if showAllSupport {
+                VStack(spacing: 8) {
+                    Text("Своё пожелание")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack {
+                        TextField("😊", text: $newWishEmoji)
+                            .frame(width: 56)
+                            .multilineTextAlignment(.center)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("Например: приготовлю ужин", text: $newWishText)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    Button("Отправить и сохранить", action: sendCustom)
+                        .buttonStyle(.bordered)
+                        .disabled(newWishText.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            Button(showAllSupport ? "Свернуть" : "Показать все и добавить своё") {
+                withAnimation { showAllSupport.toggle() }
+            }
+            .font(.footnote)
         }
         .sensoryFeedback(.success, trigger: sentEmoji)
     }
 
-    private func send(_ emoji: String) {
-        let text = supportComment.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func sendCustom() {
+        let text = newWishText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Берём первый символ-эмодзи; если не ввели, ставим сердечко.
+        let emoji = newWishEmoji.trimmingCharacters(in: .whitespaces).first.map(String.init) ?? "💌"
+        guard !text.isEmpty else { return }
+        customSupportRaw += "\(emoji)|\(text.replacingOccurrences(of: "\n", with: " "))\n"
+        send(emoji, comment: text)
+        newWishText = ""
+        newWishEmoji = ""
+    }
+
+    private func send(_ emoji: String, comment custom: String? = nil) {
+        let typed = supportComment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = [custom, typed].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ". ")
         context.insert(MoodReaction(from: me, to: me.other, emoji: emoji, comment: text))
         supportComment = ""
         try? context.save()

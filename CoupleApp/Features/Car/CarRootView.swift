@@ -13,6 +13,9 @@ struct CarRootView: View {
     @Query(filter: #Predicate<CarReminder> { $0.deletedAt == nil }, sort: \CarReminder.createdAt)
     private var allReminders: [CarReminder]
 
+    @Query(filter: #Predicate<CarRepair> { $0.deletedAt == nil }, sort: \CarRepair.createdAt)
+    private var allRepairs: [CarRepair]
+
     @AppStorage("car.selectedCarID") private var selectedCarID: String = ""
     @State private var sheet: CarSheet?
     /// Выбранная на входе машина. Каждый раз при входе в раздел сначала выбор.
@@ -57,9 +60,20 @@ struct CarRootView: View {
     /// О чём напомнить котам-механикам: давно не было пробега, есть сроки или просто привет.
     private func catHint(for car: CarVehicle) -> CarCatLines.Hint {
         let entries = allEntries.of(car)
+        let odometer = CarMath.currentOdometer(car: car, entries: entries)
+        // 1. ремонт, который пора делать или скоро срок
+        let soon = Date.now.addingTimeInterval(7 * 86400)
+        let urgent = allRepairs.of(car).filter { !$0.isPaid && ($0.desiredDate ?? .distantFuture) < soon }
+            .sorted { ($0.desiredDate ?? .distantFuture) < ($1.desiredDate ?? .distantFuture) }
+        if let repair = urgent.first { return .repair(title: repair.title, price: repair.price) }
+        // 2. давно не было пробега
         let month = Date.now.addingTimeInterval(-30 * 86400)
         if !entries.contains(where: { $0.odometer > 0 && $0.date > month }) { return .odometer }
-        if allReminders.of(car).contains(where: { !$0.isDone }) { return .service }
+        // 3. ТО: сколько проехали с последнего
+        let lastService = entries.filter { $0.category == .service && $0.odometer > 0 }.map(\.odometer).max()
+        if let last = lastService, odometer - last > 8000 { return .service(lastKm: last, nowKm: odometer) }
+        if lastService == nil { return .noService }
+        if allRepairs.of(car).contains(where: { !$0.isPaid }) { return .service(lastKm: lastService ?? 0, nowKm: odometer) }
         return .general
     }
 
@@ -140,6 +154,27 @@ struct CarRootView: View {
                 }
             } header: {
                 Text("Сроки")
+            }
+
+            Section {
+                NavigationLink {
+                    CarRepairsView(car: car)
+                } label: {
+                    let open = allRepairs.of(car).filter { !$0.isPaid }
+                    HStack {
+                        Label("Ремонты и что сделать", systemImage: "wrench.and.screwdriver.fill")
+                        Spacer()
+                        if !open.isEmpty {
+                            Text(CarFormat.money(open.reduce(0) { $0 + $1.price }))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                NavigationLink {
+                    CarServiceHistoryView(car: car)
+                } label: {
+                    Label("ТО и пробег", systemImage: "gauge.with.needle")
+                }
             }
 
             Section {
@@ -274,11 +309,12 @@ struct CarRootView: View {
     /// Меняется, когда меняются сроки или названия: тогда уведомления пересоздаются.
     private var notificationSignature: String {
         let reminders = allReminders.map { "\($0.syncID)\($0.updatedAt.timeIntervalSince1970)\($0.isDone)" }
+            + allRepairs.map { "\($0.syncID)\($0.updatedAt.timeIntervalSince1970)" }
         let names = cars.map { "\($0.syncID)\($0.name)" }
         return (reminders + names).joined(separator: "|")
     }
 
     private func rescheduleNotifications() {
-        CarNotifications.reschedule(reminders: allReminders, cars: cars)
+        CarNotifications.reschedule(reminders: allReminders, cars: cars, repairs: allRepairs)
     }
 }
