@@ -48,7 +48,8 @@ jobs:
       - name: Файл-источник для SideStore (source.json)
         run: |
           SIZE=$(stat -f%z Vdvoem.ipa)
-          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/latest"
+          BASE="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/sidestore"
+          SHA=$(shasum -a 256 Vdvoem.ipa | cut -d" " -f1)
           DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           cat > source.json <<JSON
           {
@@ -73,6 +74,7 @@ jobs:
                 "versionDate": "${DATE}",
                 "downloadURL": "${BASE}/Vdvoem.ipa",
                 "size": ${SIZE},
+                "sha256": "${SHA}",
                 "versions": [
                   {
                     "version": "${VERSION}",
@@ -80,6 +82,7 @@ jobs:
                     "date": "${DATE}",
                     "downloadURL": "${BASE}/Vdvoem.ipa",
                     "size": ${SIZE},
+                    "sha256": "${SHA}",
                     "minOSVersion": "18.0"
                   }
                 ]
@@ -105,11 +108,13 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           cp source.json /tmp/source.json
           cp CoupleApp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png /tmp/icon.png
+          cp Vdvoem.ipa /tmp/Vdvoem.ipa
           git checkout --orphan sidestore
           git rm -rf --quiet . || true
           cp /tmp/source.json source.json
           cp /tmp/icon.png icon.png
-          git add source.json icon.png
+          cp /tmp/Vdvoem.ipa Vdvoem.ipa
+          git add source.json icon.png Vdvoem.ipa
           git commit -qm "source.json ${VERSION}"
           git push -f origin sidestore
 
