@@ -63,6 +63,8 @@ struct CatPeekView: View {
     let message: String
     let position: Int // 0, 1 или 2: где вдоль края
     var duration: Double = 6
+    /// Если задано, кот выглядывает сбоку на этой высоте экрана: рядом с нужным блоком.
+    var anchorY: CGFloat? = nil
     var onDismiss: () -> Void
 
     private let catSize: CGFloat = 96
@@ -102,6 +104,17 @@ struct CatPeekView: View {
         }
     }
 
+    private var sideTopPadding: CGFloat {
+        guard edge == .leading || edge == .trailing else { return 0 }
+        if let anchorY { return max(70, anchorY - 50) }
+        return 110
+    }
+
+    private var anchoredAlignment: Alignment {
+        guard anchorY != nil else { return frameAlignment }
+        return edge == .leading ? .topLeading : .topTrailing
+    }
+
     @ViewBuilder
     private var content: some View {
         switch edge {
@@ -121,9 +134,9 @@ struct CatPeekView: View {
             .contentShape(Rectangle())
             .onTapGesture { onDismiss() }
             .padding(.horizontal, (edge == .top || edge == .bottom) ? 16 : 0)
-            .padding(.top, (edge == .leading || edge == .trailing) ? 110 : 0)
-            .padding(.bottom, (edge == .leading || edge == .trailing) ? 130 : 0)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment)
+            .padding(.top, sideTopPadding)
+            .padding(.bottom, (edge == .leading || edge == .trailing) && anchorY == nil ? 130 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: anchoredAlignment)
             .task {
                 try? await Task.sleep(for: .seconds(duration))
                 onDismiss()
@@ -139,6 +152,8 @@ struct CatPeekView: View {
 final class CatPeekCenter {
     var current: AnyView?
     var token = UUID()
+    /// Высота (на экране) блока, рядом с которым коту логично показаться. Ставится `.catAnchor()`.
+    var anchorY: CGFloat?
 
     func present(_ view: AnyView) {
         token = UUID()
@@ -149,11 +164,20 @@ final class CatPeekCenter {
         current = nil
     }
 
-    func show(_ cat: Cat, topic: CatTopic, message: String? = nil, edge: CatPeekEdge? = nil, duration: Double = 6) {
-        let e = edge ?? CatPeekEdge.allCases.randomElement() ?? .bottom
+    func show(
+        _ cat: Cat, topic: CatTopic, message: String? = nil, edge: CatPeekEdge? = nil,
+        duration: Double = 6, anchorY: CGFloat? = nil
+    ) {
+        let e: CatPeekEdge
+        if anchorY != nil {
+            e = Bool.random() ? .leading : .trailing
+        } else {
+            e = edge ?? CatPeekEdge.allCases.randomElement() ?? .bottom
+        }
         let text = message ?? CatPhrases.random(for: cat, topic: topic)
         present(AnyView(
-            CatPeekView(cat: cat, edge: e, message: text, position: Int.random(in: 0...2), duration: duration) { [weak self] in
+            CatPeekView(cat: cat, edge: e, message: text, position: Int.random(in: 0...2),
+                        duration: duration, anchorY: anchorY) { [weak self] in
                 self?.dismiss()
             }
         ))
@@ -239,9 +263,31 @@ private struct CatVisitModifier: ViewModifier {
         content.task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled, CatSettings.claim(cat, chance: chance, cooldown: cooldown) else { return }
-            center.show(cat, topic: topic, message: messages.randomElement(), duration: CatSettings.displaySeconds)
+            // Иногда кот выглядывает рядом с нужным блоком экрана, иногда просто от края.
+            let anchor = Bool.random() ? center.anchorY : nil
+            center.show(cat, topic: topic, message: messages.randomElement(),
+                        duration: CatSettings.displaySeconds, anchorY: anchor)
         }
     }
+}
+
+private struct CatAnchorModifier: ViewModifier {
+    @Environment(CatPeekCenter.self) private var center
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.frame(in: .global).midY
+            } action: { y in
+                center.anchorY = y
+            }
+            .onDisappear { center.anchorY = nil }
+    }
+}
+
+extension View {
+    /// Помечает блок, рядом с которым коту логично показаться с темой этого экрана.
+    func catAnchor() -> some View { modifier(CatAnchorModifier()) }
 }
 
 extension View {

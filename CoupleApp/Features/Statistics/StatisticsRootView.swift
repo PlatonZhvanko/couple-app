@@ -81,12 +81,14 @@ struct StatisticsRootView: View {
                 switch section {
                 case .money:
                     StatisticsMoneyView(snapshot: snapshot, period: period)
+                        .catAnchor()
                 case .clients:
                     StatisticsClientsView(snapshot: snapshot, period: period)
                 case .cancels:
                     StatisticsCancelsView(snapshot: snapshot, period: period)
                 case .debts:
                     StatisticsDebtsView(snapshot: snapshot, period: period)
+                        .catAnchor()
                 }
             }
         }

@@ -96,6 +96,7 @@ struct NutritionDayView: View {
 
             Section {
                 NutritionSummaryCard(totals: NutritionTotals.sum(entries), targets: targets)
+                    .catAnchor()
             }
 
             ForEach(NutritionMealType.allCases) { meal in
