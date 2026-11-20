@@ -212,12 +212,12 @@ struct CarCatPeekView: View {
 
     var body: some View {
         content
-            .padding(.horizontal, (edge == .top || edge == .bottom) ? 16 : 0)
-            .padding(.top, (edge == .leading || edge == .trailing) ? 110 : 0)
-            .padding(.bottom, edge == .bottom ? 49 : ((edge == .top) ? 0 : 130))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment)
             .contentShape(Rectangle())
             .onTapGesture { onDismiss() }
+            .padding(.horizontal, (edge == .top || edge == .bottom) ? 16 : 0)
+            .padding(.top, (edge == .leading || edge == .trailing) ? 110 : 0)
+            .padding(.bottom, (edge == .leading || edge == .trailing) ? 130 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment)
             .task {
                 try? await Task.sleep(for: .seconds(7))
                 onDismiss()
@@ -228,33 +228,20 @@ struct CarCatPeekView: View {
 
 private struct CarCatVisitModifier: ViewModifier {
     let hint: CarCatLines.Hint
-    @State private var shown: (cat: Cat, edge: CatPeekEdge, text: String, pos: Int)?
+    @Environment(CatPeekCenter.self) private var center: CatPeekCenter?
 
     func body(content: Content) -> some View {
-        content
-            .overlay {
-                ZStack {
-                    if let shown {
-                        CarCatPeekView(cat: shown.cat, edge: shown.edge, message: shown.text, position: shown.pos) {
-                            self.shown = nil
-                        }
-                    }
-                }
-                .animation(.spring(response: 0.55, dampingFraction: 0.7), value: shown?.text)
-                .allowsHitTesting(shown != nil)
-            }
-            .task {
-                // не чаще раза в 20 минут, и не при каждом заходе
-                let key = "car.catVisit.last"
-                let last = UserDefaults.standard.double(forKey: key)
-                let now = Date.now.timeIntervalSince1970
-                guard now - last > 20 * 60, Double.random(in: 0...1) < 0.7 else { return }
-                try? await Task.sleep(for: .seconds(2))
-                UserDefaults.standard.set(now, forKey: key)
-                let cat = Cat.allCases.randomElement() ?? .miron
-                shown = (cat, CatPeekEdge.allCases.randomElement() ?? .bottom,
-                         CarCatLines.line(cat: cat, hint: hint), Int.random(in: 0...2))
-            }
+        content.task {
+            try? await Task.sleep(for: .seconds(2))
+            let cat = Cat.allCases.randomElement() ?? .miron
+            guard !Task.isCancelled, CatSettings.claim(cat, scope: "car") else { return }
+            center?.present(AnyView(
+                CarCatPeekView(
+                    cat: cat, edge: CatPeekEdge.allCases.randomElement() ?? .bottom,
+                    message: CarCatLines.line(cat: cat, hint: hint), position: Int.random(in: 0...2)
+                ) { center?.dismiss() }
+            ))
+        }
     }
 }
 

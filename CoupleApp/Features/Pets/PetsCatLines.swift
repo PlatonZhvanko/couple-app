@@ -49,14 +49,10 @@ private struct PetsCatVisitModifier: ViewModifier {
         content
             .catPeek(cat, topic: .greeting, message: line, duration: 7, isPresented: $show)
             .task {
-                // не чаще раза в 20 минут и не при каждом заходе
-                let key = "pets.catVisit.last"
-                let last = UserDefaults.standard.double(forKey: key)
-                let now = Date.now.timeIntervalSince1970
-                guard now - last > 20 * 60, Double.random(in: 0...1) < 0.7 else { return }
                 try? await Task.sleep(for: .seconds(2))
-                UserDefaults.standard.set(now, forKey: key)
-                cat = Cat.allCases.randomElement() ?? .miron
+                let chosen = Cat.allCases.randomElement() ?? .miron
+                guard !Task.isCancelled, CatSettings.claim(chosen, scope: "pets") else { return }
+                cat = chosen
                 line = PetsCatLines.line(for: cat)
                 show = true
             }

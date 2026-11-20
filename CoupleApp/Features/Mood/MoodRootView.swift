@@ -135,7 +135,7 @@ struct MoodRootView: View {
                     Button { editor = .new(.okay) } label: { Label("Быстрая отметка", systemImage: "plus") }
                 }
             }
-            .catVisit(.miron, topic: .mood)
+            .catVisit(.miron, topic: Calendar.current.component(.hour, from: .now) >= 20 ? .goodNight : .mood, section: "mood")
             .refreshable { await sync.syncNow() }
             .onAppear(perform: onAppear)
             .sheet(isPresented: $showSleep) {
