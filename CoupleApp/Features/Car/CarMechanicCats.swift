@@ -234,7 +234,7 @@ private struct CarCatVisitModifier: ViewModifier {
         content.task {
             try? await Task.sleep(for: .seconds(2))
             let cat = Cat.allCases.randomElement() ?? .miron
-            guard !Task.isCancelled, CatSettings.claim(cat) else { return }
+            guard !Task.isCancelled, CatSettings.claim(cat, scope: "car") else { return }
             center.present(AnyView(
                 CarCatPeekView(
                     cat: cat, edge: CatPeekEdge.allCases.randomElement() ?? .bottom,

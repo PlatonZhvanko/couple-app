@@ -51,7 +51,7 @@ private struct PetsCatVisitModifier: ViewModifier {
             .task {
                 try? await Task.sleep(for: .seconds(2))
                 let chosen = Cat.allCases.randomElement() ?? .miron
-                guard !Task.isCancelled, CatSettings.claim(chosen) else { return }
+                guard !Task.isCancelled, CatSettings.claim(chosen, scope: "pets") else { return }
                 cat = chosen
                 line = PetsCatLines.line(for: cat)
                 show = true

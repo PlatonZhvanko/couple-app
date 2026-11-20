@@ -186,8 +186,8 @@ final class CatPeekCenter {
 
 /// Единые настройки частоты появления котов. Менять числа здесь: работает для всех разделов.
 enum CatSettings {
-    /// Один и тот же кот не чаще, чем раз в столько секунд (25 минут).
-    static let visitCooldown: TimeInterval = 25 * 60
+    /// Один и тот же кот в одном разделе и одной теме не чаще, чем раз в столько секунд (30 минут).
+    static let visitCooldown: TimeInterval = 30 * 60
     /// Вероятность, что при заходе в раздел кот выглянет, если время пришло.
     static let visitChance = 0.8
     /// Между появлениями любых котов проходит не меньше этого времени (4 минуты).
@@ -198,12 +198,14 @@ enum CatSettings {
     static let displaySeconds: Double = 6
 
     /// Проверяет, можно ли коту показаться сейчас, и если да, запоминает время показа.
-    static func claim(_ cat: Cat, chance: Double? = nil, cooldown: TimeInterval? = nil) -> Bool {
+    /// `scope` — раздел и тема (например `"nutrition.food"`): у каждого кота в каждом разделе
+    /// и теме свой отсчёт времени. Свои `cooldown` меньше 30 минут не действуют.
+    static func claim(_ cat: Cat, scope: String, chance: Double? = nil, cooldown: TimeInterval? = nil) -> Bool {
         let defaults = UserDefaults.standard
         let now = Date.now.timeIntervalSince1970
-        let catKey = "cat.lastVisit.\(cat.rawValue)"
+        let catKey = "cat.lastVisit.\(cat.rawValue).\(scope)"
         let anyKey = "cat.lastAnyVisit"
-        guard now - defaults.double(forKey: catKey) > (cooldown ?? visitCooldown),
+        guard now - defaults.double(forKey: catKey) > max(cooldown ?? visitCooldown, visitCooldown),
               now - defaults.double(forKey: anyKey) > gapBetweenAnyCats,
               Double.random(in: 0...1) < (chance ?? visitChance)
         else { return false }
@@ -256,13 +258,14 @@ private struct CatVisitModifier: ViewModifier {
     let topic: CatTopic
     let chance: Double?
     let cooldown: TimeInterval?
+    var scope: String
     var messages: [String] = []
     @Environment(CatPeekCenter.self) private var center
 
     func body(content: Content) -> some View {
         content.task {
             try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled, CatSettings.claim(cat, chance: chance, cooldown: cooldown) else { return }
+            guard !Task.isCancelled, CatSettings.claim(cat, scope: scope, chance: chance, cooldown: cooldown) else { return }
             // Иногда кот выглядывает рядом с нужным блоком экрана, иногда просто от края.
             let anchor = Bool.random() ? center.anchorY : nil
             center.show(cat, topic: topic, message: messages.randomElement(),
@@ -292,11 +295,14 @@ extension View {
 
 extension View {
     /// Кот заглядывает при открытии экрана. Частота задаётся в `CatSettings`;
-    /// `chance` и `cooldown` нужны только если разделу нужно своё.
+    /// `section` — название раздела (у каждого кота в каждом разделе и теме свой отсчёт 30 минут).
     func catVisit(
-        _ cat: Cat, topic: CatTopic, chance: Double? = nil, cooldown: TimeInterval? = nil,
+        _ cat: Cat, topic: CatTopic, section: String = "", chance: Double? = nil, cooldown: TimeInterval? = nil,
         messages: [String] = []
     ) -> some View {
-        modifier(CatVisitModifier(cat: cat, topic: topic, chance: chance, cooldown: cooldown, messages: messages))
+        modifier(CatVisitModifier(
+            cat: cat, topic: topic, chance: chance, cooldown: cooldown,
+            scope: "\(section).\(topic.rawValue)", messages: messages
+        ))
     }
 }

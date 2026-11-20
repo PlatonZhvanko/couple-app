@@ -33,7 +33,7 @@ struct PlannerRootView: View {
         }
         .environment(\.locale, PlannerCalendar.locale)
         // Частота котов задаётся в одном месте: CatSettings.
-        .catVisit(Self.visitingCat, topic: .money, messages: CatPhrases.planner)
+        .catVisit(Self.visitingCat, topic: .money, section: "planner", messages: CatPhrases.planner)
         // При любых изменениях событий (в том числе со второго телефона)
         // пересчитываем напоминания.
         .task(id: reminderSignature) {
