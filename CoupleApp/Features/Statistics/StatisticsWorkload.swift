@@ -101,12 +101,12 @@ struct StatisticsWorkloadView: View {
         let busyDays = rows.filter { $0.count > 0 }.count
         List {
             Section("Итого за период") {
-                LabeledContent("Часов в журнале", value: StatisticsWorkloadDay.hoursText(totalHours))
+                LabeledContent("Часов в журнале", value: StatisticsWorkload.hoursText(totalHours))
                 LabeledContent("Записей", value: "\(totalCount)")
                 LabeledContent("Отменено", value: "\(cancelled)")
                 LabeledContent("Занятых дней", value: "\(busyDays)")
                 if busyDays > 0 {
-                    LabeledContent("В среднем за занятый день", value: StatisticsWorkloadDay.hoursText(totalHours / Double(busyDays)))
+                    LabeledContent("В среднем за занятый день", value: StatisticsWorkload.hoursText(totalHours / Double(busyDays)))
                 }
             }
             if !weeks.isEmpty {
@@ -115,7 +115,7 @@ struct StatisticsWorkloadView: View {
                         StatisticsDetailRow(
                             title: "Неделя с \(StatisticsFormat.day(week.start))",
                             caption: "\(week.count) зап.",
-                            value: StatisticsWorkloadDay.hoursText(week.hours)
+                            value: StatisticsWorkload.hoursText(week.hours)
                         )
                     }
                 }
@@ -128,7 +128,7 @@ struct StatisticsWorkloadView: View {
                         HStack {
                             Text(PlannerCalendar.format(row.day, "EEE, d MMM")).font(.subheadline)
                             Spacer()
-                            Text("\(row.count) зап. · \(StatisticsWorkloadDay.hoursText(row.hours))")
+                            Text("\(row.count) зап. · \(StatisticsWorkload.hoursText(row.hours))")
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
                         if free.isEmpty {

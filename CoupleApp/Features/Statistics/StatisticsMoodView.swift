@@ -65,7 +65,7 @@ struct StatisticsMoodView: View {
                     let load = workload[item.day]
                     StatisticsDetailRow(
                         title: PlannerCalendar.format(item.day, "EEE, d MMM"),
-                        caption: load.map { "Загрузка: \($0.count) зап., \(StatisticsWorkloadDay.hoursText($0.hours))" } ?? "Загрузка: записей не было",
+                        caption: load.map { "Загрузка: \($0.count) зап., \(StatisticsWorkload.hoursText($0.hours))" } ?? "Загрузка: записей не было",
                         value: text(item.value)
                     )
                 }
