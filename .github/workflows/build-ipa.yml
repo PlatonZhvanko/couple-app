@@ -54,6 +54,7 @@ jobs:
           {
             "name": "Вдвоём",
             "identifier": "com.couple.vdvoem.source",
+            "sourceURL": "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/sidestore/source.json",
             "apps": [
               {
                 "name": "Вдвоём",
@@ -90,6 +91,18 @@ jobs:
           gh release create latest Vdvoem.ipa source.json \
             --title "Последняя сборка ${VERSION}" \
             --notes "Сборка ${VERSION} из коммита ${GITHUB_SHA::7}"
+
+      - name: Положить source.json в ветку sidestore (читается как обычный текстовый файл)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp source.json /tmp/source.json
+          git checkout --orphan sidestore
+          git rm -rf --quiet . || true
+          cp /tmp/source.json source.json
+          git add source.json
+          git commit -qm "source.json ${VERSION}"
+          git push -f origin sidestore
 
       - name: Сохранить IPA и в Actions (на случай приватного репозитория)
         uses: actions/upload-artifact@v4
