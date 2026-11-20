@@ -22,12 +22,12 @@ struct PlannerRootView: View {
                     ToolbarItem(placement: .principal) {
                         Picker("Журнал", selection: $page) {
                             ForEach(Page.allCases) { item in
-                                Text(item == .personal ? "Мой" : "Планнер \(account.partnerName)").tag(item)
+                                Text(item == .personal ? "Мой" : "Партнёр").tag(item)
                             }
                         }
                         .pickerStyle(.segmented)
                         .controlSize(.small)
-                        .frame(width: 210)
+                        .frame(width: 150)
                     }
                 }
         }
