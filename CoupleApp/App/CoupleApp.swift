@@ -56,5 +56,13 @@ struct RootView: View {
             }
         }
         .catPeek(.miron, topic: .greeting, isPresented: $showGreeting)
+        .scrollDismissesKeyboard(.interactively)
+        .task {
+            // Окно появляется не сразу, поэтому пробуем несколько раз.
+            for _ in 0..<10 {
+                KeyboardDismisser.shared.install()
+                try? await Task.sleep(for: .seconds(0.5))
+            }
+        }
     }
 }
