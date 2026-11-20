@@ -52,3 +52,19 @@ struct MoodMironAvatar: View {
             .background(Circle().fill(Color.appBlush.opacity(0.25)))
     }
 }
+
+/// Реплика Мирони с картинкой: кот слева и облачко, под ним можно разместить варианты ответа.
+struct MoodMironSpeech<Content: View>: View {
+    let text: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            MoodMironAvatar(size: 64)
+            VStack(alignment: .leading, spacing: 8) {
+                CatBubble(cat: .miron, text: text)
+                content()
+            }
+        }
+    }
+}
