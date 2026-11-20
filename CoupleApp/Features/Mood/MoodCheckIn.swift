@@ -253,8 +253,7 @@ struct MoodCheckInView: View {
                 Section {
                     Toggle("Записать, как спалось", isOn: $logSleep)
                     if logSleep {
-                        DatePicker("Лёг(ла)", selection: $bedtime)
-                        DatePicker("Проснулся(ась)", selection: $wakeTime)
+                        SleepTimeFields(bedtime: $bedtime, wakeTime: $wakeTime)
                         LabeledContent("Сон") {
                             Text(sleepProblem ? "проверьте время" : SleepFormat.duration(sleepDuration))
                                 .foregroundStyle(sleepProblem ? .red : .primary)

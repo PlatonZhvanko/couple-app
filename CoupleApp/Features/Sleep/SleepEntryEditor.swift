@@ -48,8 +48,7 @@ struct SleepEntryEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    DatePicker("Лёг(ла)", selection: $bedtime)
-                    DatePicker("Встал(а)", selection: $wakeTime)
+                    SleepTimeFields(bedtime: $bedtime, wakeTime: $wakeTime)
                 } footer: {
                     if let problem {
                         Text(problem).foregroundStyle(.red)
