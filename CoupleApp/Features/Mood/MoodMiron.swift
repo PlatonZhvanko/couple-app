@@ -42,15 +42,13 @@ enum MoodMiron {
     static func thanks(for date: Date) -> String { pick(allDone, on: date) }
 }
 
-/// Аватар Мирони. Пока кот-эмодзи в круге; когда будут готовые рисунки,
-/// достаточно заменить содержимое здесь.
+/// Аватар Мирони: нарисованный кот в мягком круге.
 struct MoodMironAvatar: View {
     var size: CGFloat = 44
 
     var body: some View {
-        Text("🐱")
-            .font(.system(size: size * 0.6))
+        CatAvatar(cat: .miron, size: size * 0.9)
             .frame(width: size, height: size)
-            .background(Circle().fill(Color.primary.opacity(0.08)))
+            .background(Circle().fill(Color.appBlush.opacity(0.25)))
     }
 }

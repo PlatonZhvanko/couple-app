@@ -173,3 +173,33 @@ extension View {
         ))
     }
 }
+
+private struct CatVisitModifier: ViewModifier {
+    let cat: Cat
+    let topic: CatTopic
+    let chance: Double
+    let cooldown: TimeInterval
+    @State private var show = false
+
+    func body(content: Content) -> some View {
+        content
+            .catPeek(cat, topic: topic, isPresented: $show)
+            .task {
+                let key = "cat.lastVisit.\(cat.rawValue)"
+                let last = UserDefaults.standard.double(forKey: key)
+                let now = Date.now.timeIntervalSince1970
+                guard now - last > cooldown, Double.random(in: 0...1) < chance else { return }
+                try? await Task.sleep(for: .seconds(1.5))
+                UserDefaults.standard.set(now, forKey: key)
+                show = true
+            }
+    }
+}
+
+extension View {
+    /// Кот изредка заглядывает при открытии экрана: не чаще, чем раз в `cooldown` секунд
+    /// и не каждый раз (`chance` от 0 до 1).
+    func catVisit(_ cat: Cat, topic: CatTopic, chance: Double = 0.7, cooldown: TimeInterval = 900) -> some View {
+        modifier(CatVisitModifier(cat: cat, topic: topic, chance: chance, cooldown: cooldown))
+    }
+}
