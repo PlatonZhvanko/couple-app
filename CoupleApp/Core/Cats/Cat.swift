@@ -17,6 +17,15 @@ enum Cat: String, CaseIterable, Identifiable {
         }
     }
 
+    /// За что отвечает кот.
+    var roleTitle: String {
+        switch self {
+        case .miron: "про настроение"
+        case .gosha: "про деньги"
+        case .chloe: "про еду"
+        }
+    }
+
     /// Во сколько раз кот меньше или больше «нормального» размера (Мироня большой, Хлоя маленькая).
     var sizeFactor: CGFloat {
         switch self {
@@ -43,9 +52,17 @@ enum Cat: String, CaseIterable, Identifiable {
         }
     }
 
+    var furLight: Color {
+        switch self {
+        case .miron: Color(red: 0.34, green: 0.32, blue: 0.33)
+        case .gosha: Color(red: 0.27, green: 0.26, blue: 0.29)
+        case .chloe: Color(red: 0.66, green: 0.68, blue: 0.74)
+        }
+    }
+
     var eyeColor: Color {
         switch self {
-        case .miron: Color(red: 0.86, green: 0.68, blue: 0.2)
+        case .miron: Color(red: 0.8, green: 0.6, blue: 0.16)
         case .gosha: Color(red: 0.62, green: 0.78, blue: 0.3)
         case .chloe: Color(red: 0.88, green: 0.55, blue: 0.14)
         }
@@ -62,7 +79,7 @@ enum CatExpression {
     case happy
 }
 
-/// Мультяшная мордочка кота, нарисованная фигурами SwiftUI.
+/// Мордочка кота, нарисованная фигурами SwiftUI: у каждого кота свой окрас, как в жизни.
 struct CatAvatar: View {
     let cat: Cat
     var size: CGFloat = 80
@@ -73,116 +90,163 @@ struct CatAvatar: View {
     var body: some View {
         let headW = size * cat.headWidth
         let headH = size * 0.76
-        let earW = size * 0.3
-        let earH = size * (cat == .gosha ? 0.4 : 0.34)
-        let lw = max(1.5, size * 0.03)
+        let lw = max(1.2, size * 0.022)
 
         ZStack {
-            // уши
-            CatEar().fill(cat.fur)
-                .overlay(CatEar().stroke(Cat.outline, lineWidth: lw))
-                .frame(width: earW, height: earH)
-                .rotationEffect(.degrees(-14))
-                .offset(x: -headW * 0.34, y: -headH * 0.5)
-            CatEar().fill(cat.fur)
-                .overlay(CatEar().stroke(Cat.outline, lineWidth: lw))
-                .frame(width: earW, height: earH)
-                .rotationEffect(.degrees(14))
-                .offset(x: headW * 0.34, y: -headH * 0.5)
-            CatEar().fill(Cat.nosePink.opacity(0.75))
-                .frame(width: earW * 0.5, height: earH * 0.5)
-                .rotationEffect(.degrees(-14))
-                .offset(x: -headW * 0.34, y: -headH * 0.44)
-            CatEar().fill(Cat.nosePink.opacity(0.75))
-                .frame(width: earW * 0.5, height: earH * 0.5)
-                .rotationEffect(.degrees(14))
-                .offset(x: headW * 0.34, y: -headH * 0.44)
+            // белая грудка за головой
+            Ellipse().fill(Cat.cream)
+                .frame(width: headW * 0.5, height: headH * 0.5)
+                .offset(y: headH * 0.52)
+            ears(headW: headW, headH: headH, lw: lw)
 
-            // голова
-            Ellipse().fill(cat.fur)
+            // голова с мягким объёмом
+            Ellipse()
+                .fill(RadialGradient(colors: [cat.furLight, cat.fur],
+                                     center: .init(x: 0.5, y: 0.35),
+                                     startRadius: 0, endRadius: headW * 0.65))
                 .frame(width: headW, height: headH)
-                .overlay(Ellipse().stroke(Cat.outline, lineWidth: lw))
+                .overlay(Ellipse().stroke(Cat.outline.opacity(0.85), lineWidth: lw))
 
             markings(headW: headW, headH: headH)
 
             // глаза
-            eye(size: size).offset(x: -headW * 0.22, y: -headH * 0.06)
-            eye(size: size).offset(x: headW * 0.22, y: -headH * 0.06)
+            eye(left: true).offset(x: -headW * 0.23, y: -headH * 0.07)
+            eye(left: false).offset(x: headW * 0.23, y: -headH * 0.07)
 
-            // щёчки
-            Circle().fill(Cat.nosePink.opacity(0.45))
-                .frame(width: size * 0.12, height: size * 0.12)
-                .offset(x: -headW * 0.36, y: headH * 0.14)
-            Circle().fill(Cat.nosePink.opacity(0.45))
-                .frame(width: size * 0.12, height: size * 0.12)
-                .offset(x: headW * 0.36, y: headH * 0.14)
-
-            // носик и ротик
+            // носик, ротик, усы
             Ellipse().fill(Cat.nosePink)
-                .frame(width: size * 0.09, height: size * 0.065)
-                .offset(y: headH * 0.12)
+                .frame(width: size * 0.085, height: size * 0.06)
+                .offset(y: headH * 0.13)
             CatMouth()
                 .stroke(Cat.outline.opacity(0.9), style: StrokeStyle(lineWidth: lw * 0.8, lineCap: .round))
-                .frame(width: size * 0.16, height: size * 0.07)
+                .frame(width: size * 0.15, height: size * 0.06)
                 .offset(y: headH * 0.25)
+            Whiskers()
+                .stroke(Color.white.opacity(0.75), style: StrokeStyle(lineWidth: max(1, lw * 0.5), lineCap: .round))
+                .frame(width: headW * 1.25, height: headH * 0.3)
+                .offset(y: headH * 0.2)
 
             if showPaws {
-                paw.offset(x: -headW * 0.28, y: headH * 0.52)
-                paw.offset(x: headW * 0.28, y: headH * 0.52)
+                paw.offset(x: -headW * 0.28, y: headH * 0.55)
+                paw.offset(x: headW * 0.28, y: headH * 0.55)
             }
         }
         .frame(width: size, height: size)
+    }
+
+    private func ears(headW: CGFloat, headH: CGFloat, lw: CGFloat) -> some View {
+        let earW = size * 0.3
+        let earH = size * (cat == .gosha ? 0.42 : 0.34)
+        return ZStack {
+            ForEach([-1.0, 1.0], id: \.self) { side in
+                ZStack {
+                    CatEar().fill(cat.fur)
+                        .overlay(CatEar().stroke(Cat.outline.opacity(0.85), lineWidth: lw))
+                        .frame(width: earW, height: earH)
+                    CatEar().fill(Cat.nosePink.opacity(0.7))
+                        .frame(width: earW * 0.5, height: earH * 0.52)
+                        .offset(y: earH * 0.2)
+                }
+                .rotationEffect(.degrees(side * 14))
+                .offset(x: CGFloat(side) * headW * 0.34, y: -headH * 0.48)
+            }
+        }
     }
 
     @ViewBuilder
     private func markings(headW: CGFloat, headH: CGFloat) -> some View {
         switch cat {
         case .miron:
-            // белая полоска на лбу и белая мордочка
+            // тёмный кот с белой мордочкой и белой полоской на носу
             Capsule().fill(Cat.cream)
-                .frame(width: headW * 0.12, height: headH * 0.42)
-                .offset(y: -headH * 0.22)
+                .frame(width: headW * 0.13, height: headH * 0.42)
+                .offset(y: -headH * 0.1)
             Ellipse().fill(Cat.cream)
-                .frame(width: headW * 0.62, height: headH * 0.42)
-                .offset(y: headH * 0.24)
-        case .chloe:
-            // рыжая «чёлка» на лбу и белая грудка
-            Capsule().fill(Cat.peach)
-                .frame(width: headW * 0.2, height: headH * 0.4)
-                .offset(x: headW * 0.02, y: -headH * 0.24)
-            Ellipse().fill(Cat.cream)
-                .frame(width: headW * 0.36, height: headH * 0.22)
-                .offset(y: headH * 0.36)
-        case .gosha:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private func eye(size: CGFloat) -> some View {
-        switch expression {
-        case .normal:
-            ZStack {
-                Ellipse().fill(cat.eyeColor)
-                    .frame(width: size * 0.17, height: size * 0.2)
-                Capsule().fill(Color.black)
-                    .frame(width: size * 0.06, height: size * 0.15)
-                Circle().fill(Color.white)
-                    .frame(width: size * 0.05, height: size * 0.05)
-                    .offset(x: size * 0.03, y: -size * 0.04)
+                .frame(width: headW * 0.6, height: headH * 0.4)
+                .offset(y: headH * 0.25)
+            // полоски на лбу
+            ForEach([-1.0, 0.0, 1.0], id: \.self) { i in
+                Capsule().fill(Color.black.opacity(0.35))
+                    .frame(width: headW * 0.035, height: headH * 0.14)
+                    .rotationEffect(.degrees(i * 14))
+                    .offset(x: CGFloat(i) * headW * 0.1, y: -headH * 0.36)
             }
-        case .happy:
-            CatHappyEye()
-                .stroke(Color.black.opacity(0.85), style: StrokeStyle(lineWidth: max(2, size * 0.04), lineCap: .round))
-                .frame(width: size * 0.15, height: size * 0.08)
+        case .chloe:
+            // рыжие пятна на лбу и щеке, белая мордочка
+            Ellipse().fill(Cat.peach)
+                .frame(width: headW * 0.24, height: headH * 0.36)
+                .rotationEffect(.degrees(12))
+                .offset(x: headW * 0.0, y: -headH * 0.3)
+            Ellipse().fill(Cat.peach.opacity(0.9))
+                .frame(width: headW * 0.2, height: headH * 0.2)
+                .offset(x: -headW * 0.3, y: headH * 0.12)
+            Ellipse().fill(Cat.cream)
+                .frame(width: headW * 0.36, height: headH * 0.24)
+                .offset(y: headH * 0.33)
+        case .gosha:
+            // чёрный, только маленькое белое пятнышко на подбородке
+            Ellipse().fill(Cat.cream.opacity(0.9))
+                .frame(width: headW * 0.2, height: headH * 0.1)
+                .offset(y: headH * 0.42)
         }
     }
 
+    private func eye(left: Bool) -> some View {
+        let w = size * 0.17
+        let h = size * (cat == .chloe ? 0.2 : 0.17)
+        let tilt: Double = left ? -8 : 8
+        return Group {
+            switch expression {
+            case .normal:
+                ZStack {
+                    Ellipse().fill(RadialGradient(colors: [cat.eyeColor.opacity(0.85), cat.eyeColor],
+                                                  center: .center, startRadius: 0, endRadius: w * 0.6))
+                        .frame(width: w, height: h)
+                    Ellipse().fill(Color.black)
+                        .frame(width: cat == .chloe ? w * 0.5 : w * 0.3, height: h * 0.82)
+                    Circle().fill(Color.white)
+                        .frame(width: size * 0.045, height: size * 0.045)
+                        .offset(x: w * 0.18, y: -h * 0.22)
+                    Ellipse().stroke(Color.black.opacity(0.75), lineWidth: max(1, size * 0.018))
+                        .frame(width: w, height: h)
+                }
+                .rotationEffect(.degrees(tilt))
+            case .happy:
+                CatHappyEye()
+                    .stroke(Color.black.opacity(0.85), style: StrokeStyle(lineWidth: max(2, size * 0.04), lineCap: .round))
+                    .frame(width: size * 0.15, height: size * 0.08)
+            }
+        }
+    }
+
+    /// Белые лапки у всех трёх котов.
     private var paw: some View {
-        Ellipse()
-            .fill(cat == .miron ? Cat.cream : cat.fur)
-            .frame(width: size * 0.24, height: size * 0.17)
-            .overlay(Ellipse().stroke(Cat.outline, lineWidth: max(1.5, size * 0.03)))
+        ZStack {
+            Ellipse().fill(Cat.cream)
+                .overlay(Ellipse().stroke(Cat.outline.opacity(0.85), lineWidth: max(1.2, size * 0.022)))
+            HStack(spacing: size * 0.02) {
+                ForEach(0..<2, id: \.self) { _ in
+                    Capsule().fill(Cat.outline.opacity(0.3)).frame(width: size * 0.012, height: size * 0.05)
+                }
+            }
+            .offset(y: size * 0.03)
+        }
+        .frame(width: size * 0.25, height: size * 0.18)
+    }
+}
+
+struct Whiskers: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        for i in 0..<3 {
+            let dy = rect.height * (0.2 + 0.3 * CGFloat(i))
+            let endY = rect.height * (0.05 + 0.45 * CGFloat(i))
+            p.move(to: CGPoint(x: rect.midX - rect.width * 0.18, y: rect.minY + dy))
+            p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + endY))
+            p.move(to: CGPoint(x: rect.midX + rect.width * 0.18, y: rect.minY + dy))
+            p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + endY))
+        }
+        return p
     }
 }
 

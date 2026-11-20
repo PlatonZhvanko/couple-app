@@ -60,13 +60,22 @@ enum MoodTags {
 
 /// Реакции поддержки, которые можно отправить партнёру.
 enum MoodSupport {
-    static let emojis: [String] = ["❤️", "🤗", "☕️"]
+    static let emojis: [String] = ["❤️", "🤗", "☕️", "🍫", "🌷", "💪", "😘", "🫶", "🌙", "🐱", "🎧", "🛁"]
 
     static func title(for emoji: String) -> String {
         switch emoji {
         case "❤️": "Люблю"
         case "🤗": "Обнимаю"
         case "☕️": "Сделаю чай"
+        case "🍫": "Принесу вкусняшку"
+        case "🌷": "Ты чудесная"
+        case "💪": "Ты справишься"
+        case "😘": "Целую"
+        case "🫶": "Я рядом"
+        case "🌙": "Сладких снов"
+        case "🐱": "Коты скучают"
+        case "🎧": "Включу твоё кино"
+        case "🛁": "Устрою спа-вечер"
         default: emoji
         }
     }
@@ -143,6 +152,8 @@ final class MoodReaction: SyncableModel {
         var emoji: String
         var createdAt: Date
         var seenAt: Date?
+        /// Своё слово от отправителя. Необязательно.
+        var comment: String?
     }
 
     static let recordKind = "mood.reaction"
@@ -156,14 +167,17 @@ final class MoodReaction: SyncableModel {
     var createdAt: Date = Date.now
     /// Когда получатель увидел реакцию. `nil` — ещё не видел.
     var seenAt: Date? = nil
+    /// Своё слово вместе с реакцией; пустая строка, если не писали.
+    var comment: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
 
-    init(from: CoupleMember, to: CoupleMember, emoji: String) {
+    init(from: CoupleMember, to: CoupleMember, emoji: String, comment: String = "") {
         self.sender = from.rawValue
         self.recipient = to.rawValue
         self.emoji = emoji
+        self.comment = comment
     }
 
     init(syncID: UUID, payload: Payload) {
@@ -172,7 +186,7 @@ final class MoodReaction: SyncableModel {
     }
 
     var payload: Payload {
-        Payload(from: sender, to: recipient, emoji: emoji, createdAt: createdAt, seenAt: seenAt)
+        Payload(from: sender, to: recipient, emoji: emoji, createdAt: createdAt, seenAt: seenAt, comment: comment.isEmpty ? nil : comment)
     }
 
     func apply(_ payload: Payload) {
@@ -181,6 +195,7 @@ final class MoodReaction: SyncableModel {
         emoji = payload.emoji
         createdAt = payload.createdAt
         seenAt = payload.seenAt
+        comment = payload.comment ?? ""
     }
 }
 

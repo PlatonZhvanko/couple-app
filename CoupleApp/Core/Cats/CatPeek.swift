@@ -26,13 +26,21 @@ enum CatPeekEdge: CaseIterable {
 
 /// Облачко с репликой.
 struct CatBubble: View {
+    var cat: Cat? = nil
     let text: String
 
     var body: some View {
-        Text(text)
-            .font(.system(.callout, design: .rounded).weight(.medium))
-            .foregroundStyle(Color(red: 0.3, green: 0.2, blue: 0.18))
-            .multilineTextAlignment(.leading)
+        VStack(alignment: .leading, spacing: 3) {
+            if let cat {
+                Text("\(cat.name) · \(cat.roleTitle)")
+                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .foregroundStyle(Color(red: 0.8, green: 0.4, blue: 0.5))
+            }
+            Text(text)
+                .font(.system(.callout, design: .rounded).weight(.medium))
+                .foregroundStyle(Color(red: 0.3, green: 0.2, blue: 0.18))
+                .multilineTextAlignment(.leading)
+        }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(
@@ -98,13 +106,13 @@ struct CatPeekView: View {
     private var content: some View {
         switch edge {
         case .leading:
-            HStack(spacing: 4) { catView; CatBubble(text: message) }
+            HStack(spacing: 4) { catView; CatBubble(cat: cat, text: message) }
         case .trailing:
-            HStack(spacing: 4) { CatBubble(text: message); catView }
+            HStack(spacing: 4) { CatBubble(cat: cat, text: message); catView }
         case .top:
-            VStack(spacing: 4) { catView; CatBubble(text: message) }
+            VStack(spacing: 4) { catView; CatBubble(cat: cat, text: message) }
         case .bottom:
-            VStack(spacing: 4) { CatBubble(text: message); catView }
+            VStack(spacing: 4) { CatBubble(cat: cat, text: message); catView }
         }
     }
 
@@ -197,9 +205,30 @@ private struct CatVisitModifier: ViewModifier {
 }
 
 extension View {
-    /// Кот изредка заглядывает при открытии экрана: не чаще, чем раз в `cooldown` секунд
+    /// Кот изредка заглядывает при открытии экрана: не чаще, чем раз в `cooldown` секунд (по умолчанию 2 минуты)
     /// и не каждый раз (`chance` от 0 до 1).
-    func catVisit(_ cat: Cat, topic: CatTopic, chance: Double = 0.7, cooldown: TimeInterval = 900) -> some View {
+    func catVisit(_ cat: Cat, topic: CatTopic, chance: Double = 0.85, cooldown: TimeInterval = 120) -> some View {
         modifier(CatVisitModifier(cat: cat, topic: topic, chance: chance, cooldown: cooldown))
+    }
+}
+
+/// Постоянная карточка: кот с подписью и репликой прямо на экране (всегда видна).
+struct CatSaysCard: View {
+    let cat: Cat
+    let topic: CatTopic
+    @State private var text = ""
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            CatAvatar(cat: cat, size: 56)
+                .frame(width: 60, height: 60)
+                .background(Circle().fill(Color.appBlush.opacity(0.25)))
+            CatBubble(cat: cat, text: text)
+            Spacer(minLength: 0)
+        }
+        .onAppear {
+            if text.isEmpty { text = CatPhrases.random(for: cat, topic: topic) }
+        }
+        .onTapGesture { text = CatPhrases.random(for: cat, topic: topic) }
     }
 }
