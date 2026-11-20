@@ -8,8 +8,8 @@ struct PlannerCalendarView: View {
     /// Журнал по времени или обычный календарь-месяц.
     enum Style: String { case planner, calendar }
 
-    /// `true` — записи обоих, `false` — мои и общие.
-    let showsEveryone: Bool
+    /// `true` — планнер партнёра (его дела, кроме скрытых галочкой), `false` — мои и общие.
+    let showsPartner: Bool
 
     @Environment(AccountStore.self) private var account
     @Environment(SyncCoordinator.self) private var sync
@@ -59,9 +59,10 @@ struct PlannerCalendarView: View {
             let author = event.scopeValue.member ?? CoupleMember(rawValue: event.createdBy) ?? .owner
             return author == account.current
         }
-        guard !showsEveryone else { return visible }
-        let me = PlannerScope.personal(account.current)
-        return visible.filter { $0.scopeValue == .shared || $0.scopeValue == me }
+        // Планнер партнёра: его личные записи и общие (скрытые уже отфильтрованы выше).
+        let owner = showsPartner ? account.current.other : account.current
+        let scope = PlannerScope.personal(owner)
+        return visible.filter { $0.scopeValue == .shared || $0.scopeValue == scope }
     }
 
     /// Свои записи из других разделов.
@@ -218,7 +219,7 @@ struct PlannerCalendarView: View {
     // MARK: - Журнал по времени
 
     private func ownerLetter(_ event: PlannerEvent) -> String? {
-        guard showsEveryone else { return nil }
+        guard showsPartner else { return nil }
         let member = event.scopeValue.member ?? CoupleMember(rawValue: event.createdBy) ?? .owner
         return account.name(of: member).prefix(1).uppercased()
     }

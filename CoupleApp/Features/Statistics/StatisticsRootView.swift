@@ -21,6 +21,8 @@ enum StatisticsPart: String, CaseIterable, Identifiable {
 struct StatisticsRootView: View {
     @Environment(\.modelContext) private var context
 
+    @Environment(AccountStore.self) private var account
+    @Query private var sleepEntries: [SleepEntry]
     @State private var part: StatisticsPart = .finance
     @State private var workload: [Date: StatisticsWorkloadDay] = [:]
     @Query(filter: #Predicate<MoodEntry> { $0.deletedAt == nil }) private var moods: [MoodEntry]
@@ -40,7 +42,7 @@ struct StatisticsRootView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
-                .padding(.top, 8)
+                .padding(.vertical, 8)
 
                 if part == .finance {
                     Picker("Раздел", selection: $section) {
@@ -49,16 +51,17 @@ struct StatisticsRootView: View {
                     .pickerStyle(.segmented)
                     .font(.caption)
                     .padding(.horizontal)
-                    .padding(.vertical, 8)
+                    .padding(.bottom, 8)
                 }
 
-                periodBar.fixedSize(horizontal: false, vertical: true)
+                periodBar
+                    .padding(.bottom, 4)
 
                 switch part {
                 case .workload:
-                    StatisticsWorkloadView(days: workload, period: period)
+                    StatisticsWorkloadView(days: workload, sleep: sleepNights, period: period)
                 case .mood:
-                    StatisticsMoodView(entries: moods, workload: workload, period: period)
+                    StatisticsMoodView(entries: moods, workload: workload, sleep: sleepNights, period: period)
                 case .finance:
                     financeContent
                 }
@@ -89,6 +92,10 @@ struct StatisticsRootView: View {
         }
     }
 
+    private var sleepNights: [Date: StatisticsSleepNight] {
+        StatisticsSleep.nights(sleepEntries, member: account.current, period: period)
+    }
+
     private var reloadKey: String {
         "\(moods.count)-\(events.count)-\(payments.count)-\(subscriptions.count)-\(events.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(payments.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(period.interval.start.timeIntervalSince1970)-\(period.interval.end.timeIntervalSince1970)"
     }
@@ -116,6 +123,7 @@ struct StatisticsRootView: View {
                 }
                 .padding(.horizontal)
             }
+            .frame(height: 40)
             if period.preset == .custom {
                 HStack {
                     DatePicker("С", selection: $period.customStart, displayedComponents: .date)

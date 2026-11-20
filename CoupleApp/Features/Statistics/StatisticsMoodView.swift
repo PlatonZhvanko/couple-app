@@ -5,6 +5,7 @@ import SwiftUI
 struct StatisticsMoodView: View {
     let entries: [MoodEntry]
     let workload: [Date: StatisticsWorkloadDay]
+    let sleep: [Date: StatisticsSleepNight]
     let period: StatisticsPeriod
 
     private var cal: Calendar { PlannerCalendar.calendar }
@@ -33,6 +34,15 @@ struct StatisticsMoodView: View {
         return (busy.reduce(0, +) / Double(busy.count), calm.reduce(0, +) / Double(calm.count), border)
     }
 
+    /// Среднее настроение после короткого (меньше 7 ч) и нормального сна.
+    private var sleepLink: (short: Double, normal: Double)? {
+        let pairs = dayAverages.compactMap { item in sleep[item.day].map { ($0.hours, item.value) } }
+        let short = pairs.filter { $0.0 < 7 }.map(\.1)
+        let normal = pairs.filter { $0.0 >= 7 }.map(\.1)
+        guard !short.isEmpty, !normal.isEmpty else { return nil }
+        return (short.reduce(0, +) / Double(short.count), normal.reduce(0, +) / Double(normal.count))
+    }
+
     private func text(_ value: Double?) -> String {
         guard let value else { return "нет отметок" }
         return "\(MoodLevel.nearest(to: value).emoji) \(String(format: "%.1f", value))"
@@ -57,6 +67,18 @@ struct StatisticsMoodView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text("Нужно хотя бы 4 дня с отметками настроения").foregroundStyle(.secondary)
+                }
+            }
+            Section("Связь со сном") {
+                if let link = sleepLink {
+                    LabeledContent("После сна меньше 7 ч", value: text(link.short))
+                    LabeledContent("После сна 7 ч и больше", value: text(link.normal))
+                    Text(link.short < link.normal - 0.2
+                         ? "Когда спишь меньше 7 часов, настроение ниже."
+                         : "Заметной связи сна и настроения пока нет.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Нужны дни и с коротким, и с нормальным сном вместе с отметками настроения").foregroundStyle(.secondary)
                 }
             }
             Section("По дням") {

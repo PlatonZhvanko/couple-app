@@ -33,6 +33,11 @@ final class AccountStore {
     /// Вызывается при входе и выходе (синхронизация начинает заново).
     @ObservationIgnored var onAccountChange: (() -> Void)? = nil
 
+    /// Телефон Платони: только с него можно переключаться между профилями (в режиме «без сервера»).
+    /// У Настеньки только её профиль. При синхронизации с сервером профиль задаёт сам аккаунт.
+    private(set) var isOwnerDevice: Bool = UserDefaults.standard.bool(forKey: "account.ownerDevice")
+    var canSwitchProfiles: Bool { mode == .local && isOwnerDevice }
+
     var isSignedIn: Bool { me != nil }
     var isServerMode: Bool { mode == .server }
 
@@ -72,6 +77,8 @@ final class AccountStore {
         if let saved = defaults.data(forKey: Keys.saved).flatMap({ try? JSONDecoder().decode(Saved.self, from: $0) }) {
             me = saved.me
             mode = saved.mode
+            // Уже установленное приложение владельца считаем телефоном Платони.
+            if saved.me == .owner, !isOwnerDevice { setOwnerDevice(true) }
             email = saved.email
             for (key, value) in saved.names {
                 if let member = CoupleMember(rawValue: key) { names[member] = value }
@@ -81,6 +88,11 @@ final class AccountStore {
         let session = KeychainStore.data(for: Keys.session)
             .flatMap { try? JSONDecoder().decode(SupabaseSession.self, from: $0) }
         makeClient(session: mode == .server ? session : nil)
+    }
+
+    private func setOwnerDevice(_ value: Bool) {
+        isOwnerDevice = value
+        UserDefaults.standard.set(value, forKey: "account.ownerDevice")
     }
 
     private func save() {
@@ -138,6 +150,7 @@ final class AccountStore {
         me = member
         mode = .local
         email = nil
+        setOwnerDevice(member == .owner)
         names[member] = name
         save()
         onAccountChange?()
@@ -146,7 +159,7 @@ final class AccountStore {
     /// Переключить профиль в режиме «без сервера» (для проверки): Платоня или Настенька.
     /// Данные на телефоне общие, меняется только то, кто сейчас вошёл.
     func switchLocalProfile(to member: CoupleMember) {
-        guard mode == .local, me != member else { return }
+        guard canSwitchProfiles, me != member else { return }
         for item in CoupleMember.allCases where (names[item] ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
             names[item] = item == .owner ? "Платоня" : "Настенька"
         }
@@ -161,6 +174,7 @@ final class AccountStore {
         mode = nil
         email = nil
         names = [:]
+        setOwnerDevice(false)
         save()
         onAccountChange?()
     }
