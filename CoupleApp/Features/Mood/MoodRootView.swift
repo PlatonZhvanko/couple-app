@@ -13,6 +13,12 @@ struct MoodRootView: View {
     @Query(filter: #Predicate<MoodReaction> { $0.deletedAt == nil }, sort: \MoodReaction.createdAt, order: .reverse)
     private var reactions: [MoodReaction]
 
+    @Query(filter: #Predicate<MoodDayCheckIn> { $0.deletedAt == nil }, sort: \MoodDayCheckIn.createdAt, order: .reverse)
+    private var checkIns: [MoodDayCheckIn]
+
+    @AppStorage("mood.checkin.autoPromptDay") private var autoPromptDay = ""
+    @State private var showCheckIn = false
+    @State private var insight: (item: MoodInsight, text: String)?
     @State private var editor: EditorTarget?
     @State private var sentEmoji: String?
 
@@ -35,6 +41,13 @@ struct MoodRootView: View {
         entries.filter { $0.member == member.rawValue && Calendar.current.isDateInToday($0.createdAt) }
     }
 
+    private func checkIn(of member: CoupleMember) -> MoodDayCheckIn? {
+        let key = MoodDayKey.key(for: .now)
+        return checkIns.first { $0.member == member.rawValue && $0.dayKey == key }
+    }
+
+    private var isEvening: Bool { Calendar.current.component(.hour, from: .now) >= 18 }
+
     /// Реакции партнёра мне, которые я ещё не видел.
     private var unseenReactions: [MoodReaction] {
         reactions.filter { $0.recipient == me.rawValue && $0.seenAt == nil }
@@ -43,6 +56,10 @@ struct MoodRootView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    mironCard
+                }
+
                 if !unseenReactions.isEmpty {
                     Section {
                         reactionsBanner
@@ -51,8 +68,8 @@ struct MoodRootView: View {
 
                 Section {
                     HStack(alignment: .top, spacing: 12) {
-                        MoodTodayCard(name: account.myName, entries: today(of: me))
-                        MoodTodayCard(name: account.partnerName, entries: today(of: me.other))
+                        MoodTodayCard(name: account.myName, entries: today(of: me), checkIn: checkIn(of: me))
+                        MoodTodayCard(name: account.partnerName, entries: today(of: me.other), checkIn: checkIn(of: me.other))
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
@@ -100,6 +117,11 @@ struct MoodRootView: View {
                         Label("История и графики", systemImage: "chart.xyaxis.line")
                     }
                     NavigationLink {
+                        MoodInsightsView()
+                    } label: {
+                        Label("Мироня заметил", systemImage: "sparkles")
+                    }
+                    NavigationLink {
                         MoodReminderSettingsView()
                     } label: {
                         Label("Напоминание", systemImage: "bell")
@@ -108,6 +130,10 @@ struct MoodRootView: View {
             }
             .navigationTitle("Настроение")
             .refreshable { await sync.syncNow() }
+            .onAppear(perform: onAppear)
+            .sheet(isPresented: $showCheckIn) {
+                MoodCheckInView(existing: checkIn(of: me))
+            }
             .sheet(item: $editor) { target in
                 switch target {
                 case .new(let level): MoodEntryEditor(initialLevel: level)
@@ -115,6 +141,57 @@ struct MoodRootView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Мироня
+
+    private func onAppear() {
+        MoodReminder.refreshIfEnabled()
+        let days = MoodInsights.collect(context: context, member: me)
+        let list = MoodInsights.insights(from: days)
+        let good = (days.last?.mood ?? 0) >= 4
+        insight = MoodInsights.gentleInsight(list, goodMood: good)
+
+        // Вечером при первом заходе за день Мироня сам спрашивает итог дня.
+        let key = MoodDayKey.key(for: .now)
+        if isEvening, checkIn(of: me) == nil, autoPromptDay != key {
+            autoPromptDay = key
+            showCheckIn = true
+        }
+    }
+
+    private var mironCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                MoodMironAvatar(size: 48)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Мироня")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let done = checkIn(of: me) {
+                        Text("\(MoodMiron.thanks(for: .now)) Итог дня: \(done.level.emoji) \(done.overall)/5")
+                            .font(.headline)
+                    } else {
+                        Text(MoodMiron.question(for: .now))
+                            .font(.headline)
+                    }
+                }
+            }
+            Button {
+                showCheckIn = true
+            } label: {
+                Text(checkIn(of: me) == nil ? "Рассказать про день" : "Изменить итог дня")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+
+            if let insight {
+                Text("🐾 \(insight.text)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Поддержка
@@ -182,6 +259,7 @@ struct MoodRootView: View {
 struct MoodTodayCard: View {
     let name: String
     let entries: [MoodEntry]
+    var checkIn: MoodDayCheckIn? = nil
 
     var body: some View {
         let average = MoodStats.average(entries)
@@ -194,7 +272,10 @@ struct MoodTodayCard: View {
                     .font(.system(size: 44))
                 Text(MoodLevel.nearest(to: average).title)
                     .font(.caption)
-                if let last = entries.first {
+                if let checkIn {
+                    Text("итог дня: \(checkIn.level.emoji) \(checkIn.overall)/5")
+                        .font(.caption2.weight(.semibold))
+                } else if let last = entries.first {
                     Text("в \(last.createdAt.formatted(date: .omitted, time: .shortened)) · отметок: \(entries.count)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
