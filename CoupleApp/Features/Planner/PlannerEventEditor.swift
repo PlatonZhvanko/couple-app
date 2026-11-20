@@ -75,18 +75,6 @@ struct PlannerEventEditor: View {
         }
     }
 
-    /// У Платони: дело, клиент, группа, школа и обычные виды.
-    private var ownerCategories: [PlannerCategory] {
-        [.errand, .personal, .group, .school] + PlannerCategory.regular
-    }
-
-    private func ownerTitle(_ item: PlannerCategory) -> String {
-        switch item {
-        case .personal: "Клиент"
-        default: item.title
-        }
-    }
-
     private var canEdit: Bool {
         event?.scopeValue.canEdit(by: account.current) ?? true
     }
@@ -154,14 +142,17 @@ struct PlannerEventEditor: View {
                 }
 
                 Section {
-                    Picker("Вид", selection: $category) {
-                        ForEach(account.current == .owner ? ownerCategories : PlannerCategory.regular) { item in
-                            Label {
-                                Text(account.current == .owner ? ownerTitle(item) : item.title)
-                            } icon: {
-                                Image(systemName: item.systemImage).foregroundStyle(item.color)
+                    // У Платони только «дело»: вида (клиент, группа, школа) нет.
+                    if account.current != .owner {
+                        Picker("Категория", selection: $category) {
+                            ForEach(PlannerCategory.regular) { item in
+                                Label {
+                                    Text(item.title)
+                                } icon: {
+                                    Image(systemName: item.systemImage).foregroundStyle(item.color)
+                                }
+                                .tag(item)
                             }
-                            .tag(item)
                         }
                     }
                     Picker("Напоминание", selection: $reminder) {
