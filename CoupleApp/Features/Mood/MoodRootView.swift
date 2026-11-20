@@ -130,7 +130,7 @@ struct MoodRootView: View {
                 }
             }
             .navigationTitle("Настроение")
-            .catVisit(.miron, topic: .mood)
+            .catVisit(.miron, topic: Calendar.current.component(.hour, from: .now) >= 20 ? .goodNight : .mood)
             .refreshable { await sync.syncNow() }
             .onAppear(perform: onAppear)
             .sheet(isPresented: $showCheckIn) {

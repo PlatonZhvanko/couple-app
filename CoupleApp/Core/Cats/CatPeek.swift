@@ -118,17 +118,74 @@ struct CatPeekView: View {
 
     var body: some View {
         content
-            .padding(.horizontal, (edge == .top || edge == .bottom) ? 16 : 0)
-            .padding(.top, edge == .top ? 0 : (edge == .bottom ? 0 : 110))
-            .padding(.bottom, edge == .bottom ? 49 : (edge == .top ? 0 : 130))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment)
             .contentShape(Rectangle())
             .onTapGesture { onDismiss() }
+            .padding(.horizontal, (edge == .top || edge == .bottom) ? 16 : 0)
+            .padding(.top, (edge == .leading || edge == .trailing) ? 110 : 0)
+            .padding(.bottom, (edge == .leading || edge == .trailing) ? 130 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment)
             .task {
                 try? await Task.sleep(for: .seconds(duration))
                 onDismiss()
             }
             .transition(.move(edge: edge.transitionEdge).combined(with: .opacity))
+    }
+}
+
+/// Общий «показыватель» котов: один на всё приложение. Кот всегда выезжает от настоящего
+/// края экрана (сверху, снизу, слева или справа), а не из середины раздела.
+@Observable
+@MainActor
+final class CatPeekCenter {
+    var current: AnyView?
+    var token = UUID()
+
+    func present(_ view: AnyView) {
+        token = UUID()
+        current = view
+    }
+
+    func dismiss() {
+        current = nil
+    }
+
+    func show(_ cat: Cat, topic: CatTopic, message: String? = nil, edge: CatPeekEdge? = nil, duration: Double = 6) {
+        let e = edge ?? CatPeekEdge.allCases.randomElement() ?? .bottom
+        let text = message ?? CatPhrases.random(for: cat, topic: topic)
+        present(AnyView(
+            CatPeekView(cat: cat, edge: e, message: text, position: Int.random(in: 0...2), duration: duration) { [weak self] in
+                self?.dismiss()
+            }
+        ))
+    }
+}
+
+/// Единые настройки частоты появления котов. Менять числа здесь: работает для всех разделов.
+enum CatSettings {
+    /// Один и тот же кот не чаще, чем раз в столько секунд (25 минут).
+    static let visitCooldown: TimeInterval = 25 * 60
+    /// Вероятность, что при заходе в раздел кот выглянет, если время пришло.
+    static let visitChance = 0.8
+    /// Между появлениями любых котов проходит не меньше этого времени (4 минуты).
+    static let gapBetweenAnyCats: TimeInterval = 4 * 60
+    /// Мироня здоровается при запуске не чаще, чем раз в столько секунд (3 часа).
+    static let greetingCooldown: TimeInterval = 3 * 3600
+    /// Сколько секунд кот остаётся на экране.
+    static let displaySeconds: Double = 6
+
+    /// Проверяет, можно ли коту показаться сейчас, и если да, запоминает время показа.
+    static func claim(_ cat: Cat, chance: Double? = nil, cooldown: TimeInterval? = nil) -> Bool {
+        let defaults = UserDefaults.standard
+        let now = Date.now.timeIntervalSince1970
+        let catKey = "cat.lastVisit.\(cat.rawValue)"
+        let anyKey = "cat.lastAnyVisit"
+        guard now - defaults.double(forKey: catKey) > (cooldown ?? visitCooldown),
+              now - defaults.double(forKey: anyKey) > gapBetweenAnyCats,
+              Double.random(in: 0...1) < (chance ?? visitChance)
+        else { return false }
+        defaults.set(now, forKey: catKey)
+        defaults.set(now, forKey: anyKey)
+        return true
     }
 }
 
@@ -139,25 +196,13 @@ private struct CatPeekModifier: ViewModifier {
     let edge: CatPeekEdge?
     let duration: Double
     @Binding var isPresented: Bool
+    @Environment(CatPeekCenter.self) private var center
 
     func body(content: Content) -> some View {
-        content.overlay {
-            ZStack {
-                if isPresented {
-                    CatPeekView(
-                        cat: cat,
-                        edge: edge ?? CatPeekEdge.allCases.randomElement() ?? .bottom,
-                        message: message ?? CatPhrases.random(for: cat, topic: topic),
-                        position: Int.random(in: 0...2),
-                        duration: duration
-                    ) {
-                        isPresented = false
-                    }
-                }
-            }
-            .animation(.spring(response: 0.55, dampingFraction: 0.7), value: isPresented)
-            // Пустое место не перехватывает нажатия: нажимается только сам кот.
-            .allowsHitTesting(isPresented)
+        content.onChange(of: isPresented, initial: true) { _, shown in
+            guard shown else { return }
+            center.show(cat, topic: topic, message: message, edge: edge, duration: duration)
+            isPresented = false
         }
     }
 }
@@ -185,33 +230,25 @@ extension View {
 private struct CatVisitModifier: ViewModifier {
     let cat: Cat
     let topic: CatTopic
-    let chance: Double
-    let cooldown: TimeInterval
+    let chance: Double?
+    let cooldown: TimeInterval?
     var messages: [String] = []
-    @State private var show = false
-    @State private var message: String? = nil
+    @Environment(CatPeekCenter.self) private var center
 
     func body(content: Content) -> some View {
-        content
-            .catPeek(cat, topic: topic, message: message, isPresented: $show)
-            .task {
-                let key = "cat.lastVisit.\(cat.rawValue)"
-                let last = UserDefaults.standard.double(forKey: key)
-                let now = Date.now.timeIntervalSince1970
-                guard now - last > cooldown, Double.random(in: 0...1) < chance else { return }
-                try? await Task.sleep(for: .seconds(1.5))
-                UserDefaults.standard.set(now, forKey: key)
-                message = messages.randomElement()
-                show = true
-            }
+        content.task {
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled, CatSettings.claim(cat, chance: chance, cooldown: cooldown) else { return }
+            center.show(cat, topic: topic, message: messages.randomElement(), duration: CatSettings.displaySeconds)
+        }
     }
 }
 
 extension View {
-    /// Кот изредка заглядывает при открытии экрана: не чаще, чем раз в `cooldown` секунд (по умолчанию 4 часа)
-    /// и не каждый раз (`chance` от 0 до 1).
+    /// Кот заглядывает при открытии экрана. Частота задаётся в `CatSettings`;
+    /// `chance` и `cooldown` нужны только если разделу нужно своё.
     func catVisit(
-        _ cat: Cat, topic: CatTopic, chance: Double = 0.6, cooldown: TimeInterval = 4 * 3600,
+        _ cat: Cat, topic: CatTopic, chance: Double? = nil, cooldown: TimeInterval? = nil,
         messages: [String] = []
     ) -> some View {
         modifier(CatVisitModifier(cat: cat, topic: topic, chance: chance, cooldown: cooldown, messages: messages))

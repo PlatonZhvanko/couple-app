@@ -32,11 +32,8 @@ struct PlannerRootView: View {
                 }
         }
         .environment(\.locale, PlannerCalendar.locale)
-        // Коты заглядывают редко: раз в 6 часов и не каждый раз.
-        .catVisit(
-            Self.visitingCat, topic: .money,
-            chance: 0.35, cooldown: 6 * 3600, messages: CatPhrases.planner
-        )
+        // Частота котов задаётся в одном месте: CatSettings.
+        .catVisit(Self.visitingCat, topic: .money, messages: CatPhrases.planner)
         // При любых изменениях событий (в том числе со второго телефона)
         // пересчитываем напоминания.
         .task(id: reminderSignature) {

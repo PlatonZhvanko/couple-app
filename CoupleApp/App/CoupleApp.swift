@@ -28,6 +28,7 @@ struct RootView: View {
     @Environment(AccountStore.self) private var account
     @State private var showSplash = true
     @State private var showGreeting = false
+    @State private var catCenter = CatPeekCenter()
 
     var body: some View {
         ZStack {
@@ -45,7 +46,7 @@ struct RootView: View {
                         // Мироня здоровается не чаще раза в несколько часов.
                         let key = "cat.lastGreeting"
                         let now = Date.now.timeIntervalSince1970
-                        if now - UserDefaults.standard.double(forKey: key) > 4 * 3600 {
+                        if now - UserDefaults.standard.double(forKey: key) > CatSettings.greetingCooldown {
                             UserDefaults.standard.set(now, forKey: key)
                             showGreeting = true
                         }
@@ -55,7 +56,17 @@ struct RootView: View {
                 .zIndex(1)
             }
         }
+        .environment(catCenter)
         .catPeek(.miron, topic: .greeting, isPresented: $showGreeting)
+        .overlay {
+            ZStack {
+                if let view = catCenter.current {
+                    view.id(catCenter.token)
+                }
+            }
+            .animation(.spring(response: 0.55, dampingFraction: 0.7), value: catCenter.token)
+            .ignoresSafeArea()
+        }
         .scrollDismissesKeyboard(.interactively)
         .task {
             // Окно появляется не сразу, поэтому пробуем несколько раз.
