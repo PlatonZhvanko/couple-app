@@ -10,9 +10,20 @@ enum StatisticsSection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Крупные части статистики.
+enum StatisticsPart: String, CaseIterable, Identifiable {
+    case finance = "Финансы"
+    case workload = "Загруженность"
+    case mood = "Настроение"
+    var id: String { rawValue }
+}
+
 struct StatisticsRootView: View {
     @Environment(\.modelContext) private var context
 
+    @State private var part: StatisticsPart = .finance
+    @State private var workload: [Date: StatisticsWorkloadDay] = [:]
+    @Query(filter: #Predicate<MoodEntry> { $0.deletedAt == nil }) private var moods: [MoodEntry]
     @State private var section: StatisticsSection = .money
     @State private var period = StatisticsPeriod()
     @State private var snapshot = StatisticsSnapshot()
@@ -24,16 +35,46 @@ struct StatisticsRootView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Раздел", selection: $section) {
-                    ForEach(StatisticsSection.allCases) { Text($0.rawValue).tag($0) }
+                Picker("Часть", selection: $part) {
+                    ForEach(StatisticsPart.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .font(.caption)
                 .padding(.horizontal)
-                .padding(.vertical, 8)
+                .padding(.top, 8)
+
+                if part == .finance {
+                    Picker("Раздел", selection: $section) {
+                        ForEach(StatisticsSection.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .font(.caption)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                }
 
                 periodBar.fixedSize(horizontal: false, vertical: true)
 
+                switch part {
+                case .workload:
+                    StatisticsWorkloadView(days: workload, period: period)
+                case .mood:
+                    StatisticsMoodView(entries: moods, workload: workload, period: period)
+                case .finance:
+                    financeContent
+                }
+            }
+            .navigationTitle("Статистика")
+            .catVisit(.gosha, topic: .money)
+            .navigationBarTitleDisplayMode(.inline)
+            .task(id: reloadKey) { reload() }
+            .environment(\.locale, PlannerCalendar.locale)
+        }
+    }
+
+    @ViewBuilder
+    private var financeContent: some View {
+        Group {
+            Group {
                 switch section {
                 case .money:
                     StatisticsMoneyView(snapshot: snapshot, period: period)
@@ -45,20 +86,16 @@ struct StatisticsRootView: View {
                     StatisticsDebtsView(snapshot: snapshot, period: period)
                 }
             }
-            .navigationTitle("Статистика")
-            .catVisit(.gosha, topic: .money)
-            .navigationBarTitleDisplayMode(.inline)
-            .task(id: reloadKey) { reload() }
-            .environment(\.locale, PlannerCalendar.locale)
         }
     }
 
     private var reloadKey: String {
-        "\(events.count)-\(payments.count)-\(subscriptions.count)-\(events.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(payments.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(period.interval.start.timeIntervalSince1970)-\(period.interval.end.timeIntervalSince1970)"
+        "\(moods.count)-\(events.count)-\(payments.count)-\(subscriptions.count)-\(events.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(payments.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(period.interval.start.timeIntervalSince1970)-\(period.interval.end.timeIntervalSince1970)"
     }
 
     private func reload() {
         snapshot = StatisticsSnapshot.load(context, from: period.interval.start, until: period.interval.end)
+        workload = StatisticsWorkload.load(context, from: period.interval.start, until: period.interval.end)
     }
 
     private var periodBar: some View {
