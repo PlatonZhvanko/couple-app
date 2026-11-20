@@ -31,7 +31,7 @@ struct SettingsView: View {
                     Text("👤 Профиль")
                 }
 
-                if account.mode == .local {
+                if account.canSwitchProfiles {
                     Section {
                         Picker("Войти как", selection: Binding(
                             get: { account.current },
