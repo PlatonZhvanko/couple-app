@@ -14,7 +14,7 @@ enum MoodParameter: String, CaseIterable, Identifiable {
         case .energy: "Энергия"
         case .calm: "Спокойствие"
         case .body: "Самочувствие"
-        case .warmth: "Тепло и общение"
+        case .warmth: "Коммуникация"
         case .focus: "Дела и настрой"
         }
     }
@@ -24,7 +24,7 @@ enum MoodParameter: String, CaseIterable, Identifiable {
         case .energy: "⚡️"
         case .calm: "🌿"
         case .body: "🫶"
-        case .warmth: "💞"
+        case .warmth: "💬"
         case .focus: "🎯"
         }
     }
@@ -34,7 +34,7 @@ enum MoodParameter: String, CaseIterable, Identifiable {
         case .energy: "сколько было сил"
         case .calm: "насколько было спокойно"
         case .body: "как чувствовало себя тело"
-        case .warmth: "сколько тепла и общения"
+        case .warmth: "как общались с близкими"
         case .focus: "как шли дела"
         }
     }
@@ -197,6 +197,23 @@ struct MoodCheckInView: View {
     @State private var overall: MoodLevel = .good
     @State private var values: [MoodParameter: Int] = [:]
     @State private var note = ""
+    @State private var logSleep = true
+    @State private var bedtime = MoodCheckInView.defaultBedtime()
+    @State private var wakeTime = MoodCheckInView.defaultWake()
+    @State private var sleepQuality = 3
+    @State private var sleepEntry: SleepEntry?
+
+    /// По умолчанию: лёг вчера в 23:00, встал сегодня в 07:00.
+    private static func defaultWake() -> Date {
+        Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: .now) ?? .now
+    }
+
+    private static func defaultBedtime() -> Date {
+        Calendar.current.date(byAdding: .hour, value: -8, to: defaultWake()) ?? .now
+    }
+
+    private var sleepDuration: TimeInterval { wakeTime.timeIntervalSince(bedtime) }
+    private var sleepProblem: Bool { sleepDuration <= 0 || sleepDuration > 20 * 3600 }
 
     init(existing: MoodDayCheckIn? = nil) {
         self.existing = existing
@@ -233,6 +250,38 @@ struct MoodCheckInView: View {
                     }
                 }
 
+                Section {
+                    Toggle("Записать, как спалось", isOn: $logSleep)
+                    if logSleep {
+                        DatePicker("Лёг(ла)", selection: $bedtime)
+                        DatePicker("Проснулся(ась)", selection: $wakeTime)
+                        LabeledContent("Сон") {
+                            Text(sleepProblem ? "проверьте время" : SleepFormat.duration(sleepDuration))
+                                .foregroundStyle(sleepProblem ? .red : .primary)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Мироня: как спалось?")
+                                .font(.subheadline)
+                            HStack {
+                                ForEach(1...5, id: \.self) { value in
+                                    Button {
+                                        sleepQuality = value
+                                    } label: {
+                                        Text(SleepFormat.emoji(for: value))
+                                            .font(.title)
+                                            .opacity(sleepQuality == value ? 1 : 0.35)
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(SleepFormat.title(for: value))
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Сон прошлой ночью")
+                }
+
                 Section("Пара слов (необязательно)") {
                     TextField("Что запомнилось за день", text: $note, axis: .vertical)
                         .lineLimit(1...4)
@@ -242,13 +291,26 @@ struct MoodCheckInView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Позже") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Сохранить", action: save) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Сохранить", action: save).disabled(logSleep && sleepProblem)
+                }
             }
             .onAppear(perform: load)
         }
     }
 
     private func load() {
+        // Сон, который уже записан на сегодня (проснулись сегодня).
+        let today = Calendar.current.startOfDay(for: .now)
+        let who = account.current.rawValue
+        let rows = ((try? context.fetch(FetchDescriptor<SleepEntry>())) ?? [])
+            .filter { $0.deletedAt == nil && $0.member == who && $0.nightDay == today }
+        if let main = rows.max(by: { $0.duration < $1.duration }) {
+            sleepEntry = main
+            bedtime = main.bedtime
+            wakeTime = main.wakeTime
+            sleepQuality = main.quality
+        }
         guard let existing else { return }
         overall = existing.level
         note = existing.note
@@ -286,6 +348,17 @@ struct MoodCheckInView: View {
             item.entryID = created.syncID
         }
         item.markChanged()
+
+        if logSleep, !sleepProblem {
+            if let sleepEntry {
+                sleepEntry.bedtime = bedtime
+                sleepEntry.wakeTime = wakeTime
+                sleepEntry.quality = sleepQuality
+                sleepEntry.markChanged()
+            } else {
+                context.insert(SleepEntry(member: account.current, bedtime: bedtime, wakeTime: wakeTime, quality: sleepQuality, note: ""))
+            }
+        }
         try? context.save()
         sync.requestSync()
         MoodReminder.skipToday()

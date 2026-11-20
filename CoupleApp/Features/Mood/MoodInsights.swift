@@ -19,6 +19,12 @@ struct MoodDayData {
     var day: Date
     var mood: Double
     var sleepHours: Double?
+    /// Минуты от полудня (23:00 → 660, 01:00 → 780).
+    var bedtimeShifted: Int?
+    /// Минуты от полуночи.
+    var wakeMinutes: Int?
+    var sleepQuality: Double?
+    var awakeHours: Double?
     var kcal: Double?
     var waterMl: Int?
     var sessions: Int?
@@ -46,15 +52,14 @@ enum MoodInsights {
             .filter { $0.deletedAt == nil && $0.member == who }
         let water = ((try? context.fetch(FetchDescriptor<NutritionWater>())) ?? [])
             .filter { $0.deletedAt == nil && $0.member == who }
-        let sleeps = ((try? context.fetch(FetchDescriptor<SleepEntry>())) ?? [])
-            .filter { $0.deletedAt == nil && $0.member == who && $0.wakeTime >= from }
+        let sleeps = SleepDaySummary.load(context, member: member, from: from, until: end)
         let snapshot = StatisticsSnapshot.load(context, from: from, until: end)
 
         let checkInByDay = Dictionary(checkIns.map { ($0.dayKey, $0) }, uniquingKeysWith: { a, _ in a })
         let entriesByDay = Dictionary(grouping: entries) { MoodDayKey.key(for: $0.createdAt) }
         let mealsByDay = Dictionary(grouping: meals, by: \.dayKey)
         let waterByDay = Dictionary(grouping: water, by: \.dayKey)
-        let sleepByDay = Dictionary(grouping: sleeps) { MoodDayKey.key(for: $0.nightDay) }
+        let sleepByDay = Dictionary(sleeps.map { (MoodDayKey.key(for: $0.day), $0) }, uniquingKeysWith: { a, _ in a })
         let visitsByDay = Dictionary(grouping: snapshot.visits.filter { !$0.cancelled }) { MoodDayKey.key(for: $0.day) }
 
         var result: [MoodDayData] = []
@@ -70,8 +75,12 @@ enum MoodInsights {
                 continue
             }
             var item = MoodDayData(day: day, mood: mood)
-            if let sleep = sleepByDay[key], !sleep.isEmpty {
-                item.sleepHours = sleep.reduce(0) { $0 + $1.duration } / 3600
+            if let sleep = sleepByDay[key] {
+                item.sleepHours = sleep.hours
+                item.bedtimeShifted = sleep.bedtimeShifted
+                item.wakeMinutes = sleep.wakeMinutes
+                item.sleepQuality = sleep.quality
+                item.awakeHours = sleep.awakeHours
             }
             if let meals = mealsByDay[key], !meals.isEmpty {
                 item.kcal = meals.reduce(0) { $0 + $1.calories }
@@ -108,6 +117,15 @@ enum MoodInsights {
         Factor(id: "sleep", name: "Сон 7+ часов", group: { $0.sleepHours.map { $0 >= 7 } },
                lowText: { "В дни, когда сна меньше 7 часов, настроение в среднем ниже на \(MoodInsights.format($0))." },
                positive: { "Ты хорошо спишь, и это видно: после 7+ часов сна настроение выше на \(MoodInsights.format($0))." }),
+        Factor(id: "sleepq", name: "Сон хорошего качества (4+)", group: { $0.sleepQuality.map { $0 >= 4 } },
+               lowText: { "После ночей, когда спалось хуже, настроение ниже на \(MoodInsights.format($0))." },
+               positive: { "Когда спалось хорошо, настроение выше на \(MoodInsights.format($0))." }),
+        Factor(id: "sleepbed", name: "Лёг(ла) до 23:30", group: { $0.bedtimeShifted.map { $0 <= 690 } },
+               lowText: { "Когда ложишься позже 23:30, настроение на следующий день ниже на \(MoodInsights.format($0))." },
+               positive: { "Ранний отход ко сну (до 23:30) поднимает настроение на \(MoodInsights.format($0))." }),
+        Factor(id: "sleepwake", name: "Проснулся(ась) до 8:30", group: { $0.wakeMinutes.map { $0 <= 8 * 60 + 30 } },
+               lowText: { "В дни, когда просыпаешься после 8:30, настроение ниже на \(MoodInsights.format($0))." },
+               positive: { "Раннее пробуждение (до 8:30) идёт тебе на пользу: настроение выше на \(MoodInsights.format($0))." }),
         Factor(id: "water", name: "Воды 1,5 л и больше", group: { $0.waterMl.map { $0 >= 1500 } },
                lowText: { "Когда воды меньше 1,5 л, настроение ниже на \(MoodInsights.format($0))." },
                positive: { "Вода творит чудеса: с 1,5 л и больше настроение выше на \(MoodInsights.format($0))." }),
@@ -172,10 +190,12 @@ enum MoodInsights {
     }
 
     /// Какой вывод показать «невзначай» сегодня: один в день, по очереди.
-    static func gentleInsight(_ list: [MoodInsight], on date: Date = .now, goodMood: Bool = false) -> (item: MoodInsight, text: String)? {
+    static func gentleInsight(_ list: [MoodInsight], on date: Date = .now, goodMood: Bool = false, preferSleep: Bool = false) -> (item: MoodInsight, text: String)? {
         guard !list.isEmpty else { return nil }
         let day = Calendar.current.ordinality(of: .day, in: .era, for: date) ?? 0
-        let item = list[day % list.count]
+        // Если ночь была короткой, Мироня первым делом вспоминает про сон.
+        let sleepFirst = preferSleep ? list.first { $0.id.hasPrefix("sleep") } : nil
+        let item = sleepFirst ?? list[day % list.count]
         return (item, goodMood ? (item.positiveText ?? item.text) : item.text)
     }
 }
@@ -189,6 +209,7 @@ struct MoodInsightsView: View {
 
     @State private var days: [MoodDayData] = []
     @State private var loaded = false
+    @State private var sleepRows: [SleepDaySummary] = []
 
     private var insights: [MoodInsight] { MoodInsights.insights(from: days) }
 
@@ -221,6 +242,27 @@ struct MoodInsightsView: View {
                 }
             }
 
+            if !sleepRows.isEmpty {
+                Section {
+                    LabeledContent("Спишь в среднем", value: SleepFormat.duration(sleepRows.map(\.hours).reduce(0, +) / Double(sleepRows.count) * 3600))
+                    if let bed = SleepStats.averageClockMinutes(sleepRows.map(\.bedtime), calendar: .current) {
+                        LabeledContent("Обычно ложишься", value: SleepFormat.clock(minutes: bed))
+                    }
+                    if let wake = SleepStats.averageClockMinutes(sleepRows.map(\.wakeTime), calendar: .current) {
+                        LabeledContent("Обычно встаёшь", value: SleepFormat.clock(minutes: wake))
+                    }
+                    LabeledContent("Как спалось", value: String(format: "%.1f из 5", sleepRows.map(\.quality).reduce(0, +) / Double(sleepRows.count)))
+                    let awake = sleepRows.compactMap(\.awakeHours)
+                    if !awake.isEmpty {
+                        LabeledContent("Бодрствуешь за день", value: SleepFormat.duration(awake.reduce(0, +) / Double(awake.count) * 3600))
+                    }
+                } header: {
+                    Text("Сон за 60 дней")
+                } footer: {
+                    Text("Сон записывается в итоге дня. Чем больше ночей, тем точнее подсказки.")
+                }
+            }
+
             Section {
                 LabeledContent("Дней с отметками", value: "\(days.count)")
                 if let average = MoodStats.average(days.map { MoodEntryProxy(level: $0.mood) }) {
@@ -234,6 +276,12 @@ struct MoodInsightsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             days = MoodInsights.collect(context: context, member: account.current)
+            let today = Calendar.current.startOfDay(for: .now)
+            sleepRows = SleepDaySummary.load(
+                context, member: account.current,
+                from: Calendar.current.date(byAdding: .day, value: -59, to: today) ?? today,
+                until: Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
+            )
             loaded = true
         }
     }
