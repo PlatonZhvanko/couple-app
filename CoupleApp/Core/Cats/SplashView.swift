@@ -12,7 +12,7 @@ struct SplashView: View {
                 startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
             VStack(spacing: 18) {
-                AppLogoView(size: 260)
+                AppLogoView(size: 300)
                     .scaleEffect(appeared ? 1 : 0.6)
                     .opacity(appeared ? 1 : 0)
                 Text("Вдвоём")
