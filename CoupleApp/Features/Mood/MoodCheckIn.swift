@@ -15,7 +15,7 @@ enum MoodParameter: String, CaseIterable, Identifiable {
         case .calm: "Спокойствие"
         case .body: "Самочувствие"
         case .warmth: "Коммуникация"
-        case .focus: "Дела и настрой"
+        case .focus: "Дела и работа"
         }
     }
 
