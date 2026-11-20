@@ -14,6 +14,7 @@ struct NutritionRootView: View {
                 date: $date
             )
             .navigationTitle("Питание")
+            .catVisit(.chloe, topic: .food)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink {

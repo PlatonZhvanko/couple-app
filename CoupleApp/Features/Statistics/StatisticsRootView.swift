@@ -46,6 +46,7 @@ struct StatisticsRootView: View {
                 }
             }
             .navigationTitle("Статистика")
+            .catVisit(.gosha, topic: .money)
             .navigationBarTitleDisplayMode(.inline)
             .task(id: reloadKey) { reload() }
             .environment(\.locale, PlannerCalendar.locale)
