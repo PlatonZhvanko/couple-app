@@ -16,6 +16,7 @@ enum CarFeature {
             CarVehicle.self,
             CarEntry.self,
             CarReminder.self,
+            CarRepair.self,
         ]
     ) {
         CarRootView()

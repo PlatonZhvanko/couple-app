@@ -2,7 +2,11 @@ import SwiftUI
 
 /// Реплики котов-механиков для раздела «Авто».
 enum CarCatLines {
-    enum Hint { case odometer, service, general }
+    enum Hint {
+        case odometer, general, noService
+        case service(lastKm: Int, nowKm: Int)
+        case repair(title: String, price: Double)
+    }
 
     private static let service: [Cat: [String]] = [
         .miron: [
@@ -65,16 +69,33 @@ enum CarCatLines {
     ]
 
     static func line(cat: Cat, hint: Hint) -> String {
-        let list: [String]
         switch hint {
-        case .odometer: list = odometer[cat] ?? []
-        case .service: list = service[cat] ?? []
-        case .general: list = general[cat] ?? []
+        case .repair(let title, let price):
+            let name = title.isEmpty ? "ремонт" : "«\(title)»"
+            let cost = price > 0 ? " Это примерно \(CarFormat.money(price))." : ""
+            let options = [
+                "Чо как там по ремонту? Висит пункт \(name).\(cost)",
+                "Не забыли про \(name)? Срок уже близко.\(cost)",
+                "Каска надета, ключ в лапе. Когда делаем \(name)?",
+                "\(name) сам себя не починит. Я пробовал.",
+            ]
+            return options.randomElement() ?? "Мяу!"
+        case .service(let last, let now):
+            let options = [
+                "Последнее ТО было на \(CarFormat.km(last)), сейчас \(CarFormat.km(now)). Может, пора?",
+                "С прошлого ТО проехали \(CarFormat.km(max(0, now - last))). Не пора ли поменять масло?",
+            ]
+            return options.randomElement() ?? "Мяу!"
+        case .noService:
+            return ["ТО ещё ни разу не записано. Когда меняли масло в последний раз?",
+                    "Запишите, на каком пробеге делали ТО, и я буду напоминать вовремя."].randomElement() ?? "Мяу!"
+        case .odometer: return (odometer[cat] ?? []).randomElement() ?? "Мяу!"
+        case .general: return (general[cat] ?? []).randomElement() ?? "Мяу!"
         }
-        let all = list.isEmpty ? ["Мяу!"] : list
-        // чаще подходящая тема, иногда ТО
-        return all.randomElement() ?? "Мяу!"
     }
+
+    /// Ещё общие реплики про ТО без данных.
+    static func serviceLine(cat: Cat) -> String { (service[cat] ?? []).randomElement() ?? "Мяу!" }
 }
 
 /// Каска механика поверх мордочки кота.
