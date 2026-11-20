@@ -13,6 +13,8 @@ enum ClientsFeature {
             ClientsClient.self,
             ClientsAppointment.self,
         ],
+        // Клиенты, группы и абонементы только у Настеньки (у Платони их нет).
+        availableFor: [.partner],
         calendarItems: { context, interval in
             ClientsCalendar.items(context: context, interval: interval)
         }

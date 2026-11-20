@@ -31,7 +31,8 @@ enum PlannerSetupFeature {
     static let feature = Feature(
         id: "plannerSetup",
         title: "Группы и абонементы",
-        systemImage: "person.3.fill"
+        systemImage: "person.3.fill",
+        availableFor: [.partner]
     ) {
         PlannerSetupView()
     }

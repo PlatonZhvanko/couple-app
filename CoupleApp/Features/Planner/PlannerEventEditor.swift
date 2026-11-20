@@ -24,6 +24,11 @@ struct PlannerEventEditor: View {
     @State private var colorHex: String
     @State private var reminder: Int
     @State private var confirmDelete = false
+    @State private var moneyDirection: PlannerMoneyDirection
+    @State private var moneyAmount: Double?
+    @State private var moneyType: String
+    @Query(filter: #Predicate<PlannerMoneyKind> { $0.deletedAt == nil }, sort: \PlannerMoneyKind.name)
+    private var moneyKinds: [PlannerMoneyKind]
 
     /// `time` — начало нового события (нажатие на время в планировщике).
     init(event: PlannerEvent?, day: Date, at time: Date? = nil) {
@@ -43,6 +48,9 @@ struct PlannerEventEditor: View {
             _repeatUntil = State(initialValue: event.repeatUntil)
             _colorHex = State(initialValue: event.colorHex)
             _reminder = State(initialValue: event.reminderMinutes)
+            _moneyDirection = State(initialValue: event.moneyDirection)
+            _moneyAmount = State(initialValue: event.moneyAmount > 0 ? event.moneyAmount : nil)
+            _moneyType = State(initialValue: event.moneyType)
         } else {
             // Новое событие: сегодня со следующего часа, иначе в 10:00.
             let now = Date.now
@@ -54,13 +62,28 @@ struct PlannerEventEditor: View {
             _end = State(initialValue: begin.addingTimeInterval(3600))
             _isAllDay = State(initialValue: false)
             _isPrivate = State(initialValue: false)
-            _category = State(initialValue: .general)
+            _category = State(initialValue: .errand)
             _repeatRule = State(initialValue: .none)
             _repeatInterval = State(initialValue: 1)
             _repeatWeekdays = State(initialValue: [])
             _repeatUntil = State(initialValue: nil)
             _colorHex = State(initialValue: "")
             _reminder = State(initialValue: PlannerReminderOption.none)
+            _moneyDirection = State(initialValue: .none)
+            _moneyAmount = State(initialValue: nil)
+            _moneyType = State(initialValue: "")
+        }
+    }
+
+    /// У Платони: дело, клиент, группа, школа и обычные виды.
+    private var ownerCategories: [PlannerCategory] {
+        [.errand, .personal, .group, .school] + PlannerCategory.regular
+    }
+
+    private func ownerTitle(_ item: PlannerCategory) -> String {
+        switch item {
+        case .personal: "Клиент"
+        default: item.title
         }
     }
 
@@ -99,11 +122,42 @@ struct PlannerEventEditor: View {
                     )
                 }
 
+                if account.current == .owner {
+                    Section {
+                        Picker("Деньги", selection: $moneyDirection) {
+                            ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        if moneyDirection != .none {
+                            HStack {
+                                Text("Сумма")
+                                Spacer()
+                                TextField("0", value: $moneyAmount, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                                Text("₽")
+                            }
+                            Picker("Тип", selection: $moneyType) {
+                                Text("Без типа").tag("")
+                                ForEach(moneyKinds.filter { $0.isProfit == (moneyDirection == .profit) }) {
+                                    Text($0.title).tag($0.name)
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("💰 Деньги")
+                    } footer: {
+                        Text(moneyDirection == .none
+                             ? "Если дело что-то приносит или стоит денег, выбери «Прибыль» или «Трата»."
+                             : "Деньги идут в статистику, когда в записи отмечено «Сделано». Типы создаются в «Настройки дел».")
+                    }
+                }
+
                 Section {
-                    Picker("Категория", selection: $category) {
-                        ForEach(PlannerCategory.regular) { item in
+                    Picker("Вид", selection: $category) {
+                        ForEach(account.current == .owner ? ownerCategories : PlannerCategory.regular) { item in
                             Label {
-                                Text(item.title)
+                                Text(account.current == .owner ? ownerTitle(item) : item.title)
                             } icon: {
                                 Image(systemName: item.systemImage).foregroundStyle(item.color)
                             }
@@ -131,6 +185,7 @@ struct PlannerEventEditor: View {
                 }
             }
             .disabled(!canEdit)
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(event == nil ? "Новое событие" : (canEdit ? "Событие" : "Просмотр"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -152,6 +207,7 @@ struct PlannerEventEditor: View {
                 let duration = max(0, end.timeIntervalSince(oldValue))
                 end = newValue.addingTimeInterval(duration)
             }
+            .onChange(of: moneyDirection) { _, _ in moneyType = "" }
             .onChange(of: isAllDay) { _, allDay in
                 if !PlannerReminderOption.options(allDay: allDay).contains(where: { $0.minutes == reminder }) {
                     reminder = PlannerReminderOption.none
@@ -195,6 +251,11 @@ struct PlannerEventEditor: View {
         target.repeatUntil = repeatUntil
         target.colorHex = colorHex
         target.reminderMinutes = reminder
+        if account.current == .owner {
+            target.moneyKindRaw = moneyDirection.rawValue
+            target.moneyAmount = moneyDirection == .none ? 0 : max(0, moneyAmount ?? 0)
+            target.moneyType = moneyDirection == .none ? "" : moneyType
+        }
         target.markChanged()
         try? context.save()
         sync.requestSync()

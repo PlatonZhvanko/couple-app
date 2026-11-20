@@ -27,6 +27,9 @@ struct StatisticsRootView: View {
     @State private var workload: [Date: StatisticsWorkloadDay] = [:]
     @Query(filter: #Predicate<MoodEntry> { $0.deletedAt == nil }) private var moods: [MoodEntry]
     @State private var section: StatisticsSection = .money
+    @State private var ownerSection: StatisticsOwnerSection = .money
+    @Query(filter: #Predicate<PlannerShift> { $0.deletedAt == nil }) private var shifts: [PlannerShift]
+    @Query(filter: #Predicate<PlannerMoneyOp> { $0.deletedAt == nil }) private var moneyOps: [PlannerMoneyOp]
     @State private var period = StatisticsPeriod()
     @State private var snapshot = StatisticsSnapshot()
     // Любое изменение журнала обновляет отчёты.
@@ -44,7 +47,15 @@ struct StatisticsRootView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 8)
 
-                if part == .finance {
+                if part == .finance && account.current == .owner {
+                    Picker("Раздел", selection: $ownerSection) {
+                        ForEach(StatisticsOwnerSection.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .font(.caption)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                } else if part == .finance {
                     Picker("Раздел", selection: $section) {
                         ForEach(StatisticsSection.allCases) { Text($0.rawValue).tag($0) }
                     }
@@ -76,6 +87,20 @@ struct StatisticsRootView: View {
 
     @ViewBuilder
     private var financeContent: some View {
+        if account.current == .owner {
+            let entries = PlannerLedger.entries(events: events, shifts: shifts, ops: moneyOps)
+            switch ownerSection {
+            case .money: StatisticsOwnerMoneyView(entries: entries, period: period)
+            case .types: StatisticsOwnerTypesView(entries: entries, period: period)
+            case .errands: StatisticsOwnerErrandsView(events: events, period: period)
+            }
+        } else {
+            partnerFinance
+        }
+    }
+
+    @ViewBuilder
+    private var partnerFinance: some View {
         Group {
             Group {
                 switch section {
@@ -99,7 +124,7 @@ struct StatisticsRootView: View {
     }
 
     private var reloadKey: String {
-        "\(moods.count)-\(events.count)-\(payments.count)-\(subscriptions.count)-\(events.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(payments.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(period.interval.start.timeIntervalSince1970)-\(period.interval.end.timeIntervalSince1970)"
+        "\(shifts.count)-\(moneyOps.count)-\(moods.count)-\(events.count)-\(payments.count)-\(subscriptions.count)-\(events.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(payments.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0)-\(period.interval.start.timeIntervalSince1970)-\(period.interval.end.timeIntervalSince1970)"
     }
 
     private func reload() {

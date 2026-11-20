@@ -20,6 +20,15 @@ struct PlannerCalendarView: View {
     @Query(filter: #Predicate<PlannerPayment> { $0.deletedAt == nil })
     private var payments: [PlannerPayment]
     @State private var showSale = false
+    @Query(filter: #Predicate<PlannerShift> { $0.deletedAt == nil })
+    private var shifts: [PlannerShift]
+    @Query(filter: #Predicate<PlannerMoneyOp> { $0.deletedAt == nil })
+    private var moneyOps: [PlannerMoneyOp]
+    @Query(filter: #Predicate<MoodDayCheckIn> { $0.deletedAt == nil })
+    private var moodCheckIns: [MoodDayCheckIn]
+    @AppStorage("planner.shiftAmount") private var shiftAmount: Double = PlannerShift.defaultAmount
+    /// Режим «Смены»: нажатие на день ставит или снимает смену.
+    @State private var shiftMode = false
     @Query(filter: #Predicate<PlannerColorRule> { $0.deletedAt == nil })
     private var colorRules: [PlannerColorRule]
     @Query(filter: #Predicate<PlannerSubscription> { $0.deletedAt == nil })
@@ -91,7 +100,9 @@ struct PlannerCalendarView: View {
     private func refresh() {
         guard let first = days.first, let last = days.last else { return }
         let interval = DateInterval(start: first, end: PlannerCalendar.addDays(1, to: last))
+        // Записи настроения в журнал не попадают: у дня просто смайлик.
         externalItems = FeatureRegistry.calendarItems(context: context, interval: interval)
+            .filter { !$0.id.hasPrefix("mood.") }
         // Тренировки клиентов с абонементом списываются сами.
         PlannerPaymentStore.autoCharge(context, events: allEvents, days: days)
     }
@@ -127,7 +138,7 @@ struct PlannerCalendarView: View {
                     Button { showSale = true } label: {
                         Image(systemName: "dollarsign.circle.fill")
                     }
-                    .accessibilityLabel("Продать абонемент")
+                    .accessibilityLabel(account.current == .owner ? "Продажа или приход денег" : "Продать абонемент")
                     Button {
                         sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
                     } label: {
@@ -141,7 +152,11 @@ struct PlannerCalendarView: View {
             sheetContent(target)
         }
         .sheet(isPresented: $showSale) {
-            PlannerSubscriptionSaleSheet(month: selectedDay)
+            if account.current == .owner {
+                PlannerMoneyOpSheet(day: selectedDay)
+            } else {
+                PlannerSubscriptionSaleSheet(month: selectedDay)
+            }
         }
     }
 
@@ -226,6 +241,10 @@ struct PlannerCalendarView: View {
 
     /// Сколько денег уже оплачено за сегодня.
     private var todayEarned: Double {
+        if isOwner {
+            let entries = PlannerLedger.entries(events: allEvents, shifts: shifts, ops: moneyOps)
+            return PlannerLedger.net(on: .now, entries: entries)
+        }
         let map = PlannerPaymentStore.eventMap(allEvents)
         let cash = payments
             .filter {
@@ -270,9 +289,11 @@ struct PlannerCalendarView: View {
                 days: days,
                 isDayMode: dayFocus,
                 events: events,
-                colorFor: { PlannerColorStore.color(for: $0, rules: colorRules) },
+                colorFor: { event, day in blockColor(event, day) },
                 externalItems: { items(on: $0) },
-                badge: { event, day in PlannerPaymentStore.badge(for: event, day: day, payments: payments) },
+                shiftDays: shiftDays,
+                dayMark: { moodMark($0) },
+                badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
                 canMove: { $0.scopeValue.canEdit(by: account.current) },
                 onHeaderTap: { day in
@@ -308,6 +329,42 @@ struct PlannerCalendarView: View {
         }
     }
 
+    // MARK: - Профиль Платони: статусы дел, смены, настроение
+
+    private var isOwner: Bool { account.current == .owner }
+
+    private var shiftDays: Set<Date> {
+        Set(shifts.map { cal.startOfDay(for: $0.day) })
+    }
+
+    /// Смайлики настроения за день: свой и партнёра (виден обоим).
+    private func moodMark(_ day: Date) -> String {
+        let rows = moodCheckIns.filter { cal.isDate($0.day, inSameDayAs: day) }
+        let mine = rows.first { $0.coupleMember == account.current }
+        let other = rows.first { $0.coupleMember != account.current }
+        return [mine, other].compactMap { $0?.level.emoji }.joined()
+    }
+
+    private func blockColor(_ event: PlannerEvent, _ day: Date) -> Color {
+        let base = PlannerColorStore.color(for: event, rules: colorRules)
+        guard isOwner, let status = event.status(on: day) else { return base }
+        switch status {
+        case .done: return Color.green.opacity(0.75)
+        case .notDone: return Color.red.opacity(0.65)
+        case .moved: return Color.white
+        }
+    }
+
+    private func blockBadge(_ event: PlannerEvent, _ day: Date) -> PlannerPayBadge {
+        guard isOwner else { return PlannerPaymentStore.badge(for: event, day: day, payments: payments) }
+        switch event.status(on: day) {
+        case .done: return .errandDone
+        case .notDone: return .errandNotDone
+        case .moved: return .errandMoved
+        case nil: return .none
+        }
+    }
+
     private func movePlanner(_ step: Int) {
         withAnimation {
             selectedDay = PlannerCalendar.addDays(step * (dayFocus ? 1 : 7), to: cal.startOfDay(for: selectedDay))
@@ -320,6 +377,11 @@ struct PlannerCalendarView: View {
         ScrollView {
             VStack(spacing: 16) {
                 header
+                if shiftMode && isOwner {
+                    Text("Нажимай на дни, чтобы поставить или снять смену: 9:00–23:00, \(PlannerPricing.format(shiftAmount)) за день.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 grid
                     .gesture(DragGesture(minimumDistance: 30).onEnded { value in
                         if value.translation.width < -40 { move(1) }
@@ -348,6 +410,18 @@ struct PlannerCalendarView: View {
                 Image(systemName: mode == .month ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
             }
             .accessibilityLabel(mode == .month ? "Показать неделю" : "Показать месяц")
+            if isOwner {
+                Button {
+                    withAnimation { shiftMode.toggle() }
+                } label: {
+                    Label("Смены", systemImage: shiftMode ? "checkmark.circle.fill" : "briefcase")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(shiftMode ? Color.red.opacity(0.25) : Color.secondary.opacity(0.15)))
+                }
+                .accessibilityLabel("Расставить смены")
+            }
             Button { move(1) } label: { Image(systemName: "chevron.right") }
         }
         .buttonStyle(.borderless)
@@ -385,9 +459,14 @@ struct PlannerCalendarView: View {
         let dayEvents = events.occurrences(on: day)
         let colors = Array(dayEvents.map(\.event.categoryValue.color).prefix(3))
         let isBusy = !items(on: day).isEmpty
+        let isShift = shiftDays.contains(cal.startOfDay(for: day))
+        let mood = moodMark(day)
 
         return Button {
-            if let moving {
+            if shiftMode && isOwner {
+                PlannerShiftStore.toggle(context, day: day, amount: shiftAmount)
+                sync.requestSync()
+            } else if let moving {
                 // Перенос на другой день: то же время суток.
                 let time = PlannerCalendar.combine(day: day, time: moving.occurrenceStart)
                 finishMove(to: moving.event.isAllDay ? day : time)
@@ -416,8 +495,15 @@ struct PlannerCalendarView: View {
                     }
                 }
                 .frame(height: 5)
+                Text(mood).font(.system(size: 10)).frame(height: 12)
             }
+            .padding(.vertical, 2)
             .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 8).fill(
+                    isToday ? Color.plannerToday.opacity(0.18) : (isShift ? Color.red.opacity(0.18) : Color.clear)
+                )
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -452,7 +538,7 @@ struct PlannerCalendarView: View {
                     PlannerEventRow(
                         occurrence: occurrence,
                         day: selectedDay,
-                        badge: PlannerPaymentStore.badge(for: occurrence.event, day: selectedDay, payments: payments)
+                        badge: blockBadge(occurrence.event, selectedDay)
                     )
                 }
                 .buttonStyle(.plain)
