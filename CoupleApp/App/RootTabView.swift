@@ -43,11 +43,12 @@ struct RootTabView: View {
             }
         }
         .task {
-            // Сразу после входа и дальше раз в минуту, пока приложение открыто.
+            // Сразу после входа и дальше каждые 4 секунды, пока приложение открыто:
+            // изменения партнёра появляются сами (запрос лёгкий, берутся только новые записи).
             sync.requestSync()
             await account.refreshFromServer()
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
+                try? await Task.sleep(for: .seconds(4))
                 sync.requestSync()
             }
         }
