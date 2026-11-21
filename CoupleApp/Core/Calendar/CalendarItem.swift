@@ -15,6 +15,8 @@ struct CalendarItem: Identifiable {
     /// Имя иконки SF Symbols.
     let systemImage: String
     /// Окно записи (открывается по нажатию в Планере). `nil` — запись только для просмотра.
+    /// Кому ещё показывать запись, кроме `member` (например, тому, кто поставил ремонт чужой машины).
+    var sharedWith: [CoupleMember] = []
     /// Маленький эмодзи в правом верхнем углу записи (например, 🔧). Пусто — без него.
     var emoji = ""
     var detail: (@MainActor () -> AnyView)? = nil
