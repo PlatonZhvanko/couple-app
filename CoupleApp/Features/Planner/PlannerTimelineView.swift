@@ -326,6 +326,33 @@ struct PlannerTimelineView: View {
         .allowsHitTesting(false)
     }
 
+    /// Как написать название в блоке: одна или две строки и размер шрифта.
+    /// Размер — самый крупный, при котором самое длинное слово целиком влезает в ширину
+    /// (слова не рвутся) и строки влезают в высоту.
+    static func titleLayout(_ title: String, width: CGFloat, height: CGFloat, maxFont: CGFloat)
+        -> (first: String, rest: String, twoLines: Bool, font: CGFloat) {
+        let charWidth: CGFloat = 0.6
+        let oneFont = min(maxFont, height / 1.15, width / (CGFloat(max(1, title.count)) * charWidth))
+        let words = title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard words.count >= 2 else { return (title, "", false, max(9, oneFont)) }
+        var bestSplit = 1
+        var bestLength = Int.max
+        for split in 1..<words.count {
+            let left = words[..<split].joined(separator: " ").count
+            let right = words[split...].joined(separator: " ").count
+            if max(left, right) < bestLength { bestLength = max(left, right); bestSplit = split }
+        }
+        let twoFont = min(maxFont, height / 2.3, width / (CGFloat(max(1, bestLength)) * charWidth))
+        if twoFont > oneFont + 0.5 {
+            return (
+                words[..<bestSplit].joined(separator: " "),
+                words[bestSplit...].joined(separator: " "),
+                true, max(9, twoFont)
+            )
+        }
+        return (title, "", false, max(9, oneFont))
+    }
+
     // MARK: - Блок
 
     @ViewBuilder
@@ -344,30 +371,13 @@ struct PlannerTimelineView: View {
         let trailingInset: CGFloat = (hasMark && !topRow) ? 15 : 1
         let textWidth = max(10, columnWidth / CGFloat(max(block.columns, 1)) - 6 - (trailingInset - 1))
         let availHeight = max(6, height - topInset - 2)
-        let words = block.title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
         let maxFont: CGFloat = isDayMode ? 22 : 18
-        let charWidth: CGFloat = 0.6
-
-        // Вариант в одну строку.
-        let oneFont = min(maxFont, availHeight / 1.15, textWidth / (CGFloat(max(1, block.title.count)) * charWidth))
-        // Вариант в две строки: делим слова так, чтобы строки были ближе по длине.
-        var first = block.title
-        var rest = ""
-        var twoFont: CGFloat = 0
-        if words.count >= 2 {
-            var bestSplit = 1
-            var bestLength = Int.max
-            for split in 1..<words.count {
-                let longer = max(words[..<split].joined(separator: " ").count, words[split...].joined(separator: " ").count)
-                if longer < bestLength { bestLength = longer; bestSplit = split }
-            }
-            first = words[..<bestSplit].joined(separator: " ")
-            rest = words[bestSplit...].joined(separator: " ")
-            twoFont = min(maxFont, availHeight / 2.3, textWidth / (CGFloat(max(1, bestLength)) * charWidth))
-        }
-        let twoLines = twoFont > oneFont + 0.5
+        let fit = Self.titleLayout(block.title, width: textWidth, height: availHeight, maxFont: maxFont)
+        let first = fit.first
+        let rest = fit.rest
+        let twoLines = fit.twoLines
         let lineCount: CGFloat = twoLines ? 2 : 1
-        let fontSize = max(9, twoLines ? twoFont : oneFont)
+        let fontSize = fit.font
         let showTime = !narrow && availHeight > fontSize * lineCount * 1.2 + 14
         let content = VStack(alignment: .leading, spacing: 0) {
             // Одним текстом, чтобы при нехватке места обе строки уменьшались вместе.
