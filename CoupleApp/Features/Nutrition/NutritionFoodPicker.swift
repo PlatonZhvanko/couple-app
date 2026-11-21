@@ -42,6 +42,8 @@ struct NutritionFoodPicker: View {
     @State private var webResults: [NutritionOFFProduct] = []
     @State private var webState: WebState = .idle
     @State private var showingNewFood = false
+    @State private var newFoodName = ""
+    @State private var webTask: Task<Void, Never>?
     @State private var showingManual = false
 
     private enum WebState { case idle, loading, failed, done }
@@ -73,8 +75,12 @@ struct NutritionFoodPicker: View {
             }
             .searchable(text: source == .web ? $webQuery : $query, prompt: "Название продукта")
             .onSubmit(of: .search) {
-                if source == .web { Task { await runWebSearch() } }
+                if source == .web { startWebSearch() }
             }
+            .onChange(of: source) {
+                if source != .web { webTask?.cancel() }
+            }
+            .onDisappear { webTask?.cancel() }
             .navigationTitle(diary?.meal.title ?? "Продукт")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -83,7 +89,10 @@ struct NutritionFoodPicker: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button("Свой продукт", systemImage: "plus") { showingNewFood = true }
+                        Button("Свой продукт", systemImage: "plus") {
+                            newFoodName = ""
+                            showingNewFood = true
+                        }
                         if diary != nil {
                             Button("Только калории вручную", systemImage: "pencil") { showingManual = true }
                         }
@@ -93,7 +102,7 @@ struct NutritionFoodPicker: View {
                 }
             }
             .sheet(isPresented: $showingNewFood) {
-                NutritionFoodEditor(member: account.current)
+                NutritionFoodEditor(member: account.current, initialName: newFoodName)
             }
             .sheet(isPresented: $showingManual) {
                 if let diary {
@@ -193,7 +202,7 @@ struct NutritionFoodPicker: View {
                 }
             }
             Button {
-                Task { await runWebSearch() }
+                startWebSearch()
             } label: {
                 Label("Искать в интернете", systemImage: "magnifyingglass")
             }
@@ -206,21 +215,42 @@ struct NutritionFoodPicker: View {
         case .idle:
             EmptyView()
         case .loading:
-            HStack { ProgressView(); Text("Ищу…") }
+            HStack {
+                ProgressView()
+                Text("Ищу…")
+                Spacer()
+                Button("Отмена") {
+                    webTask?.cancel()
+                    webState = .idle
+                }
+                .buttonStyle(.borderless)
+            }
         case .failed:
-            Text("Не удалось найти. Проверьте интернет и попробуйте ещё раз.")
+            Text("Не удалось найти: сервис не ответил. Проверьте интернет и попробуйте ещё раз.")
                 .foregroundStyle(.secondary)
+            createFromQueryButton
         case .done:
             if webResults.isEmpty {
-                Text("Ничего не нашлось. Попробуйте другой запрос или «Все магазины».")
+                Text("Не нашлось. В Open Food Facts нет многих товаров магазинов, особенно собственных брендов (например, выпечки Яндекс Лавки).")
                     .foregroundStyle(.secondary)
+                createFromQueryButton
             } else {
                 Section("Найдено: \(webResults.count)") {
                     ForEach(webResults) { product in
                         row(product.values, subtitle: product.store.isEmpty ? nil : product.store, web: product)
                     }
                 }
+                createFromQueryButton
             }
+        }
+    }
+
+    private var createFromQueryButton: some View {
+        Button {
+            newFoodName = webQuery.trimmingCharacters(in: .whitespaces)
+            showingNewFood = true
+        } label: {
+            Label("Добавить свой продукт с ккал и БЖУ с упаковки", systemImage: "square.and.pencil")
         }
     }
 
@@ -231,15 +261,24 @@ struct NutritionFoodPicker: View {
             .font(.footnote)
     }
 
-    private func runWebSearch() async {
+    private func startWebSearch() {
         let text = webQuery.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
+        webTask?.cancel()
         webState = .loading
-        do {
-            webResults = try await NutritionOpenFoodFacts.search(text, store: store)
-            webState = .done
-        } catch {
-            webState = .failed
+        let chosenStore = store
+        webTask = Task {
+            do {
+                let found = try await NutritionOpenFoodFacts.search(text, store: chosenStore)
+                guard !Task.isCancelled else { return }
+                webResults = found
+                webState = .done
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                webState = .failed
+            }
         }
     }
 
@@ -323,6 +362,7 @@ struct NutritionFoodPicker: View {
 /// Создание своего продукта с ценностью на 100 г.
 struct NutritionFoodEditor: View {
     let member: CoupleMember
+    var initialName: String = ""
 
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
@@ -355,6 +395,7 @@ struct NutritionFoodEditor: View {
                     Text("Необязательно: например, для яйца 55 г, чтобы считать в штуках.")
                 }
             }
+            .onAppear { if name.isEmpty { name = initialName } }
             .navigationTitle("Свой продукт")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
