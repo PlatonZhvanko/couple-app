@@ -33,8 +33,8 @@ struct CarSpendingView: View {
 
     private var interval: DateInterval {
         switch period {
-        case .all: DateInterval(start: .distantPast, end: .distantFuture)
-        case .month: CarMath.currentMonth()
+        case .all: return DateInterval(start: .distantPast, end: .distantFuture)
+        case .month: return CarMath.currentMonth()
         case .custom:
             let start = Calendar.current.startOfDay(for: min(from, to))
             let end = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: max(from, to))) ?? max(from, to)
