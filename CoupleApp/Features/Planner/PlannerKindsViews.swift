@@ -283,6 +283,7 @@ struct PlannerMoneyKindDetail: View {
     @State private var loaded = false
     @State private var total = 0
     @State private var recent: [(amount: Double, date: Date)] = []
+    @State private var pending = 0
 
     var body: some View {
         Form {
@@ -292,6 +293,13 @@ struct PlannerMoneyKindDetail: View {
             }
             Section("Внешний вид") {
                 PlannerEmojiStrip(selection: $emoji)
+            }
+            Section {
+                if pending > 0 {
+                    Text("Дел с этим типом ждут отметки «Сделано»: \(pending). Деньги попадут в статистику после отметки.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
             Section("Операции этого типа: \(total)") {
                 if recent.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
@@ -331,10 +339,21 @@ struct PlannerMoneyKindDetail: View {
             predicate: #Predicate { $0.deletedAt == nil && $0.typeName == kindName },
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
-        total = (try? context.fetchCount(descriptor)) ?? 0
+        let opCount = (try? context.fetchCount(descriptor)) ?? 0
         descriptor.fetchLimit = 20
-        let rows = (try? context.fetch(descriptor)) ?? []
-        recent = rows.map { (amount: $0.amount, date: $0.date) }
+        let ops = (try? context.fetch(descriptor)) ?? []
+        // Деньги дел с этим типом: идут в статистику, когда в записи отмечено «Сделано».
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.moneyType == kindName }
+        ))) ?? []
+        let matching = events.filter { ($0.moneyDirection == .profit) == kind.isProfit && $0.moneyDirection != .none }
+        let done = PlannerLedger.entries(events: matching, shifts: [], ops: [])
+        pending = matching.filter { event in !event.statuses.values.contains { $0 == .done } }.count
+        var rows = ops.map { (amount: $0.amount, date: $0.date) }
+        rows += done.map { (amount: abs($0.amount), date: $0.day) }
+        rows.sort { $0.date > $1.date }
+        total = opCount + done.count
+        recent = Array(rows.prefix(20))
         emoji = kind.emoji
         name = kind.name
         loaded = true
