@@ -4,7 +4,14 @@ import SwiftUI
 /// Запланированные ремонты по дате и времени для календаря «Планера».
 /// Двигаются в разделе «Авто» (дата и время в ремонте), изменения синхронизируются.
 enum CarCalendar {
-    /// Чья машина: Volvo у Платони, Audi у Насти. Остальные видят оба.
+    /// Чья машина: Volvo у Платони, Audi у Насти.
+    static func owner(of carID: UUID) -> CoupleMember? { owners[carID.uuidString] }
+
+    /// Видит ли человек ремонт: хозяин машины и тот, кто его поставил.
+    static func canSee(_ repair: CarRepair, _ member: CoupleMember) -> Bool {
+        repair.member == member.rawValue || owner(of: repair.carID) == member
+    }
+
     private static let owners: [String: CoupleMember] = [
         "6A0F3C10-0000-4000-8000-00000000C001": .owner,
         "6A0F3C10-0000-4000-8000-00000000C002": .partner,
@@ -30,7 +37,10 @@ enum CarCalendar {
             guard end > interval.start else { return nil }
             let car = names[repair.carID] ?? "Машина"
             // Запись видна тому, кто поставил ремонт; второй видит её у него в режиме наблюдателя.
-            let creator = CoupleMember(rawValue: repair.member) ?? owners[repair.carID.uuidString]
+            let creator = CoupleMember(rawValue: repair.member)
+            let carOwner = owners[repair.carID.uuidString]
+            var sharedWith: [CoupleMember] = []
+            if let creator, creator != (carOwner ?? creator) { sharedWith = [creator] }
             var open: (@MainActor () -> AnyView)?
             if let vehicle = carsByID[repair.carID] {
                 open = { AnyView(CarRepairFormView(car: vehicle, repair: repair)) }
@@ -40,9 +50,10 @@ enum CarCalendar {
                 title: "\(repair.isPaid ? "✓ " : "")\(repair.title.isEmpty ? "Ремонт" : repair.title) · \(car)",
                 start: start,
                 end: end,
-                member: creator,
+                member: carOwner ?? creator,
                 color: repair.isPaid ? .green : .orange,
                 systemImage: repair.isPaid ? "checkmark.circle.fill" : "wrench.and.screwdriver.fill",
+                sharedWith: sharedWith,
                 emoji: "🔧",
                 detail: open,
                 move: { newStart in

@@ -188,7 +188,7 @@ enum CarAttention {
         }
 
         // Ремонты: по дате или по пробегу
-        for repair in repairs where !repair.isPaid && repair.member == viewer {
+        for repair in repairs where !repair.isPaid && (repair.member == viewer || CarCalendar.owner(of: repair.carID)?.rawValue == viewer) {
             let name = repair.title.isEmpty ? "Ремонт" : repair.title
             if let due = repair.desiredDate, due < soon {
                 let overdue = due < .now

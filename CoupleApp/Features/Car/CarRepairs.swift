@@ -203,7 +203,7 @@ struct CarRepairsView: View {
     }
 
     /// Менять ремонт может только тот, кто его поставил.
-    private func isMine(_ repair: CarRepair) -> Bool { repair.member == account.current.rawValue }
+    private func isMine(_ repair: CarRepair) -> Bool { CarCalendar.canSee(repair, account.current) }
 
     private func row(_ repair: CarRepair) -> some View {
         Button { editing = repair } label: {
@@ -234,7 +234,7 @@ struct CarRepairsView: View {
 
     private func pay(_ repair: CarRepair) {
         let odo = CarMath.currentOdometer(car: car, entries: allEntries.of(car))
-        CarRepairActions.pay(repair, context: context, member: account.current, odometer: odo,
+        CarRepairActions.pay(repair, context: context, member: CarCalendar.owner(of: repair.carID) ?? account.current, odometer: odo,
                              date: repair.desiredDate ?? .now)
         sync.requestSync()
     }
@@ -271,6 +271,7 @@ struct CarRepairFormView: View {
     @State private var title: String
     @State private var priceText: String
     @State private var hasDate: Bool
+    @State private var showPicker = false
     @State private var date: Date
     @State private var odometerText: String
     @State private var note: String
@@ -282,7 +283,7 @@ struct CarRepairFormView: View {
     /// Чужой ремонт (поставил другой человек): только просмотр.
     private var readOnly: Bool {
         guard let repair else { return false }
-        return repair.member != account.current.rawValue
+        return !CarCalendar.canSee(repair, account.current)
     }
 
     init(car: CarVehicle, repair: CarRepair?, startDone: Bool = false) {
@@ -310,6 +311,11 @@ struct CarRepairFormView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Label(car.displayName, systemImage: "car.fill")
+                } header: {
+                    Text("Машина")
+                }
                 if repair == nil {
                     Section("Быстрый выбор") {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -337,6 +343,7 @@ struct CarRepairFormView: View {
                     Toggle("По дате", isOn: $hasDate)
                     if hasDate {
                         DatePicker("Дата и время", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                        Button("Выбрать в календаре", systemImage: "calendar") { showPicker = true }
                         Stepper("Длительность: \(duration) мин", value: $duration, in: 30...600, step: 30)
                     }
                     LabeledContent("По пробегу, км") {
@@ -355,6 +362,7 @@ struct CarRepairFormView: View {
                 }
             }
             .disabled(readOnly)
+            .sheet(isPresented: $showPicker) { CarDateTimePickerSheet(date: $date) }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(repair == nil ? "Новый пункт" : (readOnly ? "Ремонт (просмотр)" : "Ремонт"))
             .navigationBarTitleDisplayMode(.inline)
@@ -386,7 +394,7 @@ struct CarRepairFormView: View {
             .filter { $0.carID == car.syncID && $0.deletedAt == nil }
         if isDone && !target.isPaid {
             let odo = CarMath.currentOdometer(car: car, entries: entries)
-            CarRepairActions.pay(target, context: context, member: account.current, odometer: odo,
+            CarRepairActions.pay(target, context: context, member: CarCalendar.owner(of: target.carID) ?? account.current, odometer: odo,
                                  date: target.desiredDate ?? .now, amount: target.price)
         } else if isDone, let id = target.entryID, let entry = entries.first(where: { $0.syncID == id }) {
             // Уже было сделано: обновляем дату и сумму в тратах.
@@ -485,5 +493,35 @@ extension CarServiceHistoryView {
         entry.markChanged()
         try? context.save()
         sync.requestSync()
+    }
+}
+
+// MARK: - Сенсорный выбор даты и времени
+
+/// Весь календарь одним касанием и время колёсиком, кнопка «Поставить».
+struct CarDateTimePickerSheet: View {
+    @Binding var date: Date
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 8) {
+                    DatePicker("День", selection: $date, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                    DatePicker("Время", selection: $date, displayedComponents: .hourAndMinute)
+                        .datePickerStyle(.wheel)
+                        .labelsHidden()
+                        .frame(height: 140)
+                }
+                .padding(.horizontal)
+            }
+            .navigationTitle("Когда делать")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Поставить") { dismiss() } }
+            }
+        }
+        .presentationDetents([.large])
     }
 }

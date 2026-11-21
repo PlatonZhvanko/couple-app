@@ -90,7 +90,7 @@ struct PlannerCalendarView: View {
 
     /// Двигать и править запись другого раздела может только её владелец.
     private func canEditExternal(_ item: CalendarItem) -> Bool {
-        !showsPartner && item.member == account.current
+        !showsPartner && (item.member == account.current || item.sharedWith.contains(account.current))
     }
 
     /// Свои записи из других разделов.
@@ -98,7 +98,7 @@ struct PlannerCalendarView: View {
         let dayStart = cal.startOfDay(for: day)
         let dayEnd = PlannerCalendar.addDays(1, to: dayStart)
         return externalItems
-            .filter { ($0.member == nil || $0.member == viewedMember) && $0.start < dayEnd && $0.end > dayStart }
+            .filter { ($0.member == nil || $0.member == viewedMember || $0.sharedWith.contains(viewedMember)) && $0.start < dayEnd && $0.end > dayStart }
             .sorted { $0.start < $1.start }
     }
 

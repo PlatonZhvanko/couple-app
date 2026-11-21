@@ -42,7 +42,7 @@ enum CarNotifications {
         }
         // Желаемые даты ремонтов: напоминают коты-механики, за неделю, за день и в сам день.
         let mechanics = ["Мироня", "Гоша", "Хлоя"]
-        for repair in repairs where repair.deletedAt == nil && !repair.isPaid && (viewer == nil || repair.member == viewer) {
+        for repair in repairs where repair.deletedAt == nil && !repair.isPaid && (viewer == nil || repair.member == viewer || CarCalendar.owner(of: repair.carID)?.rawValue == viewer) {
             guard let due = repair.desiredDate else { continue }
             let carName = names[repair.carID] ?? "Машина"
             for days in [7, 1, 0] {
