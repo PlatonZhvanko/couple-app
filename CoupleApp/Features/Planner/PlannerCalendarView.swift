@@ -201,7 +201,8 @@ struct PlannerCalendarView: View {
                             style = .planner
                             selectedDay = target.day
                         }
-                    }
+                    },
+                    readOnly: showsPartner
                 )
             }
         case .edit:
@@ -346,7 +347,7 @@ struct PlannerCalendarView: View {
                     }
                 },
                 onEventTap: { event, day in
-                    guard moving == nil, !showsPartner else { return }
+                    guard moving == nil else { return }
                     sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
                 },
                 onMove: { event, from, to in moveByDrag(event, from: from, to: to) },
@@ -614,9 +615,7 @@ struct PlannerCalendarView: View {
 
             ForEach(occurrences) { occurrence in
                 Button {
-                    if !showsPartner {
-                        sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: selectedDay)
-                    }
+                    sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: selectedDay)
                 } label: {
                     PlannerEventRow(
                         occurrence: occurrence,

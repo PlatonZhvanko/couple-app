@@ -10,6 +10,8 @@ struct PlannerRecordView: View {
     let onMove: () -> Void
     /// «Перенос» дела: режим выбора нового места в журнале.
     var onCarry: () -> Void = {}
+    /// Режим наблюдателя: запись чужого журнала только для просмотра.
+    var readOnly = false
 
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDelete = false
@@ -76,17 +78,21 @@ struct PlannerRecordView: View {
         NavigationStack {
             List {
                 headerSection
-                if showsStatus { ownerStatusSection }
-                if showsPayments {
-                    if isCancelled { finesSection } else { paymentsSection }
+                if readOnly {
+                    observerSection
+                } else {
+                    if showsStatus { ownerStatusSection }
+                    if showsPayments {
+                        if isCancelled { finesSection } else { paymentsSection }
+                    }
+                    actionsSection
                 }
-                actionsSection
             }
             .navigationTitle("Запись")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } }
-                if canEdit {
+                if canEdit && !readOnly {
                     ToolbarItem(placement: .cancellationAction) {
                         Button(role: .destructive) { confirmDelete = true } label: {
                             Image(systemName: "trash")
@@ -123,7 +129,7 @@ struct PlannerRecordView: View {
                     Text(headerTitle)
                         .font(.title2.bold())
                     Spacer()
-                    if let symbol = badge.symbol {
+                    if !readOnly, let symbol = badge.symbol {
                         Text(symbol).font(.title2)
                     }
                 }
@@ -140,6 +146,29 @@ struct PlannerRecordView: View {
                 }
             }
             .padding(.vertical, 4)
+        }
+    }
+
+    /// Просмотр чужой записи: кто там записан и что в ней важного, без действий.
+    private var observerSection: some View {
+        Group {
+            if !participants.isEmpty {
+                Section("Кто записан") {
+                    ForEach(participants) { client in
+                        Label(client.name, systemImage: "person")
+                    }
+                }
+            }
+            if !event.errandType.isEmpty {
+                Section("Тип дела") {
+                    Text(event.errandType)
+                }
+            }
+            Section {
+                EmptyView()
+            } footer: {
+                Text("Режим просмотра: запись чужого журнала можно только посмотреть.")
+            }
         }
     }
 
