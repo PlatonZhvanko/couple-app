@@ -337,14 +337,14 @@ struct PlannerTrainingEditor: View {
 
     private var groupKindChips: some View {
         Group {
-            if groupKinds.isEmpty {
-                Text("Пока нет групп. Впиши название и нажми +, дальше она будет в быстром выборе.")
+            if trimmedKindName.isEmpty {
+                Text("Впиши название для поиска или нового вида и нажми +.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(groupKinds) { kind in
+                        ForEach(groupKinds.filter { $0.name.localizedCaseInsensitiveContains(trimmedKindName) }.prefix(3)) { kind in
                             let selected = title == kind.name
                             Button {
                                 selectGroupKind(kind)
@@ -388,7 +388,7 @@ struct PlannerTrainingEditor: View {
         let selected = Set(participants.map(\.id))
         let pool = directory.filter { !selected.contains($0.id) }
         // Без запроса показываем только двух недавних.
-        guard !trimmedQuery.isEmpty else { return Array(pool.prefix(2)) }
+        guard !trimmedQuery.isEmpty else { return [] }
         return Array(pool.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(6))
     }
 
@@ -458,7 +458,7 @@ struct PlannerTrainingEditor: View {
 
     private var errandMatches: [PlannerErrandKind] {
         let mine = errandKinds.visible(to: account.current)
-        guard !trimmedTitle.isEmpty else { return Array(mine.prefix(5)) }
+        guard !trimmedTitle.isEmpty else { return [] }
         return Array(mine.filter { $0.name.localizedCaseInsensitiveContains(trimmedTitle) }.prefix(5))
     }
 

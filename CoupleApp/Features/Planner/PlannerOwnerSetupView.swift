@@ -40,14 +40,14 @@ struct PlannerOwnerSetupView: View {
 
                 Section("➕ Новый тип") {
                     Picker("Что это", selection: $newIsProfit) {
-                        Text("Прибыль").tag(true)
+                        Text("Прибыль/Приход").tag(true)
                         Text("Трата").tag(false)
                     }
                     .pickerStyle(.segmented)
                     HStack {
                         TextField("🙂", text: $newEmoji)
                             .frame(width: 36)
-                        TextField("Название, например «Продажа»", text: $newName)
+                        TextField("Название, например «Консультация»", text: $newName)
                             .onSubmit(addKind)
                         Button(action: addKind) {
                             Image(systemName: "plus.circle.fill").font(.title3)
@@ -159,7 +159,7 @@ struct PlannerMoneyOpSheet: View {
             Form {
                 Section {
                     Picker("Что", selection: $isProfit) {
-                        Text("Продажа / приход").tag(true)
+                        Text("Прибыль/Приход").tag(true)
                         Text("Трата").tag(false)
                     }
                     .pickerStyle(.segmented)
@@ -174,29 +174,38 @@ struct PlannerMoneyOpSheet: View {
                     DatePicker("Дата", selection: $date, displayedComponents: .date)
                 }
                 Section("Тип") {
-                    if matching.isEmpty { Text("Типов пока нет. Создай ниже.").foregroundStyle(.secondary) }
-                    ForEach(matching) { kind in
-                        Button {
-                            typeName = typeName == kind.name ? "" : kind.name
-                        } label: {
-                            HStack {
-                                Text(kind.title)
-                                Spacer()
-                                if typeName == kind.name { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
-                            }
-                        }
-                        .foregroundStyle(.primary)
+                    if !typeName.isEmpty {
+                        Label("Выбрано: \(typeName)", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
                     }
                     HStack {
-                        TextField("Новый тип", text: $newType)
-                        Button("Создать") {
-                            if let kind = PlannerMoneyKindStore.ensure(context, name: newType, isProfit: isProfit) {
-                                typeName = kind.name
-                            }
-                            newType = ""
-                            sync.requestSync()
+                        TextField("Поиск или новый тип", text: $newType)
+                        if !newType.trimmingCharacters(in: .whitespaces).isEmpty
+                            && !matching.contains(where: { $0.name.lowercased() == newType.trimmingCharacters(in: .whitespaces).lowercased() }) {
+                            Button {
+                                if let kind = PlannerMoneyKindStore.ensure(context, name: newType, isProfit: isProfit) {
+                                    typeName = kind.name
+                                }
+                                newType = ""
+                                sync.requestSync()
+                            } label: { Image(systemName: "plus.circle.fill").font(.title3) }
+                            .buttonStyle(.borderless)
                         }
-                        .disabled(newType.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    if !newType.trimmingCharacters(in: .whitespaces).isEmpty {
+                        ForEach(matching.filter { $0.name.localizedCaseInsensitiveContains(newType.trimmingCharacters(in: .whitespaces)) }.prefix(3)) { kind in
+                            Button {
+                                typeName = kind.name
+                                newType = ""
+                            } label: {
+                                HStack {
+                                    Text(kind.title)
+                                    Spacer()
+                                    if typeName == kind.name { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                                }
+                            }
+                            .foregroundStyle(.primary)
+                        }
                     }
                 }
                 Section("Заметка") {

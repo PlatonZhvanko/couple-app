@@ -32,7 +32,7 @@ enum PlannerMoneyDirection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .none: "Ничего"
-        case .profit: "Прибыль"
+        case .profit: "Прибыль/Приход"
         case .expense: "Трата"
         }
     }
