@@ -259,28 +259,12 @@ struct CarRootView: View {
             }
 
             Section {
-                if entries.isEmpty {
-                    Text("Здесь появятся заправки и траты.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(entries.prefix(5)) { entry in
-                        Button {
-                            sheet = .entry(car: car, entry: entry, category: entry.category)
-                        } label: {
-                            CarEntryRow(entry: entry)
-                        }
-                        .tint(.primary)
-                    }
-                }
                 NavigationLink("Весь журнал") {
                     CarHistoryView(car: car)
                 }
                 NavigationLink("Аналитика трат") {
                     CarStatsView(car: car)
                 }
-            } header: {
-                Text("Последние записи")
             }
         }
     }
