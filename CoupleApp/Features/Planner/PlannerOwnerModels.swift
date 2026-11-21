@@ -54,7 +54,8 @@ extension PlannerEvent {
                 result[day] = .done
             } else if pair[1] == "notDone" {
                 result[day] = .notDone
-            } else if pair[1].hasPrefix("moved@"), let target = Double(pair[1].dropFirst(6)) {
+            } else if pair[1].hasPrefix("moved@"),
+                      let target = pair[1].dropFirst(6).split(separator: "@").first.flatMap({ Double($0) }) {
                 result[day] = .moved(Date(timeIntervalSince1970: target))
             }
         }
@@ -75,6 +76,22 @@ extension PlannerEvent {
         case .moved(let target): parts.append("\(key)=moved@\(Int(target.timeIntervalSince1970))")
         case nil: break
         }
+        statusRaw = parts.joined(separator: ",")
+    }
+
+    /// Запись, созданная переносом в новый день (если день перенесён).
+    func movedCopyID(on day: Date) -> UUID? {
+        let key = Self.statusKey(day)
+        guard let part = statusRaw.split(separator: ",").first(where: { $0.hasPrefix(key + "=moved@") }) else { return nil }
+        let items = part.split(separator: "@")
+        return items.count >= 3 ? UUID(uuidString: String(items[2])) : nil
+    }
+
+    /// Отметить день перенесённым: запоминаем новую запись, чтобы удалить её при отмене переноса.
+    func setMoved(to target: Date, copy: PlannerEvent, on day: Date) {
+        let key = Self.statusKey(day)
+        var parts = statusRaw.split(separator: ",").map(String.init).filter { !$0.hasPrefix(key + "=") }
+        parts.append("\(key)=moved@\(Int(target.timeIntervalSince1970))@\(copy.syncID.uuidString)")
         statusRaw = parts.joined(separator: ",")
     }
 
@@ -354,6 +371,7 @@ enum PlannerErrandCarry {
     /// новая запись. В отличие от «Переместить», это идёт в статистику.
     @MainActor
     static func carry(_ event: PlannerEvent, day: Date, to newStart: Date, context: ModelContext) {
+        revoke(event, day: day, context: context)
         let cal = PlannerCalendar.calendar
         let duration = max(0, event.end.timeIntervalSince(event.start))
         let start = event.isAllDay ? cal.startOfDay(for: newStart) : newStart
@@ -376,8 +394,20 @@ enum PlannerErrandCarry {
         copy.errandType = event.errandType
         context.insert(copy)
         copy.markChanged()
-        event.setStatus(.moved(start), on: day)
+        event.setMoved(to: start, copy: copy, on: day)
         event.markChanged()
+        try? context.save()
+    }
+
+    /// Перенос отменили (поставили другой статус или сняли): новая запись в новом дне удаляется.
+    @MainActor
+    static func revoke(_ event: PlannerEvent, day: Date, context: ModelContext) {
+        guard let copyID = event.movedCopyID(on: day) else { return }
+        let found = try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.syncID == copyID }))
+        if let copy = found?.first, copy.deletedAt == nil {
+            copy.markDeleted()
+            PlannerPaymentStore.purge(context, eventID: copy.syncID)
+        }
         try? context.save()
     }
 }

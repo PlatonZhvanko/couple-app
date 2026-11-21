@@ -197,6 +197,8 @@ struct PlannerRecordView: View {
     }
 
     private func setStatus(_ status: PlannerErrandStatus?) {
+        // Если отменяется перенос, новая запись в новом дне удаляется.
+        PlannerErrandCarry.revoke(event, day: day, context: context)
         event.setStatus(status, on: day)
         event.markChanged()
         try? context.save()
