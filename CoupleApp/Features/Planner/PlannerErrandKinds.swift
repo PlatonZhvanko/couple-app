@@ -107,6 +107,28 @@ enum PlannerErrandKindStore {
         try? context.save()
     }
 
+    /// Удалить тип: он убирается из всех дел (регулярному делу придётся назначить тип заново).
+    @MainActor
+    static func delete(_ context: ModelContext, kind: PlannerErrandKind) {
+        let old = kind.name
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.errandType == old }))) ?? []
+        for event in events {
+            event.errandType = ""
+            if event.moneyType == old { event.moneyType = "" }
+            event.markChanged()
+        }
+        // Парный тип денег, созданный вместе с типом дела, удаляется вместе с ним.
+        if kind.moneyDirection != .none {
+            let isProfit = kind.moneyDirection == .profit
+            let twins = ((try? context.fetch(FetchDescriptor<PlannerMoneyKind>())) ?? []).filter {
+                $0.deletedAt == nil && $0.isProfit == isProfit && $0.name == old
+            }
+            for twin in twins { PlannerMoneyKindStore.delete(context, kind: twin) }
+        }
+        kind.markDeleted()
+        try? context.save()
+    }
+
     /// Деньги типа дела: прибыль или трата. Тип сам появляется в типах прибыли/трат.
     @MainActor
     static func setMoney(_ context: ModelContext, kind: PlannerErrandKind, direction: PlannerMoneyDirection) {
