@@ -1,6 +1,12 @@
 import SwiftData
 import SwiftUI
 
+struct SpendGroup: Identifiable {
+    let title: String
+    let sum: Double
+    var id: String { title }
+}
+
 /// Главный экран раздела «Авто»: выбранная машина, сроки, последние траты.
 struct CarRootView: View {
     @Environment(\.modelContext) private var context
@@ -93,6 +99,13 @@ struct CarRootView: View {
         return .general
     }
 
+    /// Траты по категориям: ремонты, бензин, ТО и свои категории.
+    private func spendGroups(_ entries: [CarEntry]) -> [SpendGroup] {
+        var sums: [String: Double] = [:]
+        for entry in entries { sums[entry.categoryTitle, default: 0] += entry.amount }
+        return sums.map { SpendGroup(title: $0.key, sum: $0.value) }.sorted { $0.sum > $1.sum }
+    }
+
     private func interval(for period: CarStatsView.Period) -> DateInterval {
         switch period {
         case .month: CarMath.currentMonth()
@@ -169,14 +182,6 @@ struct CarRootView: View {
                     }
                 }
 
-                Picker("Период", selection: $spendPeriod) {
-                    ForEach(CarStatsView.Period.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                LabeledContent("Потрачено на машину") {
-                    Text(CarFormat.money(CarMath.total(entries, in: interval(for: spendPeriod))))
-                        .font(.headline).monospacedDigit()
-                }
             } footer: {
                 if !car.plate.isEmpty {
                     Text(car.plate.uppercased())
@@ -226,11 +231,31 @@ struct CarRootView: View {
                         }
                     }
                 }
-                NavigationLink {
-                    CarServiceHistoryView(car: car)
-                } label: {
-                    Label("ТО и пробег", systemImage: "gauge.with.needle")
+            }
+
+            Section {
+                Picker("Период", selection: $spendPeriod) {
+                    ForEach(CarStatsView.Period.allCases) { Text($0.title).tag($0) }
                 }
+                .pickerStyle(.segmented)
+                let spent = entries.filter { interval(for: spendPeriod).contains($0.date) && $0.amount > 0 }
+                LabeledContent("Потрачено всего") {
+                    Text(CarFormat.money(spent.reduce(0) { $0 + $1.amount }))
+                        .font(.headline).monospacedDigit()
+                }
+                if spent.isEmpty {
+                    Text("За этот период трат нет.").font(.subheadline).foregroundStyle(.secondary)
+                }
+                ForEach(spendGroups(spent)) { group in
+                    LabeledContent(group.title) {
+                        Text(CarFormat.money(group.sum)).monospacedDigit()
+                    }
+                    .font(.subheadline)
+                }
+            } header: {
+                Text("Траты за период")
+            } footer: {
+                Text("Ремонты, бензин, ТО и всё остальное, что записано по машине.")
             }
 
             Section {
