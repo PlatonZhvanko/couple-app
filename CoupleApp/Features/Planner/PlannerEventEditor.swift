@@ -34,7 +34,6 @@ struct PlannerEventEditor: View {
     @State private var errandType: String
     @State private var newErrandType = ""
     @State private var newErrandEmoji = ""
-    @State private var showEmojiPicker = false
     @State private var newMoneyType = ""
     private var durationMinutes: Int { max(0, Int(end.timeIntervalSince(start) / 60)) }
 
@@ -128,10 +127,6 @@ struct PlannerEventEditor: View {
                         .foregroundStyle(Color.accentColor)
                 }
                 HStack {
-                    Button { showEmojiPicker = true } label: {
-                        Text(newErrandEmoji.isEmpty ? "💼" : newErrandEmoji).font(.title2)
-                    }
-                    .buttonStyle(.borderless)
                     TextField("Поиск или новый тип", text: $newErrandType)
                         .textInputAutocapitalization(.sentences)
                         .onSubmit(addErrandType)
@@ -152,6 +147,7 @@ struct PlannerEventEditor: View {
                             .font(.footnote.weight(.semibold))
                     }
                 }
+                PlannerEmojiStrip(selection: $newErrandEmoji)
                 // Предлагаем не больше двух типов: последние или подходящие под поиск.
                 ForEach(typeSuggestions) { kind in
                     Button { errandType = kind.name; newErrandType = "" } label: {
@@ -364,7 +360,6 @@ struct PlannerEventEditor: View {
                 let duration = max(0, end.timeIntervalSince(oldValue))
                 end = newValue.addingTimeInterval(duration)
             }
-            .sheet(isPresented: $showEmojiPicker) { PlannerEmojiPickerSheet(selection: $newErrandEmoji) }
             .onChange(of: moneyDirection) { _, _ in moneyType = "" }
             .onChange(of: isAllDay) { _, allDay in
                 if !PlannerReminderOption.options(allDay: allDay).contains(where: { $0.minutes == reminder }) {

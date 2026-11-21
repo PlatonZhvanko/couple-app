@@ -163,7 +163,6 @@ struct PlannerErrandKindDetail: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
-    @State private var showEmoji = false
     @State private var emoji = ""
     @State private var useColor = false
     @State private var color: Color = .blue
@@ -179,14 +178,7 @@ struct PlannerErrandKindDetail: View {
                     .onSubmit(save)
             }
             Section("Внешний вид") {
-                Button { showEmoji = true } label: {
-                    HStack {
-                        Text("Эмодзи").foregroundStyle(.primary)
-                        Spacer()
-                        Text(emoji.isEmpty ? "💼" : emoji).font(.title2)
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+                PlannerEmojiStrip(selection: $emoji)
                 Toggle("🎨 Свой цвет типа", isOn: $useColor)
                 if useColor {
                     ColorPicker("Цвет", selection: $color, supportsOpacity: false)
@@ -211,7 +203,6 @@ struct PlannerErrandKindDetail: View {
         .navigationTitle(kind.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: load)
-        .sheet(isPresented: $showEmoji) { PlannerEmojiPickerSheet(selection: $emoji) }
         .onChange(of: emoji) { _, _ in save() }
         .onChange(of: useColor) { _, _ in save() }
         .onDisappear(perform: save)
@@ -272,7 +263,6 @@ struct PlannerMoneyKindDetail: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
-    @State private var showEmoji = false
     @State private var emoji = ""
     @State private var confirmDelete = false
     @State private var loaded = false
@@ -286,14 +276,7 @@ struct PlannerMoneyKindDetail: View {
                     .onSubmit(save)
             }
             Section("Внешний вид") {
-                Button { showEmoji = true } label: {
-                    HStack {
-                        Text("Эмодзи").foregroundStyle(.primary)
-                        Spacer()
-                        Text(emoji.isEmpty ? "🙂" : emoji).font(.title2)
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+                PlannerEmojiStrip(selection: $emoji)
             }
             Section("Операции этого типа: \(total)") {
                 if recent.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
@@ -313,7 +296,6 @@ struct PlannerMoneyKindDetail: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: load)
         .onDisappear(perform: save)
-        .sheet(isPresented: $showEmoji) { PlannerEmojiPickerSheet(selection: $emoji) }
         .onChange(of: emoji) { _, _ in save() }
         .confirmationDialog("Удалить тип из базы?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {

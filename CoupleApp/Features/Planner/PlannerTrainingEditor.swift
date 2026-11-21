@@ -47,7 +47,6 @@ struct PlannerTrainingEditor: View {
     @State private var errandType = ""
     @State private var newErrandType = ""
     @State private var newErrandEmoji = ""
-    @State private var showEmojiPicker = false
     @State private var pMoney: PlannerMoneyDirection = .none
     @State private var pAmount: Double?
     @State private var pType = ""
@@ -530,10 +529,6 @@ struct PlannerTrainingEditor: View {
                         .foregroundStyle(Color.accentColor)
                 }
                 HStack {
-                    Button { showEmojiPicker = true } label: {
-                        Text(newErrandEmoji.isEmpty ? "💼" : newErrandEmoji).font(.title2)
-                    }
-                    .buttonStyle(.borderless)
                     TextField("Поиск или новый тип", text: $newErrandType)
                         .textInputAutocapitalization(.sentences)
                         .onSubmit(addErrandType)
@@ -545,6 +540,7 @@ struct PlannerTrainingEditor: View {
                         .accessibilityLabel("Добавить тип дела")
                     }
                 }
+                PlannerEmojiStrip(selection: $newErrandEmoji)
                 if errandType.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Без типа регулярное дело создать нельзя. Выбери или создай тип (кнопка +).", systemImage: "exclamationmark.triangle.fill")
@@ -568,7 +564,6 @@ struct PlannerTrainingEditor: View {
                  ? "Тип берётся из базы и считается в статистике. Новые типы можно создать здесь."
                  : "Разовое дело без типа: попадает в «Разовые».")
         }
-        .sheet(isPresented: $showEmojiPicker) { PlannerEmojiPickerSheet(selection: $newErrandEmoji) }
     }
 
     /// Если такой клиент уже есть, выбираем его, иначе заводим нового в общей базе.
