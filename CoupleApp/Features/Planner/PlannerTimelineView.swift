@@ -395,7 +395,7 @@ struct PlannerTimelineView: View {
         // Размер шрифта: самый крупный, при котором самое длинное слово целиком влезает
         // в ширину колонки (слова не рвутся посередине) и строки влезают в высоту.
         let narrow = block.columns > 1
-        let hasMark = block.badge.symbol != nil || block.together || !block.emoji.isEmpty
+        let hasMark = block.badge.symbol != nil || block.together || !block.emoji.isEmpty || !block.corner.isEmpty
         let topRow = hasMark && height >= 30
         let topInset: CGFloat = topRow ? 11 : 1
         let trailingInset: CGFloat = (hasMark && !topRow) ? 15 : 1
@@ -436,6 +436,7 @@ struct PlannerTimelineView: View {
         }
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 0) {
+                if !block.corner.isEmpty { Text(block.corner).font(.system(size: 10)) }
                 if block.together { Text("💞").font(.system(size: 10)) }
                 if let symbol = block.badge.symbol {
                     Text(symbol).font(.system(size: 11))
@@ -561,7 +562,8 @@ struct PlannerTimelineView: View {
             let end = min(max(item.end, start.addingTimeInterval(minimum)), dayEnd)
             raw.append(PlannerTimelineBlock(
                 id: item.id, source: .external(item), title: item.title,
-                color: item.color, start: start, end: end, badge: .none, owner: nil
+                color: item.color, start: start, end: end, badge: .none, owner: nil,
+                corner: item.emoji
             ))
         }
         raw.sort { $0.start != $1.start ? $0.start < $1.start : $0.end > $1.end }
@@ -612,6 +614,8 @@ struct PlannerTimelineBlock: Identifiable {
     let owner: String?
     var column = 0
     var emoji = ""
+    /// Эмодзи в правом верхнем углу (записи других разделов).
+    var corner = ""
     var together = false
     var columns = 1
 }
