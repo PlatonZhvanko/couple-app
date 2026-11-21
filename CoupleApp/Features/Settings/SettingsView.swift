@@ -31,7 +31,7 @@ struct SettingsView: View {
                     Text("👤 Профиль")
                 }
 
-                if account.mode == .local {
+                if account.canSwitchProfiles {
                     Section {
                         Picker("Войти как", selection: Binding(
                             get: { account.current },
@@ -55,6 +55,16 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 } header: {
                     Text("🎨 Оформление")
+                }
+
+                Section {
+                    NavigationLink {
+                        RemindersView()
+                    } label: {
+                        Label("Напоминания", systemImage: "bell")
+                    }
+                } header: {
+                    Text("🔔 Уведомления")
                 }
 
                 Section("🔄 Синхронизация") {

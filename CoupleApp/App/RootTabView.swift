@@ -26,7 +26,12 @@ struct RootTabView: View {
                 SettingsFeature.feature.makeRootView()
             }
         }
+        .moodSupportPopup()
         .onAppear {
+            // Напоминания обновляются при каждом открытии приложения.
+            MoodReminder.refreshIfEnabled()
+            MoodSleepReminder.refreshIfEnabled()
+            ReminderScheduler.refresh()
             if !features.contains(where: { $0.id == selection }) && selection != SettingsFeature.feature.id {
                 selection = features.first?.id ?? SettingsFeature.feature.id
             }

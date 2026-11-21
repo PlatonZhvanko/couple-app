@@ -184,6 +184,19 @@ final class PlannerEvent: SyncableModel {
         /// Дни повторяющегося события, которые перенесены в другое время.
         var skippedDays: [Date]?
         var isPrivate: Bool?
+        var repeatInterval: Int?
+        var repeatWeekdays: String?
+        var repeatUntil: Date?
+        var colorHex: String?
+        var cancelledDays: String?
+        /// Деньги записи (профиль Платони): «profit» / «expense», пусто — ничего.
+        var moneyKind: String?
+        var moneyAmount: Double?
+        var moneyType: String?
+        /// Статусы по дням: «день=done|notDone|moved@время».
+        var statuses: String?
+        /// Тип дела из базы типов (регулярное дело), пусто — разовое.
+        var errandType: String?
     }
 
     static let recordKind = "planner.event"
@@ -209,6 +222,25 @@ final class PlannerEvent: SyncableModel {
     var skippedDays: [Date] = []
     /// «Не показывать партнёру»: запись видит только её автор.
     var isPrivate: Bool = false
+    /// Повтор: каждые N (дней, недель, месяцев, лет).
+    var repeatInterval: Int = 1
+    /// Дни недели для недельного повтора, номера через запятую (1 = воскресенье). Пусто — день начала.
+    var repeatWeekdaysRaw: String = ""
+    /// Повторять до этого дня (включительно). Пусто — без конца.
+    var repeatUntil: Date? = nil
+    /// Свой цвет записи в виде #RRGGBB. Пусто — цвет по виду.
+    var colorHex: String = ""
+    /// Отменённые занятия (дни повтора), метки времени начала дня через запятую.
+    var cancelledDaysRaw: String = ""
+    /// Деньги записи: пусто — ничего, «profit» — прибыль, «expense» — трата.
+    var moneyKindRaw: String = ""
+    var moneyAmount: Double = 0
+    /// Название созданного типа денег (например «Продажа»).
+    var moneyType: String = ""
+    /// Статусы по дням (сделано / не сделано / перенесено).
+    var statusRaw: String = ""
+    /// Тип дела из базы («Тренировка», «Закупка»). Пусто — разовое дело.
+    var errandType: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -225,7 +257,11 @@ final class PlannerEvent: SyncableModel {
             title: title, notes: notes, start: start, end: end, isAllDay: isAllDay,
             scope: scope, category: category, repeatRule: repeatRule,
             reminderMinutes: reminderMinutes, createdBy: createdBy, createdAt: createdAt,
-            participantIDs: participantIDs, skippedDays: skippedDays, isPrivate: isPrivate
+            participantIDs: participantIDs, skippedDays: skippedDays, isPrivate: isPrivate,
+            repeatInterval: repeatInterval, repeatWeekdays: repeatWeekdaysRaw,
+            repeatUntil: repeatUntil, colorHex: colorHex, cancelledDays: cancelledDaysRaw,
+            moneyKind: moneyKindRaw, moneyAmount: moneyAmount, moneyType: moneyType, statuses: statusRaw,
+            errandType: errandType
         )
     }
 
@@ -244,9 +280,38 @@ final class PlannerEvent: SyncableModel {
         participantIDs = payload.participantIDs ?? []
         skippedDays = payload.skippedDays ?? []
         isPrivate = payload.isPrivate ?? false
+        repeatInterval = max(1, payload.repeatInterval ?? 1)
+        repeatWeekdaysRaw = payload.repeatWeekdays ?? ""
+        repeatUntil = payload.repeatUntil
+        colorHex = payload.colorHex ?? ""
+        cancelledDaysRaw = payload.cancelledDays ?? ""
+        moneyKindRaw = payload.moneyKind ?? ""
+        moneyAmount = payload.moneyAmount ?? 0
+        moneyType = payload.moneyType ?? ""
+        statusRaw = payload.statuses ?? ""
+        errandType = payload.errandType ?? ""
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }
+    var repeatWeekdays: [Int] {
+        get { repeatWeekdaysRaw.split(separator: ",").compactMap { Int($0) } }
+        set { repeatWeekdaysRaw = newValue.sorted().map(String.init).joined(separator: ",") }
+    }
+    private static func dayKey(_ day: Date) -> String {
+        String(Int(PlannerCalendar.calendar.startOfDay(for: day).timeIntervalSince1970))
+    }
+
+    /// Занятие в этот день отменено.
+    func isCancelled(on day: Date) -> Bool {
+        cancelledDaysRaw.split(separator: ",").contains { $0 == Self.dayKey(day)[...] }
+    }
+
+    func setCancelled(_ cancelled: Bool, on day: Date) {
+        var keys = cancelledDaysRaw.split(separator: ",").map(String.init).filter { $0 != Self.dayKey(day) }
+        if cancelled { keys.append(Self.dayKey(day)) }
+        cancelledDaysRaw = keys.joined(separator: ",")
+    }
+
     var categoryValue: PlannerCategory { PlannerCategory(rawValue: category) ?? .general }
     var repeatValue: PlannerRepeat { PlannerRepeat(rawValue: repeatRule) ?? .none }
 }

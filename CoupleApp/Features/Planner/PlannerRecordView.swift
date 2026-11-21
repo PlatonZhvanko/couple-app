@@ -22,10 +22,14 @@ struct PlannerRecordView: View {
 
     @State private var clients: [PlannerClientDirectory.Entry] = []
     @State private var subscriptionClient: PlannerClientDirectory.Entry?
+    @State private var showMoveSheet = false
+    @State private var moveTarget = Date.now
 
     private var cal: Calendar { PlannerCalendar.calendar }
     private var canEdit: Bool { event.scopeValue.canEdit(by: account.current) }
-    private var showsPayments: Bool { PlannerPaymentStore.isTraining(event) }
+    private var isCancelled: Bool { event.isCancelled(on: day) }
+    private var isOwnerView: Bool { account.current == .owner }
+    private var showsPayments: Bool { PlannerPaymentStore.isTraining(event) && !isOwnerView }
 
     private var participants: [PlannerClientDirectory.Entry] {
         event.participantIDs.compactMap { id in clients.first { $0.id == id } }
@@ -40,15 +44,24 @@ struct PlannerRecordView: View {
     }
 
     private var badge: PlannerPayBadge {
-        PlannerPaymentStore.badge(for: event, day: day, payments: payments)
+        if isOwnerView {
+            switch event.status(on: day) {
+            case .done: return .errandDone
+            case .notDone: return .errandNotDone
+            case .moved: return .errandMoved
+            case nil: return .none
+            }
+        }
+        return PlannerPaymentStore.badge(for: event, day: day, payments: payments)
     }
 
     var body: some View {
         NavigationStack {
             List {
                 headerSection
+                if isOwnerView { ownerStatusSection }
                 if showsPayments {
-                    paymentsSection
+                    if isCancelled { finesSection } else { paymentsSection }
                 }
                 actionsSection
             }
@@ -76,6 +89,7 @@ struct PlannerRecordView: View {
             .onAppear {
                 clients = PlannerClientDirectory.all(context)
             }
+            .sheet(isPresented: $showMoveSheet) { moveSheet }
             .sheet(item: $subscriptionClient) { client in
                 PlannerSubscriptionSaleSheet(month: day, client: client)
             }
@@ -117,6 +131,154 @@ struct PlannerRecordView: View {
         let duration = event.end.timeIntervalSince(event.start)
         let start = PlannerCalendar.combine(day: day, time: event.start)
         return "\(PlannerCalendar.time(start))–\(PlannerCalendar.time(start.addingTimeInterval(duration)))"
+    }
+
+    // MARK: - Статус дела (профиль Платони)
+
+    private var moneyText: String? {
+        guard event.moneyDirection != .none, event.moneyAmount > 0 else { return nil }
+        let sign = event.moneyDirection == .profit ? "+" : "−"
+        let type = event.moneyType.isEmpty ? "" : " · \(event.moneyType)"
+        return "\(sign)\(PlannerPricing.format(event.moneyAmount))\(type)"
+    }
+
+    private var ownerStatusSection: some View {
+        Section {
+            HStack(spacing: 8) {
+                statusButton("✅ Сделано", color: .green, active: event.status(on: day) == .done) { setStatus(.done) }
+                statusButton("❌ Не сделано", color: .red, active: event.status(on: day) == .notDone) { setStatus(.notDone) }
+            }
+            .buttonStyle(.borderless)
+            Button {
+                moveTarget = PlannerCalendar.combine(day: PlannerCalendar.addDays(1, to: day), time: event.start)
+                showMoveSheet = true
+            } label: {
+                Label("↪️ Перенесено на другое время", systemImage: "calendar.badge.clock")
+            }
+            .disabled(!canEdit)
+            if case .moved(let target) = event.status(on: day) {
+                Text("Перенесено на \(PlannerCalendar.dayTitle(target)), \(PlannerCalendar.time(target))")
+                    .font(.footnote.weight(.semibold))
+            }
+            if event.status(on: day) != nil {
+                Button("Снять отметку", role: .destructive) { setStatus(nil) }
+                    .font(.footnote)
+            }
+            if let moneyText {
+                LabeledContent("Деньги", value: moneyText)
+                    .foregroundStyle(event.moneyDirection == .profit ? Color.green : Color.red)
+            }
+        } header: {
+            Text("Статус")
+        } footer: {
+            if moneyText != nil {
+                Text("Деньги попадают в статистику, когда дело отмечено «Сделано».")
+            }
+        }
+        .disabled(!canEdit)
+    }
+
+    private func statusButton(_ title: String, color: Color, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(color.opacity(active ? 0.55 : 0.15)))
+                .foregroundStyle(Color.primary)
+        }
+    }
+
+    private func setStatus(_ status: PlannerErrandStatus?) {
+        event.setStatus(status, on: day)
+        event.markChanged()
+        try? context.save()
+        sync.requestSync()
+    }
+
+    private var moveSheet: some View {
+        NavigationStack {
+            Form {
+                DatePicker("Новое время", selection: $moveTarget)
+            }
+            .navigationTitle("Перенести дело")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { showMoveSheet = false } }
+                ToolbarItem(placement: .confirmationAction) { Button("Перенести", action: performMove) }
+            }
+        }
+        .presentationDetents([.medium])
+        .environment(\.locale, PlannerCalendar.locale)
+    }
+
+    /// Старый день остаётся белым с пометкой, а на новом дне появляется такая же запись.
+    private func performMove() {
+        let duration = max(0, event.end.timeIntervalSince(event.start))
+        let copy = PlannerEvent()
+        copy.title = event.title
+        copy.notes = event.notes
+        copy.isAllDay = event.isAllDay
+        copy.start = event.isAllDay ? cal.startOfDay(for: moveTarget) : moveTarget
+        copy.end = event.isAllDay ? copy.start : moveTarget.addingTimeInterval(duration)
+        copy.scope = event.scope
+        copy.isPrivate = event.isPrivate
+        copy.colorHex = event.colorHex
+        copy.category = event.category
+        copy.repeatRule = PlannerRepeat.none.rawValue
+        copy.reminderMinutes = event.reminderMinutes
+        copy.createdBy = event.createdBy
+        copy.moneyKindRaw = event.moneyKindRaw
+        copy.moneyAmount = event.moneyAmount
+        copy.moneyType = event.moneyType
+        context.insert(copy)
+        copy.markChanged()
+        event.setStatus(.moved(copy.start), on: day)
+        event.markChanged()
+        try? context.save()
+        sync.requestSync()
+        showMoveSheet = false
+        dismiss()
+    }
+
+    // MARK: - Отмена и штрафы
+
+    private var finesSection: some View {
+        Section {
+            Label("Занятие отменено", systemImage: "nosign")
+                .foregroundStyle(.secondary)
+            ForEach(participants) { client in
+                PlannerFineRow(
+                    name: client.name,
+                    method: method(of: client),
+                    amount: dayPayments.first { $0.clientID == client.id }?.amount
+                        ?? PlannerPaymentStore.price(for: event, context: context),
+                    canEdit: canEdit,
+                    onSelect: { select($0, for: client) },
+                    onAmount: { setAmount($0, for: client) }
+                )
+            }
+        } header: {
+            Text("🚫 Отмена")
+        } footer: {
+            Text("Без отметки это отмена без штрафа. Штраф идёт в прибыль, неоплаченный попадает в статистику отмен.")
+        }
+    }
+
+    private func cancelOccurrence() {
+        PlannerPaymentStore.purge(context, eventID: event.syncID, day: day)
+        event.setCancelled(true, on: day)
+        event.markChanged()
+        try? context.save()
+        sync.requestSync()
+    }
+
+    private func restoreOccurrence() {
+        PlannerPaymentStore.purge(context, eventID: event.syncID, day: day)
+        event.setCancelled(false, on: day)
+        event.markChanged()
+        try? context.save()
+        sync.requestSync()
     }
 
     // MARK: - Оплата
@@ -225,6 +387,17 @@ struct PlannerRecordView: View {
                     onEdit()
                 } label: {
                     Label("Изменить", systemImage: "pencil")
+                }
+                if showsPayments {
+                    if isCancelled {
+                        Button(action: restoreOccurrence) {
+                            Label("Вернуть занятие", systemImage: "arrow.uturn.backward")
+                        }
+                    } else {
+                        Button(role: .destructive, action: cancelOccurrence) {
+                            Label("Отменить занятие", systemImage: "nosign")
+                        }
+                    }
                 }
             } else {
                 Label("Это запись другого человека, её можно только смотреть.", systemImage: "lock")
@@ -372,5 +545,66 @@ private struct PlannerPaymentRow: View {
     private static func text(_ value: Double) -> String {
         let rounded = value.rounded()
         return abs(value - rounded) < 0.005 ? "\(Int(rounded))" : String(format: "%.2f", value)
+    }
+}
+
+/// Строка клиента в отменённом занятии: без штрафа, штраф наличными, переводом или не оплачен.
+private struct PlannerFineRow: View {
+    let name: String
+    let method: PlannerPayMethod
+    let amount: Double
+    let canEdit: Bool
+    let onSelect: (PlannerPayMethod) -> Void
+    let onAmount: (Double) -> Void
+
+    @State private var amountText = ""
+
+    private let options: [(PlannerPayMethod, String, String)] = [
+        (.none, "🚫", "Без штрафа"),
+        (.cash, "💰", "Нал"),
+        (.transfer, "🏦", "Перевод"),
+        (.unpaid, "⏳", "Не оплачен"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(name).font(.body.weight(.medium))
+            HStack(spacing: 6) {
+                ForEach(0..<options.count, id: \.self) { index in
+                    let item = options[index]
+                    let selected = method == item.0
+                    Button { onSelect(item.0) } label: {
+                        VStack(spacing: 2) {
+                            Text(item.1).font(.title3)
+                            Text(item.2).font(.caption2)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.appAccent.opacity(0.3) : Color.secondary.opacity(0.12)))
+                        .foregroundStyle(Color.primary)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!canEdit)
+                }
+            }
+            if method != .none {
+                HStack {
+                    Text("Штраф")
+                    Spacer()
+                    TextField("0", text: $amountText)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                        .onSubmit { if let value = Double(amountText) { onAmount(value) } }
+                    Text("₽").foregroundStyle(.secondary)
+                }
+                .font(.subheadline)
+            }
+        }
+        .padding(.vertical, 2)
+        .onAppear { amountText = "\(Int(amount.rounded()))" }
+        .onChange(of: amountText) { _, text in
+            if let value = Double(text), abs(value - amount) > 0.001 { onAmount(value) }
+        }
     }
 }

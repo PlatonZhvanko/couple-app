@@ -12,6 +12,9 @@ struct StatisticsMoneyView: View {
     }
     private var cashList: [PlannerPayment] { payments(.cash) }
     private var transferList: [PlannerPayment] { payments(.transfer) }
+    private var fineList: [PlannerPayment] {
+        snapshot.finePayments.filter { period.contains($0.day) }.sorted { $0.day > $1.day }
+    }
     private var soldList: [PlannerSubscription] {
         snapshot.subscriptions.filter { period.contains($0.soldAt) }.sorted { $0.soldAt > $1.soldAt }
     }
@@ -20,30 +23,20 @@ struct StatisticsMoneyView: View {
 
     /// Занятия периода считаются один раз при создании экрана.
     private let inPeriod: [StatisticsVisit]
+    /// Прошедшие занятия без оплаты и неоплаченные штрафы.
+    private let debtVisits: [StatisticsVisit]
 
     init(snapshot: StatisticsSnapshot, period: StatisticsPeriod) {
         self.snapshot = snapshot
         self.period = period
+        self.debtVisits = snapshot.visits
+            .filter { period.contains($0.day) && ($0.isDebt || $0.isUnpaidFine) }
+            .sorted { $0.start > $1.start }
         self.inPeriod = snapshot.visits
-            .filter { period.contains($0.day) && $0.start <= .now }
+            .filter { period.contains($0.day) && $0.start <= .now && !$0.cancelled }
             .sorted { $0.start > $1.start }
     }
     private var paidVisits: [StatisticsVisit] { inPeriod.filter { $0.method.isPaid } }
-    private var refusedVisits: [StatisticsVisit] { inPeriod.filter { $0.method == .unpaid } }
-
-    private struct Debt: Identifiable {
-        let id: UUID
-        let name: String
-        let visits: [StatisticsVisit]
-        var sum: Double { visits.reduce(0) { $0 + $1.amount } }
-    }
-
-    private var debts: [Debt] {
-        Dictionary(grouping: inPeriod.filter(\.isDebt), by: \.clientID)
-            .map { Debt(id: $0.key, name: snapshot.name($0.key), visits: $0.value) }
-            .sorted { $0.sum > $1.sum }
-    }
-    private var debtTotal: Double { debts.reduce(0) { $0 + $1.sum } }
 
     private var burnedList: [(sub: PlannerSubscription, left: Double)] {
         snapshot.subscriptions
@@ -53,15 +46,6 @@ struct StatisticsMoneyView: View {
             .sorted { $0.left > $1.left }
     }
     private var burnedTotal: Double { burnedList.reduce(0) { $0 + $1.left } }
-
-    private var debtText: String {
-        var lines = ["Долги:"]
-        for item in debts {
-            lines.append("\(item.name) — \(PlannerPricing.format(item.sum)) (\(item.visits.count) зан.)")
-        }
-        lines.append("Итого: \(PlannerPricing.format(debtTotal))")
-        return lines.joined(separator: "\n")
-    }
 
     private func visitRow(_ visit: StatisticsVisit, showClient: Bool) -> some View {
         StatisticsDetailRow(
@@ -82,7 +66,7 @@ struct StatisticsMoneyView: View {
     var body: some View {
         List {
             Section("💰 Заработано за период") {
-                LabeledContent("Всего", value: PlannerPricing.format(sum(cashList) + sum(transferList) + sold))
+                LabeledContent("Всего", value: PlannerPricing.format(sum(cashList) + sum(transferList) + sold + sum(fineList)))
                     .font(.headline)
                 StatisticsLine(title: "💵 Наличные", value: PlannerPricing.format(sum(cashList))) {
                     if cashList.isEmpty { Text("Нет оплат").foregroundStyle(.secondary) }
@@ -91,6 +75,10 @@ struct StatisticsMoneyView: View {
                 StatisticsLine(title: "💳 Переводы", value: PlannerPricing.format(sum(transferList))) {
                     if transferList.isEmpty { Text("Нет оплат").foregroundStyle(.secondary) }
                     ForEach(transferList) { paymentRow($0) }
+                }
+                StatisticsLine(title: "⚠️ Штрафы за отмены", value: PlannerPricing.format(sum(fineList))) {
+                    if fineList.isEmpty { Text("Штрафов нет").foregroundStyle(.secondary) }
+                    ForEach(fineList) { paymentRow($0) }
                 }
                 StatisticsLine(title: "📜 Абонементы (\(soldList.count))", value: PlannerPricing.format(sold)) {
                     if soldList.isEmpty { Text("Продаж нет").foregroundStyle(.secondary) }
@@ -111,8 +99,22 @@ struct StatisticsMoneyView: View {
                 StatisticsLine(title: "Оплачено", value: "\(paidVisits.count)") {
                     ForEach(paidVisits) { visitRow($0, showClient: true) }
                 }
-                StatisticsLine(title: "Отказались или не оплатили ❌", value: "\(refusedVisits.count)") {
-                    ForEach(refusedVisits) { visitRow($0, showClient: true) }
+            }
+
+            Section("📋 Долги") {
+                StatisticsLine(
+                    title: "Должны всего",
+                    value: PlannerPricing.format(debtVisits.reduce(0) { $0 + $1.amount }),
+                    bold: true
+                ) {
+                    if debtVisits.isEmpty { Text("Долгов нет 🎉").foregroundStyle(.secondary) }
+                    ForEach(debtVisits) { visit in
+                        StatisticsDetailRow(
+                            title: snapshot.name(visit.clientID),
+                            caption: "\(StatisticsFormat.day(visit.start)) · \(visit.cancelled ? "штраф за отмену" : visit.eventTitle)",
+                            value: PlannerPricing.format(visit.amount)
+                        )
+                    }
                 }
             }
 
@@ -136,33 +138,6 @@ struct StatisticsMoneyView: View {
                 Text("🔥 Не реализовано (сгорело)")
             } footer: {
                 Text("Остаток на абонементе, у которого вышел срок действия в этом периоде.")
-            }
-
-            Section {
-                if debts.isEmpty {
-                    Text("Долгов нет 🎉").foregroundStyle(.secondary)
-                }
-                ForEach(debts) { item in
-                    StatisticsLine(title: item.name, value: PlannerPricing.format(item.sum)) {
-                        ForEach(item.visits) { visitRow($0, showClient: false) }
-                    }
-                }
-                if !debts.isEmpty {
-                    LabeledContent("Сумма долгов", value: PlannerPricing.format(debtTotal))
-                        .font(.headline)
-                    ShareLink(item: debtText) {
-                        Label("Выгрузить список должников", systemImage: "square.and.arrow.up")
-                    }
-                    Button {
-                        UIPasteboard.general.string = debtText
-                    } label: {
-                        Label("Скопировать список", systemImage: "doc.on.doc")
-                    }
-                }
-            } header: {
-                Text("📋 Долги")
-            } footer: {
-                Text("Долг — прошедшее занятие, за которое нет отметки об оплате или стоит ❌.")
             }
         }
     }

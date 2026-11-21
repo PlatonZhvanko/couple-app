@@ -16,10 +16,27 @@ struct PlannerEventEditor: View {
     @State private var end: Date
     @State private var isAllDay: Bool
     @State private var isPrivate: Bool
+    /// «Совместное дело»: общая запись, видна и у Платони, и у Настеньки.
+    @State private var isTogether: Bool
     @State private var category: PlannerCategory
     @State private var repeatRule: PlannerRepeat
+    @State private var repeatInterval: Int
+    @State private var repeatWeekdays: [Int]
+    @State private var repeatUntil: Date?
+    @State private var colorHex: String
     @State private var reminder: Int
     @State private var confirmDelete = false
+    @State private var moneyDirection: PlannerMoneyDirection
+    @State private var moneyAmount: Double?
+    @State private var moneyType: String
+    /// Платоня: регулярное дело (тип из базы) или разовое.
+    @State private var errandRegular: Bool
+    @State private var errandType: String
+    @State private var newErrandType = ""
+    @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil }, sort: \PlannerErrandKind.name)
+    private var errandKinds: [PlannerErrandKind]
+    @Query(filter: #Predicate<PlannerMoneyKind> { $0.deletedAt == nil }, sort: \PlannerMoneyKind.name)
+    private var moneyKinds: [PlannerMoneyKind]
 
     /// `time` — начало нового события (нажатие на время в планировщике).
     init(event: PlannerEvent?, day: Date, at time: Date? = nil) {
@@ -32,9 +49,19 @@ struct PlannerEventEditor: View {
             _end = State(initialValue: event.end)
             _isAllDay = State(initialValue: event.isAllDay)
             _isPrivate = State(initialValue: event.isPrivate)
+            _isTogether = State(initialValue: event.scopeValue == .shared)
             _category = State(initialValue: event.categoryValue)
             _repeatRule = State(initialValue: event.repeatValue)
+            _repeatInterval = State(initialValue: event.repeatInterval)
+            _repeatWeekdays = State(initialValue: event.repeatWeekdays)
+            _repeatUntil = State(initialValue: event.repeatUntil)
+            _colorHex = State(initialValue: event.colorHex)
             _reminder = State(initialValue: event.reminderMinutes)
+            _moneyDirection = State(initialValue: event.moneyDirection)
+            _moneyAmount = State(initialValue: event.moneyAmount > 0 ? event.moneyAmount : nil)
+            _moneyType = State(initialValue: event.moneyType)
+            _errandRegular = State(initialValue: !event.errandType.isEmpty)
+            _errandType = State(initialValue: event.errandType)
         } else {
             // Новое событие: сегодня со следующего часа, иначе в 10:00.
             let now = Date.now
@@ -46,10 +73,69 @@ struct PlannerEventEditor: View {
             _end = State(initialValue: begin.addingTimeInterval(3600))
             _isAllDay = State(initialValue: false)
             _isPrivate = State(initialValue: false)
-            _category = State(initialValue: .general)
+            _isTogether = State(initialValue: false)
+            _category = State(initialValue: .errand)
             _repeatRule = State(initialValue: .none)
+            _repeatInterval = State(initialValue: 1)
+            _repeatWeekdays = State(initialValue: [])
+            _repeatUntil = State(initialValue: nil)
+            _colorHex = State(initialValue: "")
             _reminder = State(initialValue: PlannerReminderOption.none)
+            _moneyDirection = State(initialValue: .none)
+            _moneyAmount = State(initialValue: nil)
+            _moneyType = State(initialValue: "")
+            // Новое дело Платони по умолчанию регулярное.
+            _errandRegular = State(initialValue: true)
+            _errandType = State(initialValue: "")
         }
+    }
+
+    /// Тип дела Платони: сначала «регулярное» (тип из базы), потом «разовое».
+    @ViewBuilder
+    private var errandTypeSection: some View {
+        Section {
+            Picker("Вид дела", selection: $errandRegular.animation()) {
+                Text("Регулярное").tag(true)
+                Text("Разовое").tag(false)
+            }
+            .pickerStyle(.segmented)
+            if errandRegular {
+                ForEach(errandKinds) { kind in
+                    Button { errandType = errandType == kind.name ? "" : kind.name } label: {
+                        HStack {
+                            Label(kind.name, systemImage: "tag")
+                            Spacer()
+                            if errandType == kind.name { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
+                HStack {
+                    TextField("Новый тип дела", text: $newErrandType)
+                        .onSubmit(addErrandType)
+                    Button(action: addErrandType) {
+                        Image(systemName: "plus.circle.fill").font(.title3)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(newErrandType.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        } header: {
+            Text("🏷 Тип дела")
+        } footer: {
+            Text(errandRegular
+                 ? "Тип берётся из базы и считается в статистике. Новые типы можно создать здесь."
+                 : "Разовое дело без типа: попадает в «Разовые».")
+        }
+    }
+
+    private func addErrandType() {
+        let name = newErrandType.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        PlannerErrandKindStore.ensure(context, name: name)
+        errandType = name
+        newErrandType = ""
+        sync.requestSync()
     }
 
     private var canEdit: Bool {
@@ -71,34 +157,83 @@ struct PlannerEventEditor: View {
                     }
                 }
 
+                if account.current == .owner {
+                    Section {
+                        TextField("Название", text: $title)
+                    }
+                    errandTypeSection
+                    Section {
+                        Picker("Деньги", selection: $moneyDirection) {
+                            ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        if moneyDirection != .none {
+                            HStack {
+                                Text("Сумма")
+                                Spacer()
+                                TextField("0", value: $moneyAmount, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                                Text("₽")
+                            }
+                            Picker("Тип", selection: $moneyType) {
+                                Text("Без типа").tag("")
+                                ForEach(moneyKinds.filter { $0.isProfit == (moneyDirection == .profit) }) {
+                                    Text($0.title).tag($0.name)
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("💰 Деньги")
+                    } footer: {
+                        Text(moneyDirection == .none
+                             ? "Если дело что-то приносит или стоит денег, выбери «Прибыль» или «Трата»."
+                             : "Деньги идут в статистику, когда в записи отмечено «Сделано». Типы создаются в «Настройки дел».")
+                    }
+                }
+
                 Section {
-                    TextField("Название", text: $title)
+                    if account.current != .owner {
+                        TextField("Название", text: $title)
+                    }
                     Toggle("Не показывать партнёру", isOn: $isPrivate)
+                        .disabled(isTogether)
+                    PlannerColorField(title: "Свой цвет записи", hex: $colorHex, defaultColor: category.color)
                 }
 
                 Section {
                     Toggle("Весь день", isOn: $isAllDay)
                     DatePicker("Начало", selection: $start, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
                     DatePicker("Конец", selection: $end, in: start..., displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
-                    Picker("Повтор", selection: $repeatRule) {
-                        ForEach(PlannerRepeat.allCases) { Text($0.title).tag($0) }
-                    }
+                    PlannerRepeatFields(
+                        rule: $repeatRule, interval: $repeatInterval, weekdays: $repeatWeekdays,
+                        until: $repeatUntil, start: start
+                    )
                 }
 
                 Section {
-                    Picker("Категория", selection: $category) {
-                        ForEach(PlannerCategory.regular) { item in
-                            Label {
-                                Text(item.title)
-                            } icon: {
-                                Image(systemName: item.systemImage).foregroundStyle(item.color)
+                    // У Платони только «дело»: вида (клиент, группа, школа) нет.
+                    if account.current != .owner {
+                        Picker("Категория", selection: $category) {
+                            ForEach(PlannerCategory.regular) { item in
+                                Label {
+                                    Text(item.title)
+                                } icon: {
+                                    Image(systemName: item.systemImage).foregroundStyle(item.color)
+                                }
+                                .tag(item)
                             }
-                            .tag(item)
                         }
                     }
                     Picker("Напоминание", selection: $reminder) {
                         ForEach(PlannerReminderOption.options(allDay: isAllDay)) { Text($0.title).tag($0.minutes) }
                     }
+                }
+
+                Section {
+                    Toggle("💞 Совместное дело", isOn: $isTogether)
+                } footer: {
+                    Text("Появится в планнере и у Платони, и у Настеньки. Цвет по умолчанию бледно-розовый, его можно поменять в «Свой цвет записи».")
                 }
 
                 Section("📝 Заметка") {
@@ -117,6 +252,7 @@ struct PlannerEventEditor: View {
                 }
             }
             .disabled(!canEdit)
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(event == nil ? "Новое событие" : (canEdit ? "Событие" : "Просмотр"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -138,6 +274,7 @@ struct PlannerEventEditor: View {
                 let duration = max(0, end.timeIntervalSince(oldValue))
                 end = newValue.addingTimeInterval(duration)
             }
+            .onChange(of: moneyDirection) { _, _ in moneyType = "" }
             .onChange(of: isAllDay) { _, allDay in
                 if !PlannerReminderOption.options(allDay: allDay).contains(where: { $0.minutes == reminder }) {
                     reminder = PlannerReminderOption.none
@@ -172,11 +309,27 @@ struct PlannerEventEditor: View {
             target.start = start
             target.end = max(end, start)
         }
-        if event == nil { target.scope = PlannerScope.personal(account.current).rawValue }
-        target.isPrivate = isPrivate
+        if isTogether {
+            target.scope = PlannerScope.shared.rawValue
+        } else if event == nil || target.scopeValue == .shared {
+            target.scope = PlannerScope.personal(account.current).rawValue
+        }
+        target.isPrivate = isPrivate && !isTogether
         target.category = category.rawValue
         target.repeatRule = repeatRule.rawValue
+        target.repeatInterval = repeatInterval
+        target.repeatWeekdays = repeatWeekdays
+        target.repeatUntil = repeatUntil
+        target.colorHex = colorHex
         target.reminderMinutes = reminder
+        if account.current == .owner {
+            let kind = errandType.trimmingCharacters(in: .whitespaces)
+            target.errandType = errandRegular ? (kind.isEmpty ? target.title : kind) : ""
+            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.errandType) }
+            target.moneyKindRaw = moneyDirection.rawValue
+            target.moneyAmount = moneyDirection == .none ? 0 : max(0, moneyAmount ?? 0)
+            target.moneyType = moneyDirection == .none ? "" : moneyType
+        }
         target.markChanged()
         try? context.save()
         sync.requestSync()

@@ -130,6 +130,7 @@ struct PlannerGroupEditor: View {
                         .frame(width: 80)
                     Text("₽").foregroundStyle(.secondary)
                 }
+                PlannerRuleColorRow(key: PlannerColorRule.groupKey(kind.name), fallback: category.color)
             }
 
             Section {

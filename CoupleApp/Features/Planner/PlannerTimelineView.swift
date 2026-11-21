@@ -7,7 +7,13 @@ struct PlannerTimelineView: View {
     let days: [Date]
     let isDayMode: Bool
     let events: [PlannerEvent]
+    /// Цвет записи (свой, по группе, делу, клиенту или по виду).
+    let colorFor: (PlannerEvent, Date) -> Color
     let externalItems: (Date) -> [CalendarItem]
+    /// Дни со сменой (красноватая полоса 9:00–23:00).
+    var shiftDays: Set<Date> = []
+    /// Смайлик настроения дня (для обоих), пустая строка — нет.
+    var dayMark: (Date) -> String = { _ in "" }
     /// Значок оплаты записи за этот день.
     let badge: (PlannerEvent, Date) -> PlannerPayBadge
     /// Буква владельца записи (в общем журнале), `nil` — не показывать.
@@ -22,13 +28,16 @@ struct PlannerTimelineView: View {
     let onEventTap: (PlannerEvent, Date) -> Void
     /// Запись перетащили: событие, начало этого раза, новое начало.
     let onMove: (PlannerEvent, Date, Date) -> Void
+    /// Смахнули влево (1) или вправо (-1): листаем неделю или день.
+    var onSwipe: (Int) -> Void = { _ in }
 
     static let slotMinutes = 30
-    private let timeColumnWidth: CGFloat = 46
-    private let topPadding: CGFloat = 10
-    private let bottomPadding: CGFloat = 16
-    /// Стандартный видимый промежуток: с 9:00 до 0:00 (в получасовых отрезках).
-    private let defaultFirstSlot = 18
+    static let minSlotHeight: CGFloat = 15
+    private let timeColumnWidth: CGFloat = 44
+    private let topPadding: CGFloat = 6
+    private let bottomPadding: CGFloat = 8
+    /// Стандартный видимый промежуток: с 7:00 до 0:00 (в получасовых отрезках).
+    private let defaultFirstSlot = 14
     private let defaultLastSlot = 48
 
     /// Показаны ли все 24 часа (с прокруткой) вместо экрана «всё сразу».
@@ -36,6 +45,8 @@ struct PlannerTimelineView: View {
     @State private var dragID: String?
     @State private var dragDay: Date?
     @State private var dragOffset: CGSize = .zero
+    /// Блок двигали: такой жест не считаем листанием.
+    @State private var blockWasDragged = false
 
     private var cal: Calendar { PlannerCalendar.calendar }
 
@@ -65,7 +76,8 @@ struct PlannerTimelineView: View {
                 let range = slotRange
                 let columnWidth = (geo.size.width - timeColumnWidth) / CGFloat(max(days.count, 1))
                 let fit = (geo.size.height - topPadding - bottomPadding) / CGFloat(range.count)
-                let slotHeight: CGFloat = showFullDay ? 34 : max(fit, 14)
+                // Весь день помещается на экран без прокрутки; не меньше 15 пт на получас: так блоки и подписи времени не слипаются.
+                let slotHeight: CGFloat = showFullDay ? 34 : max(fit, Self.minSlotHeight)
                 ScrollView {
                     HStack(alignment: .top, spacing: 0) {
                         timeColumn(range: range, slotHeight: slotHeight)
@@ -79,9 +91,20 @@ struct PlannerTimelineView: View {
                     .padding(.top, topPadding)
                     .padding(.bottom, bottomPadding)
                 }
-                .scrollDisabled(!showFullDay && fit >= 14 && dragID == nil)
+                .scrollDisabled(!showFullDay && fit >= Self.minSlotHeight && dragID == nil)
             }
         }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 30)
+                .onEnded { value in
+                    defer { blockWasDragged = false }
+                    guard !blockWasDragged, dragID == nil else { return }
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    guard abs(dx) > 70, abs(dx) > abs(dy) * 2 else { return }
+                    onSwipe(dx < 0 ? 1 : -1)
+                }
+        )
     }
 
     // MARK: - Шапка с днями
@@ -96,7 +119,7 @@ struct PlannerTimelineView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: timeColumnWidth, height: 30)
             }
-            .accessibilityLabel(showFullDay ? "Свернуть до 9:00–0:00" : "Показать все 24 часа")
+            .accessibilityLabel(showFullDay ? "Свернуть до 7:00–0:00" : "Показать все 24 часа")
             ForEach(days, id: \.self) { day in
                 Button { onHeaderTap(day) } label: {
                     headerCell(day)
@@ -117,6 +140,7 @@ struct PlannerTimelineView: View {
                 HStack(spacing: 6) {
                     Text(PlannerCalendar.dayTitle(day))
                         .font(.headline)
+                    if !dayMark(day).isEmpty { Text(dayMark(day)) }
                     Image(systemName: "rectangle.split.3x1")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -134,6 +158,9 @@ struct PlannerTimelineView: View {
                             if isToday { Circle().fill(Color.plannerToday) }
                         }
                         .foregroundStyle(isToday ? Color.white : (isWeekend ? Color.red : Color.primary))
+                    if !dayMark(day).isEmpty {
+                        Text(dayMark(day)).font(.system(size: 11))
+                    }
                 }
             }
         }
@@ -186,14 +213,20 @@ struct PlannerTimelineView: View {
             ForEach(Array(range), id: \.self) { slot in
                 let isHour = slot % 2 == 0
                 Text(slot == 48 ? "0:00" : String(format: "%d:%02d", slot / 2, isHour ? 0 : 30))
-                    .font(isHour ? .caption.weight(.semibold) : .caption2)
+                    // Фиксированный размер: подпись не зависит от крупности шрифта и не переносится.
+                    .font(.system(size: isHour ? 11 : 9, weight: isHour ? .semibold : .regular).monospacedDigit())
                     .foregroundStyle(isHour ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .fixedSize(horizontal: true, vertical: true)
                     .padding(.trailing, 6)
                     .offset(y: CGFloat(slot - range.lowerBound) * slotHeight - 7)
             }
             if range.upperBound == 48 {
                 Text("0:00")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: true)
                     .padding(.trailing, 6)
                     .offset(y: CGFloat(range.count) * slotHeight - 7)
             }
@@ -209,7 +242,24 @@ struct PlannerTimelineView: View {
         let blocks = layout(day)
         let rangeStart = dayStart.addingTimeInterval(Double(range.lowerBound * Self.slotMinutes * 60))
 
+        let isShift = shiftDays.contains(dayStart)
+        let bandStart = dayStart.addingTimeInterval(Double(PlannerShift.startHour) * 3600)
+        let bandTop = max(0, y(of: bandStart, from: rangeStart, slotHeight: slotHeight))
+        let bandBottom = min(
+            slotHeight * CGFloat(range.count),
+            y(of: dayStart.addingTimeInterval(Double(PlannerShift.endHour) * 3600), from: rangeStart, slotHeight: slotHeight)
+        )
+
         return ZStack(alignment: .topLeading) {
+            if isShift, bandBottom > bandTop {
+                // Смена: просто слегка красноватый промежуток 9:00–21:00, без линий.
+                Rectangle()
+                    .fill(Color.red.opacity(0.14))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: bandBottom - bandTop)
+                    .offset(y: bandTop)
+                    .allowsHitTesting(false)
+            }
             // Сетка и пустые отрезки, на которые можно нажать.
             VStack(spacing: 0) {
                 ForEach(Array(range), id: \.self) { slot in
@@ -283,29 +333,51 @@ struct PlannerTimelineView: View {
         _ block: PlannerTimelineBlock, height: CGFloat, day: Date, index: Int,
         range: Range<Int>, slotHeight: CGFloat, columnWidth: CGFloat
     ) -> some View {
-        let tall = height > 40
-        let content = VStack(alignment: .leading, spacing: 1) {
-            Text(block.title)
-                .font(isDayMode ? .body.weight(.semibold) : .system(size: 11, weight: .bold))
-                .lineLimit(isDayMode ? (tall ? 4 : 1) : (tall ? 4 : 2))
-                .minimumScaleFactor(0.7)
+        // Фамилия сверху, имя снизу, обе строки одного размера и всегда ниже значка оплаты.
+        // Шрифт берём самый крупный из тех, что помещаются по высоте и ширине блока.
+        let narrow = block.columns > 1
+        let words = block.title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        let topInset: CGFloat = height >= 34 ? 11 : 1
+        let twoLines = words.count >= 2 && height - topInset >= 24
+        let first = words.first ?? block.title
+        let rest = words.dropFirst().joined(separator: " ")
+        let lineCount: CGFloat = twoLines ? 2 : 1
+        let textWidth = max(10, columnWidth / CGFloat(max(block.columns, 1)) - 6)
+        let longest = CGFloat(max(1, twoLines ? max(first.count, rest.count) : block.title.count))
+        let byHeight = (height - topInset - 3) / (lineCount * 1.2)
+        let byWidth = textWidth / (longest * 0.64)
+        let maxFont: CGFloat = isDayMode ? 22 : 17
+        let fontSize = max(8, min(maxFont, byHeight, byWidth))
+        let showTime = !narrow && height - topInset - 3 > fontSize * lineCount * 1.2 + 14
+        let content = VStack(alignment: .leading, spacing: 0) {
+            // Одним текстом, чтобы при нехватке места обе строки уменьшались вместе.
+            Text(twoLines ? first + "\n" + rest : block.title)
+                .font(.system(size: fontSize, weight: .bold))
+                .lineLimit(Int(lineCount))
+                .minimumScaleFactor(0.5)
                 .multilineTextAlignment(.leading)
-            if isDayMode && tall {
+            if showTime {
                 Text("\(PlannerCalendar.time(block.start))–\(PlannerCalendar.time(block.end))")
-                    .font(.system(size: 9))
+                    .font(.system(size: isDayMode ? 12 : 10, weight: .medium))
                     .opacity(0.75)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
         }
         .padding(.leading, 3)
-        .padding(.trailing, block.badge.symbol == nil ? 3 : 14)
-        .padding(.top, height > 30 ? 13 : 2)
-        .padding(.bottom, 2)
+        .padding(.trailing, 1)
+        .padding(.top, topInset)
+        .padding(.bottom, 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .topTrailing) {
-            if let symbol = block.badge.symbol {
-                Text(symbol).font(.system(size: 10)).padding(1)
+            HStack(spacing: 0) {
+                if block.together { Text("💞").font(.system(size: 9)) }
+                if let symbol = block.badge.symbol {
+                    Text(symbol).font(.system(size: 10))
+                }
             }
+            .padding(1)
         }
         .overlay(alignment: .bottomTrailing) {
             if let owner = block.owner {
@@ -319,7 +391,9 @@ struct PlannerTimelineView: View {
 
         switch block.source {
         case .event(let event):
+            let cancelled = [.cancelled, .fineUnpaid, .finePaid].contains(block.badge)
             let base = content
+                .opacity(cancelled ? 0.55 : 1)
                 .foregroundStyle(Color.black)
                 .background(RoundedRectangle(cornerRadius: 6).fill(block.color))
                 .contentShape(Rectangle())
@@ -353,6 +427,7 @@ struct PlannerTimelineView: View {
             .onChanged { value in
                 if case .second(true, let drag?) = value {
                     dragID = block.id
+                    blockWasDragged = true
                     dragDay = days[index]
                     dragOffset = drag.translation
                 }
@@ -396,9 +471,10 @@ struct PlannerTimelineView: View {
             raw.append(PlannerTimelineBlock(
                 id: occurrence.id, source: .event(occurrence.event),
                 title: occurrence.event.plainTitle,
-                color: occurrence.event.categoryValue.color, start: start, end: end,
+                color: colorFor(occurrence.event, day), start: start, end: end,
                 badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event),
-                emoji: occurrence.event.categoryValue.emoji ?? ""
+                emoji: occurrence.event.categoryValue.emoji ?? "",
+                together: occurrence.event.scopeValue == .shared
             ))
         }
         for item in externalItems(day) {
@@ -457,5 +533,6 @@ struct PlannerTimelineBlock: Identifiable {
     let owner: String?
     var column = 0
     var emoji = ""
+    var together = false
     var columns = 1
 }

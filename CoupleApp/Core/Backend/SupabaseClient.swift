@@ -134,7 +134,10 @@ final class SupabaseClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
         let token = authorized ? (session?.accessToken ?? config.anonKey) : config.anonKey
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Новые ключи sb_publishable_… не JWT: их передаём только в apikey.
+        if token.hasPrefix("eyJ") || token != config.anonKey {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
 
         let (data, response) = try await URLSession.shared.data(for: request)
