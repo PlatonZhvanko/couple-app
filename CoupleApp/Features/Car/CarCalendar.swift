@@ -37,12 +37,13 @@ enum CarCalendar {
             }
             return CalendarItem(
                 id: "car.repair.\(repair.syncID.uuidString)",
-                title: "🔧 \(repair.isPaid ? "✓ " : "")\(repair.title.isEmpty ? "Ремонт" : repair.title) · \(car)",
+                title: "\(repair.isPaid ? "✓ " : "")\(repair.title.isEmpty ? "Ремонт" : repair.title) · \(car)",
                 start: start,
                 end: end,
                 member: creator,
                 color: repair.isPaid ? .green : .orange,
                 systemImage: repair.isPaid ? "checkmark.circle.fill" : "wrench.and.screwdriver.fill",
+                emoji: "🔧",
                 detail: open,
                 move: { newStart in
                     repair.desiredDate = newStart
