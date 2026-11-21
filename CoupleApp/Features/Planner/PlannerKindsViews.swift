@@ -40,7 +40,11 @@ struct PlannerMoneyKindsView: View {
             Section {
                 if shown.isEmpty { Text("Ничего нет").foregroundStyle(.secondary) }
                 ForEach(shown) { kind in
-                    Text(kind.title)
+                    NavigationLink {
+                        PlannerMoneyKindDetail(kind: kind)
+                    } label: {
+                        Text(kind.title)
+                    }
                         .swipeActions {
                             Button(role: .destructive) {
                                 pendingDelete = kind
@@ -112,7 +116,11 @@ struct PlannerErrandKindsView: View {
             Section {
                 if shown.isEmpty { Text("Ничего нет").foregroundStyle(.secondary) }
                 ForEach(shown) { kind in
-                    Text(kind.name)
+                    NavigationLink {
+                        PlannerErrandKindDetail(kind: kind)
+                    } label: {
+                        Text("\(kind.displayEmoji) \(kind.name)")
+                    }
                         .swipeActions {
                             Button(role: .destructive) {
                                 pendingDelete = kind
@@ -142,6 +150,159 @@ struct PlannerErrandKindsView: View {
         guard !trimmed.isEmpty else { return }
         PlannerErrandKindStore.ensure(context, name: trimmed, owner: account.current)
         query = ""
+        sync.requestSync()
+    }
+}
+
+/// Один тип дела: эмодзи, цвет, сколько дел, удаление.
+struct PlannerErrandKindDetail: View {
+    let kind: PlannerErrandKind
+
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+    @Query(filter: #Predicate<PlannerEvent> { $0.deletedAt == nil })
+    private var events: [PlannerEvent]
+
+    @State private var emoji = ""
+    @State private var colorHex = ""
+    @State private var confirmDelete = false
+    @State private var loaded = false
+
+    private var related: [PlannerEvent] {
+        events.filter { $0.errandType.caseInsensitiveCompare(kind.name) == .orderedSame }
+            .sorted { $0.start > $1.start }
+    }
+
+    var body: some View {
+        Form {
+            Section("Внешний вид") {
+                HStack {
+                    Text("Эмодзи")
+                    Spacer()
+                    TextField("💼", text: $emoji)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                }
+                PlannerColorField(title: "Свой цвет типа", hex: $colorHex, defaultColor: .accentColor)
+            }
+            Section("Дела этого типа: \(related.count)") {
+                if related.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
+                ForEach(related.prefix(20)) { event in
+                    HStack {
+                        Text(event.title)
+                        Spacer()
+                        Text(StatisticsFormat.day(event.start)).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Section {
+                Button("Удалить тип из базы", role: .destructive) { confirmDelete = true }
+            } footer: {
+                Text("Старые записи в журнале останутся.")
+            }
+        }
+        .navigationTitle(kind.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            emoji = kind.emoji
+            colorHex = kind.colorHex
+        }
+        .onDisappear(perform: save)
+        .confirmationDialog("Удалить тип из базы?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) {
+                loaded = false
+                kind.markDeleted()
+                try? context.save()
+                sync.requestSync()
+                dismiss()
+            }
+        }
+    }
+
+    private func save() {
+        guard loaded, kind.deletedAt == nil else { return }
+        let clean = emoji.trimmingCharacters(in: .whitespaces)
+        guard clean != kind.emoji || colorHex != kind.colorHex else { return }
+        kind.emoji = clean
+        kind.colorHex = colorHex
+        kind.markChanged()
+        try? context.save()
+        sync.requestSync()
+    }
+}
+
+/// Один тип прибыли или траты: эмодзи, сколько операций, удаление.
+struct PlannerMoneyKindDetail: View {
+    let kind: PlannerMoneyKind
+
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+    @Query(filter: #Predicate<PlannerMoneyOp> { $0.deletedAt == nil })
+    private var ops: [PlannerMoneyOp]
+
+    @State private var emoji = ""
+    @State private var confirmDelete = false
+    @State private var loaded = false
+
+    private var related: [PlannerMoneyOp] {
+        ops.filter { $0.typeName == kind.name }.sorted { $0.date > $1.date }
+    }
+
+    var body: some View {
+        Form {
+            Section("Внешний вид") {
+                HStack {
+                    Text("Эмодзи")
+                    Spacer()
+                    TextField("🙂", text: $emoji)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                }
+            }
+            Section("Операции этого типа: \(related.count)") {
+                if related.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
+                ForEach(related.prefix(20)) { op in
+                    HStack {
+                        Text(StatisticsFormat.day(op.date))
+                        Spacer()
+                        Text(PlannerPricing.format(op.amount)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Section {
+                Button("Удалить тип из базы", role: .destructive) { confirmDelete = true }
+            }
+        }
+        .navigationTitle(kind.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            emoji = kind.emoji
+        }
+        .onDisappear(perform: save)
+        .confirmationDialog("Удалить тип из базы?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) {
+                loaded = false
+                kind.markDeleted()
+                try? context.save()
+                sync.requestSync()
+                dismiss()
+            }
+        }
+    }
+
+    private func save() {
+        guard loaded, kind.deletedAt == nil else { return }
+        let clean = emoji.trimmingCharacters(in: .whitespaces)
+        guard clean != kind.emoji else { return }
+        kind.emoji = clean
+        kind.markChanged()
+        try? context.save()
         sync.requestSync()
     }
 }

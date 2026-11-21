@@ -13,6 +13,8 @@ final class PlannerErrandKind: SyncableModel {
         var owner: String?
         /// Эмодзи типа. Нет в старых записях.
         var emoji: String?
+        /// Цвет типа (hex), нет в старых записях.
+        var color: String?
     }
 
     static let recordKind = "planner.errandKind"
@@ -23,6 +25,8 @@ final class PlannerErrandKind: SyncableModel {
     var ownerRaw: String = ""
     /// Эмодзи типа; пусто — чемодан по умолчанию.
     var emoji: String = ""
+    /// Свой цвет типа (hex); пусто — обычный цвет дела.
+    var colorHex: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -38,12 +42,13 @@ final class PlannerErrandKind: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(name: name, owner: ownerRaw.isEmpty ? nil : ownerRaw, emoji: emoji.isEmpty ? nil : emoji) }
+    var payload: Payload { Payload(name: name, owner: ownerRaw.isEmpty ? nil : ownerRaw, emoji: emoji.isEmpty ? nil : emoji, color: colorHex.isEmpty ? nil : colorHex) }
 
     func apply(_ payload: Payload) {
         name = payload.name
         ownerRaw = payload.owner ?? ""
         emoji = payload.emoji ?? ""
+        colorHex = payload.color ?? ""
     }
 
     /// Чей это тип. Старые типы без хозяина считаем Настенькиными.
