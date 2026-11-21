@@ -482,6 +482,7 @@ struct PlannerTrainingEditor: View {
             return new
         }()
 
+        target.errandType = ""
         switch mode {
         case .client:
             target.title = participants.first?.name ?? ""
@@ -498,6 +499,7 @@ struct PlannerTrainingEditor: View {
             target.title = title.trimmingCharacters(in: .whitespaces)
             target.participantIDs = []
             if errandRegular { PlannerErrandKindStore.ensure(context, name: target.title) }
+            target.errandType = errandRegular ? target.title : ""
         }
         target.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         target.isAllDay = false

@@ -27,6 +27,12 @@ struct PlannerEventEditor: View {
     @State private var moneyDirection: PlannerMoneyDirection
     @State private var moneyAmount: Double?
     @State private var moneyType: String
+    /// Платоня: регулярное дело (тип из базы) или разовое.
+    @State private var errandRegular: Bool
+    @State private var errandType: String
+    @State private var newErrandType = ""
+    @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil }, sort: \PlannerErrandKind.name)
+    private var errandKinds: [PlannerErrandKind]
     @Query(filter: #Predicate<PlannerMoneyKind> { $0.deletedAt == nil }, sort: \PlannerMoneyKind.name)
     private var moneyKinds: [PlannerMoneyKind]
 
@@ -51,6 +57,8 @@ struct PlannerEventEditor: View {
             _moneyDirection = State(initialValue: event.moneyDirection)
             _moneyAmount = State(initialValue: event.moneyAmount > 0 ? event.moneyAmount : nil)
             _moneyType = State(initialValue: event.moneyType)
+            _errandRegular = State(initialValue: !event.errandType.isEmpty)
+            _errandType = State(initialValue: event.errandType)
         } else {
             // Новое событие: сегодня со следующего часа, иначе в 10:00.
             let now = Date.now
@@ -72,7 +80,58 @@ struct PlannerEventEditor: View {
             _moneyDirection = State(initialValue: .none)
             _moneyAmount = State(initialValue: nil)
             _moneyType = State(initialValue: "")
+            // Новое дело Платони по умолчанию регулярное.
+            _errandRegular = State(initialValue: true)
+            _errandType = State(initialValue: "")
         }
+    }
+
+    /// Тип дела Платони: сначала «регулярное» (тип из базы), потом «разовое».
+    @ViewBuilder
+    private var errandTypeSection: some View {
+        Section {
+            Picker("Вид дела", selection: $errandRegular.animation()) {
+                Text("Регулярное").tag(true)
+                Text("Разовое").tag(false)
+            }
+            .pickerStyle(.segmented)
+            if errandRegular {
+                ForEach(errandKinds) { kind in
+                    Button { errandType = errandType == kind.name ? "" : kind.name } label: {
+                        HStack {
+                            Label(kind.name, systemImage: "tag")
+                            Spacer()
+                            if errandType == kind.name { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
+                HStack {
+                    TextField("Новый тип дела", text: $newErrandType)
+                        .onSubmit(addErrandType)
+                    Button(action: addErrandType) {
+                        Image(systemName: "plus.circle.fill").font(.title3)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(newErrandType.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        } header: {
+            Text("🏷 Тип дела")
+        } footer: {
+            Text(errandRegular
+                 ? "Тип берётся из базы и считается в статистике. Новые типы можно создать здесь."
+                 : "Разовое дело без типа: попадает в «Разовые».")
+        }
+    }
+
+    private func addErrandType() {
+        let name = newErrandType.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        PlannerErrandKindStore.ensure(context, name: name)
+        errandType = name
+        newErrandType = ""
+        sync.requestSync()
     }
 
     private var canEdit: Bool {
@@ -94,23 +153,11 @@ struct PlannerEventEditor: View {
                     }
                 }
 
-                Section {
-                    TextField("Название", text: $title)
-                    Toggle("Не показывать партнёру", isOn: $isPrivate)
-                    PlannerColorField(title: "Свой цвет записи", hex: $colorHex, defaultColor: category.color)
-                }
-
-                Section {
-                    Toggle("Весь день", isOn: $isAllDay)
-                    DatePicker("Начало", selection: $start, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
-                    DatePicker("Конец", selection: $end, in: start..., displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
-                    PlannerRepeatFields(
-                        rule: $repeatRule, interval: $repeatInterval, weekdays: $repeatWeekdays,
-                        until: $repeatUntil, start: start
-                    )
-                }
-
                 if account.current == .owner {
+                    Section {
+                        TextField("Название", text: $title)
+                    }
+                    errandTypeSection
                     Section {
                         Picker("Деньги", selection: $moneyDirection) {
                             ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
@@ -139,6 +186,24 @@ struct PlannerEventEditor: View {
                              ? "Если дело что-то приносит или стоит денег, выбери «Прибыль» или «Трата»."
                              : "Деньги идут в статистику, когда в записи отмечено «Сделано». Типы создаются в «Настройки дел».")
                     }
+                }
+
+                Section {
+                    if account.current != .owner {
+                        TextField("Название", text: $title)
+                    }
+                    Toggle("Не показывать партнёру", isOn: $isPrivate)
+                    PlannerColorField(title: "Свой цвет записи", hex: $colorHex, defaultColor: category.color)
+                }
+
+                Section {
+                    Toggle("Весь день", isOn: $isAllDay)
+                    DatePicker("Начало", selection: $start, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                    DatePicker("Конец", selection: $end, in: start..., displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                    PlannerRepeatFields(
+                        rule: $repeatRule, interval: $repeatInterval, weekdays: $repeatWeekdays,
+                        until: $repeatUntil, start: start
+                    )
                 }
 
                 Section {
@@ -243,6 +308,9 @@ struct PlannerEventEditor: View {
         target.colorHex = colorHex
         target.reminderMinutes = reminder
         if account.current == .owner {
+            let kind = errandType.trimmingCharacters(in: .whitespaces)
+            target.errandType = errandRegular ? (kind.isEmpty ? target.title : kind) : ""
+            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.errandType) }
             target.moneyKindRaw = moneyDirection.rawValue
             target.moneyAmount = moneyDirection == .none ? 0 : max(0, moneyAmount ?? 0)
             target.moneyType = moneyDirection == .none ? "" : moneyType

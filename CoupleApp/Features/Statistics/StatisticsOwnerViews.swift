@@ -86,6 +86,7 @@ struct StatisticsOwnerTypesView: View {
 /// Дела: сколько сделано, не сделано и перенесено.
 struct StatisticsOwnerErrandsView: View {
     let events: [PlannerEvent]
+    let entries: [PlannerLedgerEntry]
     let period: StatisticsPeriod
 
     private struct Mark: Identifiable {
@@ -93,13 +94,14 @@ struct StatisticsOwnerErrandsView: View {
         let title: String
         let day: Date
         let status: PlannerErrandStatus
+        let errandType: String
     }
 
     private var marks: [Mark] {
         var result: [Mark] = []
         for event in events where event.deletedAt == nil {
             for (day, status) in event.statuses where period.contains(day) {
-                result.append(Mark(id: "\(event.syncID)-\(day.timeIntervalSince1970)", title: event.plainTitle, day: day, status: status))
+                result.append(Mark(id: "\(event.syncID)-\(day.timeIntervalSince1970)", title: event.plainTitle, day: day, status: status, errandType: event.errandType))
             }
         }
         return result.sorted { $0.day > $1.day }
@@ -124,6 +126,22 @@ struct StatisticsOwnerErrandsView: View {
                 StatisticsLine(title: "↪️ Перенесено", value: "\(moved.count)") { list(moved) }
                 if finished > 0 {
                     LabeledContent("Доля выполненных", value: "\(Int((Double(done.count) / Double(finished) * 100).rounded()))%")
+                }
+            }
+            let kinds = Dictionary(grouping: all, by: { $0.errandType.isEmpty ? "Разовые" : $0.errandType })
+            if !kinds.isEmpty {
+                Section("По типам дел") {
+                    ForEach(kinds.keys.sorted(), id: \.self) { name in
+                        let list = (kinds[name] ?? []).sorted { $0.day > $1.day }
+                        let money = entries
+                            .filter { period.contains($0.day) && $0.source == .errand && ($0.errandType.isEmpty ? "Разовые" : $0.errandType) == name }
+                            .reduce(0) { $0 + $1.amount }
+                        StatisticsLine(
+                            title: name,
+                            value: "\(list.filter { $0.status == .done }.count) из \(list.count)"
+                                + (money == 0 ? "" : " · " + (money > 0 ? "+" : "−") + PlannerPricing.format(abs(money)))
+                        ) { self.list(list) }
+                    }
                 }
             }
             if all.isEmpty {

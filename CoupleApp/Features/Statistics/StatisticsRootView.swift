@@ -92,7 +92,7 @@ struct StatisticsRootView: View {
             switch ownerSection {
             case .money: StatisticsOwnerMoneyView(entries: entries, period: period)
             case .types: StatisticsOwnerTypesView(entries: entries, period: period)
-            case .errands: StatisticsOwnerErrandsView(events: events, period: period)
+            case .errands: StatisticsOwnerErrandsView(events: events, entries: entries, period: period)
             }
         } else {
             partnerFinance
