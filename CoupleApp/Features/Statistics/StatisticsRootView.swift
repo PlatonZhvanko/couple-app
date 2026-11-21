@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Подразделы статистики. Чтобы добавить новый, допиши case и экран в `content`.
 enum StatisticsSection: String, CaseIterable, Identifiable {
-    case money = "💰 Деньги"
+    case money = "🎾 Тренировки"
     case clients = "🙋 Клиенты"
     case cancels = "🚫 Отмены"
     case debts = "📋 Долги"
@@ -116,7 +116,7 @@ struct StatisticsRootView: View {
                     StatisticsDebtsView(snapshot: snapshot, period: period)
                         .catAnchor()
                 case .errands:
-                    StatisticsOwnerMoneyView(entries: PlannerLedger.partnerEntries(events: events), period: period)
+                    StatisticsPartnerErrandsView(entries: PlannerLedger.partnerEntries(events: events), period: period)
                 }
             }
         }

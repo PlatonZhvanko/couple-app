@@ -152,3 +152,31 @@ struct StatisticsOwnerErrandsView: View {
         }
     }
 }
+
+/// Финансы Насти от дел (не тренировок): итоги и разбивка по типам дел.
+struct StatisticsPartnerErrandsView: View {
+    enum Part: String, CaseIterable, Identifiable {
+        case money = "Итоги"
+        case types = "По типам"
+        var id: String { rawValue }
+    }
+
+    let entries: [PlannerLedgerEntry]
+    let period: StatisticsPeriod
+    @State private var part: Part = .money
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Показать", selection: $part) {
+                ForEach(Part.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.bottom, 6)
+            switch part {
+            case .money: StatisticsOwnerMoneyView(entries: entries, period: period)
+            case .types: StatisticsOwnerTypesView(entries: entries, period: period)
+            }
+        }
+    }
+}
