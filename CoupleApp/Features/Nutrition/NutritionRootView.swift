@@ -102,6 +102,8 @@ struct NutritionDayView: View {
             ForEach(NutritionMealType.allCases) { meal in
                 mealSection(meal)
             }
+
+            NutritionPartnerCard(member: member.other)
         }
         .refreshable { await sync.syncNow() }
         .sheet(item: $sheet) { item in
@@ -322,6 +324,69 @@ struct NutritionSummaryCard: View {
                 .foregroundStyle(.secondary)
             Text("\(value.nutritionText) / \(target.nutritionText) г")
                 .font(.caption.monospacedDigit())
+            ProgressView(value: progress(value, target))
+                .tint(color)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Компактный блок о партнёре: сколько съел сегодня и его норма. Без деталей: что и когда.
+struct NutritionPartnerCard: View {
+    let member: CoupleMember
+
+    @Environment(AccountStore.self) private var account
+    @Query private var entries: [NutritionEntry]
+    @Query private var goals: [NutritionGoal]
+
+    init(member: CoupleMember) {
+        self.member = member
+        let memberID = member.rawValue
+        let today = NutritionDay.key(for: .now)
+        _entries = Query(filter: #Predicate<NutritionEntry> {
+            $0.deletedAt == nil && $0.member == memberID && $0.dayKey == today
+        })
+        _goals = Query(filter: #Predicate<NutritionGoal> { $0.deletedAt == nil && $0.member == memberID })
+    }
+
+    private var totals: NutritionTotals { NutritionTotals.sum(entries) }
+    private var targets: NutritionTargets { goals.first?.targets ?? .standard }
+
+    var body: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(totals.calories.nutritionText)
+                        .font(.title3.bold())
+                        .monospacedDigit()
+                    Text("из \(targets.calories.nutritionText) ккал")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                ProgressView(value: progress(totals.calories, targets.calories))
+                    .tint(totals.calories > targets.calories ? .orange : .green)
+                HStack(spacing: 12) {
+                    macro("Б", totals.protein, targets.protein, .red)
+                    macro("Ж", totals.fat, targets.fat, .yellow)
+                    macro("У", totals.carbs, targets.carbs, .blue)
+                }
+            }
+            .padding(.vertical, 2)
+        } header: {
+            Text("\(account.partnerName) сегодня")
+        }
+    }
+
+    private func progress(_ value: Double, _ target: Double) -> Double {
+        guard target > 0 else { return 0 }
+        return min(value / target, 1)
+    }
+
+    private func macro(_ title: String, _ value: Double, _ target: Double, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(title) \(value.nutritionText)/\(target.nutritionText)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
             ProgressView(value: progress(value, target))
                 .tint(color)
         }
