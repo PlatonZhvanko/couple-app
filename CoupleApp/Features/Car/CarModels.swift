@@ -14,6 +14,7 @@ final class CarVehicle: SyncableModel {
         var year: Int
         var startOdometer: Int
         var createdAt: Date
+        var serviceIntervalKm: Int?
     }
 
     static let recordKind = "car.vehicle"
@@ -26,6 +27,8 @@ final class CarVehicle: SyncableModel {
     var year: Int = 0
     /// Пробег на момент добавления машины в приложение.
     var startOdometer: Int = 0
+    /// Через сколько км напоминать про ТО.
+    var serviceIntervalKm: Int = 8000
     var createdAt: Date = Date.now
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
@@ -41,7 +44,8 @@ final class CarVehicle: SyncableModel {
     }
 
     var payload: Payload {
-        Payload(name: name, plate: plate, vin: vin, year: year, startOdometer: startOdometer, createdAt: createdAt)
+        Payload(name: name, plate: plate, vin: vin, year: year, startOdometer: startOdometer, createdAt: createdAt,
+                serviceIntervalKm: serviceIntervalKm)
     }
 
     func apply(_ payload: Payload) {
@@ -51,6 +55,7 @@ final class CarVehicle: SyncableModel {
         year = payload.year
         startOdometer = payload.startOdometer
         createdAt = payload.createdAt
+        serviceIntervalKm = payload.serviceIntervalKm ?? 8000
     }
 
     var displayName: String {
@@ -122,6 +127,7 @@ final class CarEntry: SyncableModel {
         var note: String
         var member: String
         var createdAt: Date
+        var customCategory: String?
     }
 
     static let recordKind = "car.entry"
@@ -129,6 +135,8 @@ final class CarEntry: SyncableModel {
     var syncID: UUID = UUID()
     var carID: UUID = UUID()
     var categoryRaw: String = CarEntryCategory.other.rawValue
+    /// Своя категория траты (название). Пусто — обычная.
+    var customCategory: String = ""
     var date: Date = Date.now
     /// Сумма в рублях.
     var amount: Double = 0
@@ -159,7 +167,8 @@ final class CarEntry: SyncableModel {
     var payload: Payload {
         Payload(
             carID: carID, category: categoryRaw, date: date, amount: amount, odometer: odometer,
-            liters: liters, isFullTank: isFullTank, note: note, member: member, createdAt: createdAt
+            liters: liters, isFullTank: isFullTank, note: note, member: member, createdAt: createdAt,
+            customCategory: customCategory.isEmpty ? nil : customCategory
         )
     }
 
@@ -174,7 +183,11 @@ final class CarEntry: SyncableModel {
         note = payload.note
         member = payload.member
         createdAt = payload.createdAt
+        customCategory = payload.customCategory ?? ""
     }
+
+    /// Название категории для показа: своя или обычная.
+    var categoryTitle: String { customCategory.isEmpty ? category.title : customCategory }
 
     var category: CarEntryCategory {
         get { CarEntryCategory(rawValue: categoryRaw) ?? .other }
