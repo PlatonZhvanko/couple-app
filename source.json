@@ -1,0 +1,38 @@
+{
+  "name": "Вдвоём",
+  "identifier": "com.couple.vdvoem.source",
+  "iconURL": "https://raw.githubusercontent.com/PlatonZhvanko/couple-app/sidestore/icon.png",
+  "tintColor": "E8567F",
+  "sourceURL": "https://raw.githubusercontent.com/PlatonZhvanko/couple-app/sidestore/source.json",
+  "apps": [
+    {
+      "name": "Вдвоём",
+      "bundleIdentifier": "com.couple.vdvoem",
+      "developerName": "Платоня",
+      "subtitle": "Приложение для двоих",
+      "iconURL": "https://raw.githubusercontent.com/PlatonZhvanko/couple-app/sidestore/icon.png",
+      "tintColor": "E8567F",
+      "screenshotURLs": [],
+      "screenshots": [],
+      "permissions": [],
+      "localizedDescription": "Планер, питание, сон, настроение, клиенты и авто.",
+      "version": "0.1.62",
+      "versionDate": "2026-11-21T16:26:03Z",
+      "downloadURL": "https://raw.githubusercontent.com/PlatonZhvanko/couple-app/sidestore/Vdvoem.ipa",
+      "size": 6076706,
+      "sha256": "548d2e3a2b39713c0624d8b00fecbc7956d34e281a30533a4034b0ae9f5ea1a8",
+      "versions": [
+        {
+          "version": "0.1.62",
+          "buildVersion": "62",
+          "date": "2026-11-21T16:26:03Z",
+          "downloadURL": "https://raw.githubusercontent.com/PlatonZhvanko/couple-app/sidestore/Vdvoem.ipa",
+          "size": 6076706,
+          "sha256": "548d2e3a2b39713c0624d8b00fecbc7956d34e281a30533a4034b0ae9f5ea1a8",
+          "minOSVersion": "18.0"
+        }
+      ]
+    }
+  ],
+  "news": []
+}
