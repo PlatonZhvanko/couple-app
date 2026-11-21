@@ -412,7 +412,8 @@ struct PlannerCalendarView: View {
            let hex = errandColors[event.errandType.lowercased()], let typeColor = Color(hex: hex) {
             base = typeColor
         }
-        guard isOwner, let status = event.status(on: day) else { return base }
+        guard isOwner || event.categoryValue == .errand,
+              let status = event.status(on: day, for: account.current) else { return base }
         switch status {
         case .done: return Color.green.opacity(0.75)
         case .notDone: return Color.red.opacity(0.65)
@@ -421,8 +422,10 @@ struct PlannerCalendarView: View {
     }
 
     private func blockBadge(_ event: PlannerEvent, _ day: Date) -> PlannerPayBadge {
-        guard isOwner else { return PlannerPaymentStore.badge(for: event, day: day, payments: payments) }
-        switch event.status(on: day) {
+        guard isOwner || event.categoryValue == .errand else {
+            return PlannerPaymentStore.badge(for: event, day: day, payments: payments)
+        }
+        switch event.status(on: day, for: account.current) {
         case .done: return .errandDone
         case .notDone: return .errandNotDone
         case .moved: return .errandMoved

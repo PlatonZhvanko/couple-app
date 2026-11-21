@@ -79,6 +79,42 @@ extension PlannerEvent {
         statusRaw = parts.joined(separator: ",")
     }
 
+    /// Статус за день у конкретного человека. «Перенесено» общее для обоих, «сделано» и
+    /// «не сделано» у каждого свои.
+    func status(on day: Date, for member: CoupleMember) -> PlannerErrandStatus? {
+        let own = status(on: day)
+        if case .moved = own { return own }
+        if member == .owner { return own }
+        let key = Self.statusKey(day)
+        guard let part = partnerStatusRaw.split(separator: ",").first(where: { $0.hasPrefix(key + "=") }) else { return nil }
+        if part.hasSuffix("=done") { return .done }
+        if part.hasSuffix("=notDone") { return .notDone }
+        return nil
+    }
+
+    /// Поставить статус за день от имени человека.
+    func setStatus(_ status: PlannerErrandStatus?, on day: Date, for member: CoupleMember) {
+        if member == .owner {
+            setStatus(status, on: day)
+            return
+        }
+        // Перенос применяется у всех сразу.
+        if case .moved = status {
+            setStatus(status, on: day)
+            return
+        }
+        // Новая отметка или её снятие отменяет общий перенос этого дня.
+        if case .moved = self.status(on: day) { setStatus(nil, on: day) }
+        let key = Self.statusKey(day)
+        var parts = partnerStatusRaw.split(separator: ",").map(String.init).filter { !$0.hasPrefix(key + "=") }
+        switch status {
+        case .done: parts.append("\(key)=done")
+        case .notDone: parts.append("\(key)=notDone")
+        default: break
+        }
+        partnerStatusRaw = parts.joined(separator: ",")
+    }
+
     /// Запись, созданная переносом в новый день (если день перенесён).
     func movedCopyID(on day: Date) -> UUID? {
         let key = Self.statusKey(day)
@@ -436,7 +472,7 @@ enum PlannerLedger {
             var day = cal.startOfDay(for: event.start)
             var steps = 0
             while day <= last && steps < 800 {
-                if event.startsOn(day), !event.isCancelled(on: day) {
+                if event.startsOn(day), !event.isCancelled(on: day), event.status(on: day, for: .partner) == .done {
                     result.append(PlannerLedgerEntry(
                         id: "pevent.\(event.syncID).\(Int(day.timeIntervalSince1970))", day: day,
                         title: event.plainTitle, source: .errand,

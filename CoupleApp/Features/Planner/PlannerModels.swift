@@ -201,6 +201,8 @@ final class PlannerEvent: SyncableModel {
         var partnerMoneyKind: String?
         var partnerMoneyAmount: Double?
         var partnerMoneyType: String?
+        /// Статусы Настеньки по дням («день=done|notDone»), у каждого свои.
+        var partnerStatuses: String?
     }
 
     static let recordKind = "planner.event"
@@ -245,6 +247,8 @@ final class PlannerEvent: SyncableModel {
     var partnerMoneyKindRaw: String = ""
     var partnerMoneyAmount: Double = 0
     var partnerMoneyType: String = ""
+    /// Статусы Настеньки по дням: «день=done|notDone».
+    var partnerStatusRaw: String = ""
     /// Статусы по дням (сделано / не сделано / перенесено).
     var statusRaw: String = ""
     /// Тип дела из базы («Тренировка», «Закупка»). Пусто — разовое дело.
@@ -272,7 +276,8 @@ final class PlannerEvent: SyncableModel {
             errandType: errandType,
             partnerMoneyKind: partnerMoneyKindRaw.isEmpty ? nil : partnerMoneyKindRaw,
             partnerMoneyAmount: partnerMoneyAmount == 0 ? nil : partnerMoneyAmount,
-            partnerMoneyType: partnerMoneyType.isEmpty ? nil : partnerMoneyType
+            partnerMoneyType: partnerMoneyType.isEmpty ? nil : partnerMoneyType,
+            partnerStatuses: partnerStatusRaw.isEmpty ? nil : partnerStatusRaw
         )
     }
 
@@ -304,6 +309,7 @@ final class PlannerEvent: SyncableModel {
         partnerMoneyKindRaw = payload.partnerMoneyKind ?? ""
         partnerMoneyAmount = payload.partnerMoneyAmount ?? 0
         partnerMoneyType = payload.partnerMoneyType ?? ""
+        partnerStatusRaw = payload.partnerStatuses ?? ""
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }

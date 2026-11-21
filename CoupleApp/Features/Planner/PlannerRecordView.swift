@@ -43,6 +43,9 @@ struct PlannerRecordView: View {
     private var canEdit: Bool { event.scopeValue.canEdit(by: account.current) }
     private var isCancelled: Bool { event.isCancelled(on: day) }
     private var isOwnerView: Bool { account.current == .owner }
+    /// Отметки «сделано / не сделано / перенос» есть у Платони и у дел Настеньки (не тренировок).
+    private var showsStatus: Bool { isOwnerView || event.categoryValue == .errand }
+    private var myStatus: PlannerErrandStatus? { event.status(on: day, for: account.current) }
     private var showsPayments: Bool { PlannerPaymentStore.isTraining(event) && !isOwnerView }
 
     private var participants: [PlannerClientDirectory.Entry] {
@@ -58,8 +61,8 @@ struct PlannerRecordView: View {
     }
 
     private var badge: PlannerPayBadge {
-        if isOwnerView {
-            switch event.status(on: day) {
+        if showsStatus {
+            switch myStatus {
             case .done: return .errandDone
             case .notDone: return .errandNotDone
             case .moved: return .errandMoved
@@ -73,7 +76,7 @@ struct PlannerRecordView: View {
         NavigationStack {
             List {
                 headerSection
-                if isOwnerView { ownerStatusSection }
+                if showsStatus { ownerStatusSection }
                 if showsPayments {
                     if isCancelled { finesSection } else { paymentsSection }
                 }
@@ -159,19 +162,19 @@ struct PlannerRecordView: View {
     private var ownerStatusSection: some View {
         Section {
             HStack(spacing: 8) {
-                statusButton("✅\nСделано", color: .green, active: event.status(on: day) == .done) { setStatus(.done) }
-                statusButton("❌\nНе сделано", color: .red, active: event.status(on: day) == .notDone) { setStatus(.notDone) }
+                statusButton("✅\nСделано", color: .green, active: myStatus == .done) { setStatus(.done) }
+                statusButton("❌\nНе сделано", color: .red, active: myStatus == .notDone) { setStatus(.notDone) }
                 statusButton("↪️\nПеренос", color: .gray, active: isMovedStatus) {
                     moveTarget = PlannerCalendar.combine(day: PlannerCalendar.addDays(1, to: day), time: event.start)
                     showMoveSheet = true
                 }
             }
             .buttonStyle(.borderless)
-            if case .moved(let target) = event.status(on: day) {
+            if case .moved(let target) = myStatus {
                 Text("Перенесено на \(PlannerCalendar.dayTitle(target)), \(PlannerCalendar.time(target))")
                     .font(.footnote.weight(.semibold))
             }
-            if event.status(on: day) != nil {
+            if myStatus != nil {
                 Button("Снять отметку", role: .destructive) { setStatus(nil) }
                     .font(.footnote)
             }
@@ -190,7 +193,7 @@ struct PlannerRecordView: View {
     }
 
     private var isMovedStatus: Bool {
-        if case .moved = event.status(on: day) { return true }
+        if case .moved = myStatus { return true }
         return false
     }
 
@@ -211,7 +214,7 @@ struct PlannerRecordView: View {
     private func setStatus(_ status: PlannerErrandStatus?) {
         // Если отменяется перенос, новая запись в новом дне удаляется.
         PlannerErrandCarry.revoke(event, day: day, context: context)
-        event.setStatus(status, on: day)
+        event.setStatus(status, on: day, for: account.current)
         event.markChanged()
         try? context.save()
         sync.requestSync()
