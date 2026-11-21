@@ -35,6 +35,7 @@ struct PlannerEventEditor: View {
     @State private var newErrandType = ""
     @State private var newErrandEmoji = ""
     @State private var newErrandMoney: PlannerMoneyDirection = .none
+    @State private var creatingType = false
     @State private var newMoneyType = ""
     private var durationMinutes: Int { max(0, Int(end.timeIntervalSince(start) / 60)) }
 
@@ -124,21 +125,18 @@ struct PlannerEventEditor: View {
             .pickerStyle(.segmented)
             if errandRegular {
                 if !errandType.isEmpty {
-                    HStack {
+                    // Нажатие на выбранный тип снимает выбор.
+                    Button { errandType = ""; moneyDirection = .none } label: {
                         Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(Color.accentColor)
-                        Spacer()
-                        Button("Снять") { errandType = ""; moneyDirection = .none }
-                            .font(.footnote)
-                            .buttonStyle(.borderless)
                     }
                 }
                 HStack {
                     TextField("Поиск или новый тип", text: $newErrandType)
                         .textInputAutocapitalization(.sentences)
-                        .onSubmit(addErrandType)
+                        .onSubmit { if !trimmedNewType.isEmpty && !newTypeExists { creatingType = true } }
                     if !trimmedNewType.isEmpty && !newTypeExists {
-                        Button(action: addErrandType) {
+                        Button { creatingType = true } label: {
                             Image(systemName: "plus.circle.fill").font(.title3)
                         }
                         .buttonStyle(.borderless)
@@ -154,11 +152,22 @@ struct PlannerEventEditor: View {
                             .font(.footnote.weight(.semibold))
                     }
                 }
-                PlannerEmojiStrip(selection: $newErrandEmoji)
-                Picker("Деньги нового типа", selection: $newErrandMoney) {
-                    ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
+                if creatingType, !trimmedNewType.isEmpty, !newTypeExists {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Новый тип «\(trimmedNewType)»").font(.subheadline.weight(.semibold))
+                        PlannerEmojiStrip(selection: $newErrandEmoji)
+                        Picker("Деньги типа", selection: $newErrandMoney) {
+                            ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        HStack {
+                            Button("Создать тип", action: addErrandType)
+                                .buttonStyle(.borderedProminent)
+                            Button("Отмена") { creatingType = false }
+                                .buttonStyle(.borderless)
+                        }
+                    }
                 }
-                .pickerStyle(.segmented)
                 // Предлагаем не больше двух типов: последние или подходящие под поиск.
                 ForEach(typeSuggestions) { kind in
                     Button { selectKind(kind) } label: {
@@ -246,6 +255,7 @@ struct PlannerEventEditor: View {
         newErrandType = ""
         newErrandEmoji = ""
         newErrandMoney = .none
+        creatingType = false
         sync.requestSync()
     }
 
@@ -290,13 +300,9 @@ struct PlannerEventEditor: View {
                                 Text("₽")
                             }
                             if !moneyType.isEmpty {
-                                HStack {
+                                Button { moneyType = "" } label: {
                                     Label("Тип: \(moneyType)", systemImage: "checkmark.circle.fill")
                                         .foregroundStyle(Color.accentColor)
-                                    Spacer()
-                                    Button("Снять") { moneyType = "" }
-                                        .font(.footnote)
-                                        .buttonStyle(.borderless)
                                 }
                             }
                             HStack {

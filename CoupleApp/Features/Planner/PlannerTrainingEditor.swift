@@ -47,6 +47,7 @@ struct PlannerTrainingEditor: View {
     @State private var errandType = ""
     @State private var newErrandType = ""
     @State private var newErrandEmoji = ""
+    @State private var creatingType = false
     @State private var pMoney: PlannerMoneyDirection = .none
     @State private var pAmount: Double?
     @State private var pType = ""
@@ -321,13 +322,9 @@ struct PlannerTrainingEditor: View {
                     Text("₽")
                 }
                 if !pType.isEmpty {
-                    HStack {
+                    Button { pType = "" } label: {
                         Label("Тип: \(pType)", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(Color.accentColor)
-                        Spacer()
-                        Button("Снять") { pType = "" }
-                            .font(.footnote)
-                            .buttonStyle(.borderless)
                     }
                 }
                 HStack {
@@ -524,6 +521,7 @@ struct PlannerTrainingEditor: View {
         errandType = trimmedNewType
         newErrandType = ""
         newErrandEmoji = ""
+        creatingType = false
         sync.requestSync()
     }
 
@@ -537,28 +535,35 @@ struct PlannerTrainingEditor: View {
             .pickerStyle(.segmented)
             if errandRegular {
                 if !errandType.isEmpty {
-                    HStack {
+                    Button { errandType = "" } label: {
                         Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(Color.accentColor)
-                        Spacer()
-                        Button("Снять") { errandType = "" }
-                            .font(.footnote)
-                            .buttonStyle(.borderless)
                     }
                 }
                 HStack {
                     TextField("Поиск или новый тип", text: $newErrandType)
                         .textInputAutocapitalization(.sentences)
-                        .onSubmit(addErrandType)
+                        .onSubmit { if !trimmedNewType.isEmpty && !newTypeExists { creatingType = true } }
                     if !trimmedNewType.isEmpty && !newTypeExists {
-                        Button(action: addErrandType) {
+                        Button { creatingType = true } label: {
                             Image(systemName: "plus.circle.fill").font(.title3)
                         }
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Добавить тип дела")
                     }
                 }
-                PlannerEmojiStrip(selection: $newErrandEmoji)
+                if creatingType, !trimmedNewType.isEmpty, !newTypeExists {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Новый тип «\(trimmedNewType)»").font(.subheadline.weight(.semibold))
+                        PlannerEmojiStrip(selection: $newErrandEmoji)
+                        HStack {
+                            Button("Создать тип", action: addErrandType)
+                                .buttonStyle(.borderedProminent)
+                            Button("Отмена") { creatingType = false }
+                                .buttonStyle(.borderless)
+                        }
+                    }
+                }
                 if errandType.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Без типа регулярное дело создать нельзя. Выбери или создай тип (кнопка +).", systemImage: "exclamationmark.triangle.fill")
