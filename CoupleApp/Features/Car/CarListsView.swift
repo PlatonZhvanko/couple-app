@@ -186,7 +186,6 @@ struct CarStatsView: View {
         var year = 0.0
         var month = 0.0
         var categories: [(title: String, sum: Double)] = []
-        var payers: [(name: String, sum: Double)] = []
         var average: String = "—"
         var last: String = "—"
         var perKm: String = "—"
@@ -195,7 +194,6 @@ struct CarStatsView: View {
     }
 
     @Environment(\.modelContext) private var context
-    @Environment(AccountStore.self) private var account
     @State private var summary: Summary?
 
     var body: some View {
@@ -217,14 +215,6 @@ struct CarStatsView: View {
                         ForEach(0..<summary.categories.count, id: \.self) { index in
                             LabeledContent(summary.categories[index].title,
                                            value: CarFormat.money(summary.categories[index].sum))
-                        }
-                    }
-                }
-                if !summary.payers.isEmpty {
-                    Section("Кто платил") {
-                        ForEach(0..<summary.payers.count, id: \.self) { index in
-                            LabeledContent(summary.payers[index].name,
-                                           value: CarFormat.money(summary.payers[index].sum))
                         }
                     }
                 }
@@ -262,19 +252,13 @@ struct CarStatsView: View {
         let yearStart = calendar.dateInterval(of: .year, for: now)?.start ?? now
 
         var byCategory: [String: Double] = [:]
-        var byMember: [String: Double] = [:]
         for entry in entries where entry.amount > 0 {
             result.total += entry.amount
             if entry.date >= yearStart { result.year += entry.amount }
             if entry.date >= monthStart { result.month += entry.amount }
             byCategory[entry.categoryTitle, default: 0] += entry.amount
-            byMember[entry.member, default: 0] += entry.amount
         }
         result.categories = byCategory.map { (title: $0.key, sum: $0.value) }.sorted { $0.sum > $1.sum }
-        result.payers = CoupleMember.allCases.compactMap { member in
-            guard let sum = byMember[member.rawValue], sum > 0 else { return nil }
-            return (name: account.name(of: member), sum: sum)
-        }
 
         let fuel = CarMath.fuelStats(entries)
         result.average = fuel.averageLitersPer100.map { CarFormat.consumption($0) } ?? "—"

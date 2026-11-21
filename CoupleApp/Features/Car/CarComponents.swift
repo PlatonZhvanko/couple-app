@@ -77,7 +77,6 @@ struct CarEntryRow: View {
     private var subtitle: String {
         var parts = [entry.date.formatted(date: .abbreviated, time: .omitted)]
         if entry.odometer > 0 { parts.append(CarFormat.km(entry.odometer)) }
-        parts.append(account.name(of: entry.memberValue))
         return parts.joined(separator: " · ")
     }
 }
