@@ -22,6 +22,7 @@ struct CarRootView: View {
     /// Выбранная на входе машина. Каждый раз при входе в раздел сначала выбор.
     @State private var chosenID: UUID?
     @State private var showOdometer = false
+    @AppStorage("car.spendPeriod") private var spendPeriod: CarStatsView.Period = .all
     @State private var odometerText = ""
 
     private var chosenCar: CarVehicle? { cars.first { $0.syncID == chosenID } }
@@ -63,6 +64,7 @@ struct CarRootView: View {
         }
         .onAppear {
             CarSeed.seedIfNeeded(context: context)
+            CarAudiExpensesSeed.seedIfNeeded(context: context)
             sync.requestSync()
             rescheduleNotifications()
         }
@@ -89,6 +91,14 @@ struct CarRootView: View {
         if lastService == nil { return .noService }
         if allRepairs.of(car).contains(where: { !$0.isPaid }) { return .service(lastKm: lastService ?? 0, nowKm: odometer) }
         return .general
+    }
+
+    private func interval(for period: CarStatsView.Period) -> DateInterval {
+        switch period {
+        case .month: CarMath.currentMonth()
+        case .year: CarMath.currentYear()
+        case .all: DateInterval(start: .distantPast, end: .distantFuture)
+        }
     }
 
     private func hasAlerts(_ car: CarVehicle) -> Bool {
@@ -157,6 +167,15 @@ struct CarRootView: View {
                         odometerText = ""
                         showOdometer = true
                     }
+                }
+
+                Picker("Период", selection: $spendPeriod) {
+                    ForEach(CarStatsView.Period.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                LabeledContent("Потрачено на машину") {
+                    Text(CarFormat.money(CarMath.total(entries, in: interval(for: spendPeriod))))
+                        .font(.headline).monospacedDigit()
                 }
             } footer: {
                 if !car.plate.isEmpty {
