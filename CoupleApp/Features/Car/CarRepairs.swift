@@ -267,14 +267,19 @@ struct CarRepairFormView: View {
     @State private var date: Date
     @State private var odometerText: String
     @State private var note: String
+    @State private var duration: Int
+    @State private var isDone: Bool
+    @State private var doneDate: Date
+    @State private var doneOdometerText: String
 
-    init(car: CarVehicle, repair: CarRepair?) {
+    init(car: CarVehicle, repair: CarRepair?, startDone: Bool = false) {
         self.car = car
         self.repair = repair
         self.startDone = startDone
         _duration = State(initialValue: repair?.durationMinutes ?? 60)
         _isDone = State(initialValue: repair?.isPaid ?? startDone)
         _doneDate = State(initialValue: repair?.paidAt ?? .now)
+        _doneOdometerText = State(initialValue: "")
         _title = State(initialValue: repair?.title ?? "")
         _priceText = State(initialValue: (repair?.price ?? 0) > 0 ? CarNumber.text(Int(repair?.price ?? 0)) : "")
         _hasDate = State(initialValue: repair?.desiredDate != nil)
