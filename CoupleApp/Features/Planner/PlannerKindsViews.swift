@@ -356,3 +356,17 @@ struct PlannerMoneyKindDetail: View {
         sync.requestSync()
     }
 }
+
+/// Отдельный раздел «Типы дел» (вкладка Насти, рядом с клиентами и группами).
+enum PlannerErrandKindsFeature {
+    static let feature = Feature(
+        id: "plannerErrandKinds",
+        title: "Типы дел",
+        systemImage: "tag.fill",
+        availableFor: [.partner]
+    ) {
+        NavigationStack {
+            PlannerErrandKindsView()
+        }
+    }
+}
