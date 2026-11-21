@@ -375,6 +375,15 @@ struct PlannerCalendarView: View {
         return Set(shifts.map { cal.startOfDay(for: $0.day) })
     }
 
+    /// Цвета типов дел (если заданы) у текущего человека.
+    private var errandColors: [String: String] {
+        var result: [String: String] = [:]
+        for kind in errandKinds where kind.member == account.current && !kind.colorHex.isEmpty {
+            result[kind.name.lowercased()] = kind.colorHex
+        }
+        return result
+    }
+
     /// Эмодзи типов дел для журнала: у текущего человека, иначе чемодан.
     private var errandEmojis: [String: String] {
         var result: [String: String] = [:]
@@ -398,7 +407,11 @@ struct PlannerCalendarView: View {
     }
 
     private func blockColor(_ event: PlannerEvent, _ day: Date) -> Color {
-        let base = PlannerColorStore.color(for: event, rules: colorRules)
+        var base = PlannerColorStore.color(for: event, rules: colorRules)
+        if event.colorHex.isEmpty, !event.errandType.isEmpty,
+           let hex = errandColors[event.errandType.lowercased()], let typeColor = Color(hex: hex) {
+            base = typeColor
+        }
         guard isOwner, let status = event.status(on: day) else { return base }
         switch status {
         case .done: return Color.green.opacity(0.75)
