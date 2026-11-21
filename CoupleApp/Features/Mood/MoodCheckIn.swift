@@ -203,6 +203,7 @@ struct MoodCheckInView: View {
     @State private var sleepQuality = 3
     @State private var sleepEntry: SleepEntry?
     @State private var weightText = ""
+    @State private var confirmCancel = false
 
     /// По умолчанию: лёг вчера в 23:00, встал сегодня в 07:00.
     private static func defaultWake() -> Date {
@@ -287,6 +288,18 @@ struct MoodCheckInView: View {
                     TextField("Что запомнилось за день", text: $note, axis: .vertical)
                         .lineLimit(1...4)
                 }
+
+                if existing != nil {
+                    Section {
+                        Button("Отменить отметку", role: .destructive) { confirmCancel = true }
+                    } footer: {
+                        Text("Очистит итог дня за сегодня. Сон и вес останутся.")
+                    }
+                }
+            }
+            .confirmationDialog("Отменить отметку за сегодня?", isPresented: $confirmCancel, titleVisibility: .visible) {
+                Button("Отменить отметку", role: .destructive, action: cancelCheckIn)
+                Button("Оставить", role: .cancel) {}
             }
             .navigationTitle("Итог дня")
             .navigationBarTitleDisplayMode(.inline)
@@ -323,6 +336,19 @@ struct MoodCheckInView: View {
         for parameter in MoodParameter.allCases {
             values[parameter] = existing.value(parameter)
         }
+    }
+
+    /// Очищает сегодняшний итог дня вместе с отметкой в истории настроения.
+    private func cancelCheckIn() {
+        guard let existing else { return }
+        if let id = existing.entryID,
+           let entry = (try? context.fetch(FetchDescriptor<MoodEntry>(predicate: #Predicate { $0.syncID == id })))?.first {
+            entry.markDeleted()
+        }
+        existing.markDeleted()
+        try? context.save()
+        sync.requestSync()
+        dismiss()
     }
 
     private func save() {
