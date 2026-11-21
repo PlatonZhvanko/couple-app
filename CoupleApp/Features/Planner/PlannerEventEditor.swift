@@ -100,24 +100,28 @@ struct PlannerEventEditor: View {
             }
             .pickerStyle(.segmented)
             if errandRegular {
-                ForEach(errandKinds) { kind in
-                    Button { errandType = errandType == kind.name ? "" : kind.name } label: {
-                        HStack {
-                            Label(kind.name, systemImage: "tag")
-                            Spacer()
-                            if errandType == kind.name { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
-                        }
-                    }
-                    .foregroundStyle(.primary)
+                if !errandType.isEmpty {
+                    Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(Color.accentColor)
                 }
                 HStack {
-                    TextField("Новый тип дела", text: $newErrandType)
+                    TextField("Поиск или новый тип", text: $newErrandType)
+                        .textInputAutocapitalization(.sentences)
                         .onSubmit(addErrandType)
-                    Button(action: addErrandType) {
-                        Image(systemName: "plus.circle.fill").font(.title3)
+                    if !trimmedNewType.isEmpty && !newTypeExists {
+                        Button(action: addErrandType) {
+                            Image(systemName: "plus.circle.fill").font(.title3)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Добавить тип дела")
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(newErrandType.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                // Предлагаем не больше двух типов: последние или подходящие под поиск.
+                ForEach(typeSuggestions) { kind in
+                    Button { errandType = kind.name; newErrandType = "" } label: {
+                        Label(kind.name, systemImage: kind.name == errandType ? "checkmark" : "tag")
+                    }
+                    .foregroundStyle(.primary)
                 }
             }
         } header: {
@@ -127,6 +131,18 @@ struct PlannerEventEditor: View {
                  ? "Тип берётся из базы и считается в статистике. Новые типы можно создать здесь."
                  : "Разовое дело без типа: попадает в «Разовые».")
         }
+    }
+
+    private var trimmedNewType: String { newErrandType.trimmingCharacters(in: .whitespaces) }
+
+    private var newTypeExists: Bool {
+        errandKinds.contains { $0.name.caseInsensitiveCompare(trimmedNewType) == .orderedSame }
+    }
+
+    private var typeSuggestions: [PlannerErrandKind] {
+        let sorted = errandKinds.sorted { $0.updatedAt > $1.updatedAt }
+        guard !trimmedNewType.isEmpty else { return Array(sorted.prefix(2)) }
+        return Array(sorted.filter { $0.name.localizedCaseInsensitiveContains(trimmedNewType) }.prefix(2))
     }
 
     private func addErrandType() {
