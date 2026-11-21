@@ -12,10 +12,6 @@ struct PlannerOwnerSetupView: View {
     @Query(filter: #Predicate<PlannerMoneyOp> { $0.deletedAt == nil }, sort: \PlannerMoneyOp.date, order: .reverse)
     private var ops: [PlannerMoneyOp]
 
-    @State private var newName = ""
-    @State private var newEmoji = ""
-    @State private var newIsProfit = true
-
     var body: some View {
         NavigationStack {
             List {
@@ -35,25 +31,21 @@ struct PlannerOwnerSetupView: View {
                     Text("Смены ставятся в календаре кнопкой «Смены». Каждая идёт в статистику на указанную сумму.")
                 }
 
-                kindsSection(title: "📈 Типы прибыли", profit: true)
-                kindsSection(title: "📉 Типы трат", profit: false)
-
-                Section("➕ Новый тип") {
-                    Picker("Что это", selection: $newIsProfit) {
-                        Text("Прибыль/Приход").tag(true)
-                        Text("Трата").tag(false)
+                Section {
+                    NavigationLink {
+                        PlannerMoneyKindsView(profit: true)
+                    } label: {
+                        Label("📈 Типы прибыли/прихода", systemImage: "arrow.up.right.circle")
                     }
-                    .pickerStyle(.segmented)
-                    HStack {
-                        TextField("🙂", text: $newEmoji)
-                            .frame(width: 36)
-                        TextField("Название, например «Консультация»", text: $newName)
-                            .onSubmit(addKind)
-                        Button(action: addKind) {
-                            Image(systemName: "plus.circle.fill").font(.title3)
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    NavigationLink {
+                        PlannerMoneyKindsView(profit: false)
+                    } label: {
+                        Label("📉 Типы трат", systemImage: "arrow.down.right.circle")
+                    }
+                    NavigationLink {
+                        PlannerErrandKindsView()
+                    } label: {
+                        Label("🏷 Типы дел", systemImage: "tag")
                     }
                 }
 
@@ -92,29 +84,6 @@ struct PlannerOwnerSetupView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .environment(\.locale, PlannerCalendar.locale)
-    }
-
-    private func kindsSection(title: String, profit: Bool) -> some View {
-        let items = kinds.filter { $0.isProfit == profit }
-        return Section(title) {
-            if items.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
-            ForEach(items) { kind in Text(kind.title) }
-                .onDelete { offsets in
-                    for index in offsets { items[index].markDeleted() }
-                    try? context.save()
-                    sync.requestSync()
-                }
-        }
-    }
-
-    private func addKind() {
-        PlannerMoneyKindStore.ensure(
-            context, name: newName, isProfit: newIsProfit,
-            emoji: newEmoji.trimmingCharacters(in: .whitespaces)
-        )
-        newName = ""
-        newEmoji = ""
-        sync.requestSync()
     }
 }
 
