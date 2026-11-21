@@ -108,7 +108,9 @@ struct PlannerColorSettingsView: View {
     @Query(filter: #Predicate<PlannerGroupKind> { $0.deletedAt == nil }, sort: \PlannerGroupKind.name)
     private var groups: [PlannerGroupKind]
     @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil }, sort: \PlannerErrandKind.name)
-    private var errands: [PlannerErrandKind]
+    private var allErrands: [PlannerErrandKind]
+    @Environment(AccountStore.self) private var account
+    private var errands: [PlannerErrandKind] { allErrands.visible(to: account.current) }
     @Query(filter: #Predicate<PlannerColorRule> { $0.deletedAt == nil })
     private var rules: [PlannerColorRule]
 

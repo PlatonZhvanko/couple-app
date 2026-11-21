@@ -196,7 +196,7 @@ struct PlannerTrainingEditor: View {
                                     .textInputAutocapitalization(.sentences)
                                 if !trimmedTitle.isEmpty && !errandKindExists {
                                     Button {
-                                        PlannerErrandKindStore.ensure(context, name: trimmedTitle)
+                                        PlannerErrandKindStore.ensure(context, name: trimmedTitle, owner: account.current)
                                         sync.requestSync()
                                     } label: {
                                         Image(systemName: "plus.circle.fill").font(.title3)
@@ -453,12 +453,13 @@ struct PlannerTrainingEditor: View {
     private var trimmedTitle: String { title.trimmingCharacters(in: .whitespaces) }
 
     private var errandKindExists: Bool {
-        errandKinds.contains { $0.name.caseInsensitiveCompare(trimmedTitle) == .orderedSame }
+        errandKinds.visible(to: account.current).contains { $0.name.caseInsensitiveCompare(trimmedTitle) == .orderedSame }
     }
 
     private var errandMatches: [PlannerErrandKind] {
-        guard !trimmedTitle.isEmpty else { return Array(errandKinds.prefix(5)) }
-        return Array(errandKinds.filter { $0.name.localizedCaseInsensitiveContains(trimmedTitle) }.prefix(5))
+        let mine = errandKinds.visible(to: account.current)
+        guard !trimmedTitle.isEmpty else { return Array(mine.prefix(5)) }
+        return Array(mine.filter { $0.name.localizedCaseInsensitiveContains(trimmedTitle) }.prefix(5))
     }
 
     /// Если такой клиент уже есть, выбираем его, иначе заводим нового в общей базе.
@@ -509,7 +510,8 @@ struct PlannerTrainingEditor: View {
         case .errand:
             target.title = title.trimmingCharacters(in: .whitespaces)
             target.participantIDs = []
-            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.title) }
+            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.title, owner: account.current)
+                if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: target.title) } }
             target.errandType = errandRegular ? target.title : ""
         }
         target.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
