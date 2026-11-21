@@ -221,7 +221,7 @@ final class PlannerMoneyOp: SyncableModel {
 
 // MARK: - Смена
 
-/// Рабочая смена на день (9:00–23:00). Один день — одна смена на обоих телефонах.
+/// Рабочая смена на день (9:00–21:00). Один день — одна смена на обоих телефонах.
 @Model
 final class PlannerShift: SyncableModel {
     struct Payload: Codable {
@@ -231,7 +231,7 @@ final class PlannerShift: SyncableModel {
 
     static let recordKind = "planner.shift"
     static let startHour = 9
-    static let endHour = 23
+    static let endHour = 21
     /// Сколько приносит смена по умолчанию.
     static let defaultAmount: Double = 4000
 
@@ -304,6 +304,8 @@ struct PlannerLedgerEntry: Identifiable {
     let type: String
     /// Прибыль со знаком плюс, трата со знаком минус.
     let amount: Double
+    /// Тип дела (для дел): пусто — разовое.
+    var errandType: String = ""
 }
 
 enum PlannerLedger {
@@ -323,7 +325,8 @@ enum PlannerLedger {
                 result.append(PlannerLedgerEntry(
                     id: "event.\(event.syncID).\(Int(day.timeIntervalSince1970))", day: day,
                     title: event.plainTitle, source: .errand,
-                    type: event.moneyType.isEmpty ? "Без типа" : event.moneyType, amount: event.signedMoney
+                    type: event.moneyType.isEmpty ? "Без типа" : event.moneyType, amount: event.signedMoney,
+                    errandType: event.errandType
                 ))
             }
         }

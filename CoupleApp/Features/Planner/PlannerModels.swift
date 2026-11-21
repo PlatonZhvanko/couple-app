@@ -195,6 +195,8 @@ final class PlannerEvent: SyncableModel {
         var moneyType: String?
         /// Статусы по дням: «день=done|notDone|moved@время».
         var statuses: String?
+        /// Тип дела из базы типов (регулярное дело), пусто — разовое.
+        var errandType: String?
     }
 
     static let recordKind = "planner.event"
@@ -237,6 +239,8 @@ final class PlannerEvent: SyncableModel {
     var moneyType: String = ""
     /// Статусы по дням (сделано / не сделано / перенесено).
     var statusRaw: String = ""
+    /// Тип дела из базы («Тренировка», «Закупка»). Пусто — разовое дело.
+    var errandType: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -256,7 +260,8 @@ final class PlannerEvent: SyncableModel {
             participantIDs: participantIDs, skippedDays: skippedDays, isPrivate: isPrivate,
             repeatInterval: repeatInterval, repeatWeekdays: repeatWeekdaysRaw,
             repeatUntil: repeatUntil, colorHex: colorHex, cancelledDays: cancelledDaysRaw,
-            moneyKind: moneyKindRaw, moneyAmount: moneyAmount, moneyType: moneyType, statuses: statusRaw
+            moneyKind: moneyKindRaw, moneyAmount: moneyAmount, moneyType: moneyType, statuses: statusRaw,
+            errandType: errandType
         )
     }
 
@@ -284,6 +289,7 @@ final class PlannerEvent: SyncableModel {
         moneyAmount = payload.moneyAmount ?? 0
         moneyType = payload.moneyType ?? ""
         statusRaw = payload.statuses ?? ""
+        errandType = payload.errandType ?? ""
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }

@@ -333,8 +333,11 @@ struct PlannerCalendarView: View {
 
     private var isOwner: Bool { account.current == .owner }
 
+    /// Смены Платони: он видит их в своём планнере, Настенька только в планнере партнёра.
     private var shiftDays: Set<Date> {
-        Set(shifts.map { cal.startOfDay(for: $0.day) })
+        let viewingOwner = (account.current == .owner) != showsPartner
+        guard viewingOwner else { return [] }
+        return Set(shifts.map { cal.startOfDay(for: $0.day) })
     }
 
     /// Смайлики настроения за день: свой и партнёра (виден обоим).
@@ -378,7 +381,7 @@ struct PlannerCalendarView: View {
             VStack(spacing: 16) {
                 header
                 if shiftMode && isOwner {
-                    Text("Нажимай на дни, чтобы поставить или снять смену: 9:00–23:00, \(PlannerPricing.format(shiftAmount)) за день.")
+                    Text("Нажимай на дни, чтобы поставить или снять смену: 9:00–21:00, \(PlannerPricing.format(shiftAmount)) за день.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -463,7 +466,7 @@ struct PlannerCalendarView: View {
         let mood = moodMark(day)
 
         return Button {
-            if shiftMode && isOwner {
+            if shiftMode && isOwner && !showsPartner {
                 PlannerShiftStore.toggle(context, day: day, amount: shiftAmount)
                 sync.requestSync()
             } else if let moving {

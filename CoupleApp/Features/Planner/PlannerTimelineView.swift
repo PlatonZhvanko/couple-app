@@ -32,12 +32,12 @@ struct PlannerTimelineView: View {
     var onSwipe: (Int) -> Void = { _ in }
 
     static let slotMinutes = 30
-    static let minSlotHeight: CGFloat = 24
+    static let minSlotHeight: CGFloat = 15
     private let timeColumnWidth: CGFloat = 44
-    private let topPadding: CGFloat = 10
-    private let bottomPadding: CGFloat = 16
-    /// Стандартный видимый промежуток: с 9:00 до 0:00 (в получасовых отрезках).
-    private let defaultFirstSlot = 18
+    private let topPadding: CGFloat = 6
+    private let bottomPadding: CGFloat = 8
+    /// Стандартный видимый промежуток: с 7:00 до 0:00 (в получасовых отрезках).
+    private let defaultFirstSlot = 14
     private let defaultLastSlot = 48
 
     /// Показаны ли все 24 часа (с прокруткой) вместо экрана «всё сразу».
@@ -76,7 +76,7 @@ struct PlannerTimelineView: View {
                 let range = slotRange
                 let columnWidth = (geo.size.width - timeColumnWidth) / CGFloat(max(days.count, 1))
                 let fit = (geo.size.height - topPadding - bottomPadding) / CGFloat(range.count)
-                // Не меньше 24 пт на получас: так блоки и подписи времени не слипаются.
+                // Весь день помещается на экран без прокрутки; не меньше 15 пт на получас: так блоки и подписи времени не слипаются.
                 let slotHeight: CGFloat = showFullDay ? 34 : max(fit, Self.minSlotHeight)
                 ScrollView {
                     HStack(alignment: .top, spacing: 0) {
@@ -119,7 +119,7 @@ struct PlannerTimelineView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: timeColumnWidth, height: 30)
             }
-            .accessibilityLabel(showFullDay ? "Свернуть до 9:00–0:00" : "Показать все 24 часа")
+            .accessibilityLabel(showFullDay ? "Свернуть до 7:00–0:00" : "Показать все 24 часа")
             ForEach(days, id: \.self) { day in
                 Button { onHeaderTap(day) } label: {
                     headerCell(day)
