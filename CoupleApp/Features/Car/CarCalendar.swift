@@ -16,7 +16,7 @@ enum CarCalendar {
         let to = interval.end
         let descriptor = FetchDescriptor<CarRepair>(
             predicate: #Predicate {
-                $0.deletedAt == nil && $0.isPaid == false && $0.desiredDate != nil
+                $0.deletedAt == nil && $0.desiredDate != nil
             }
         )
         guard let repairs = try? context.fetch(descriptor) else { return [] }
@@ -37,16 +37,23 @@ enum CarCalendar {
             }
             return CalendarItem(
                 id: "car.repair.\(repair.syncID.uuidString)",
-                title: "\(repair.title.isEmpty ? "Ремонт" : repair.title) · \(car)",
+                title: "\(repair.isPaid ? "✓ " : "")\(repair.title.isEmpty ? "Ремонт" : repair.title) · \(car)",
                 start: start,
                 end: end,
                 member: creator,
-                color: .orange,
-                systemImage: "wrench.and.screwdriver.fill",
+                color: repair.isPaid ? .green : .orange,
+                systemImage: repair.isPaid ? "checkmark.circle.fill" : "wrench.and.screwdriver.fill",
                 detail: open,
                 move: { newStart in
                     repair.desiredDate = newStart
                     repair.markChanged()
+                    // Уже сделанный ремонт: трата переезжает на новый день.
+                    if repair.isPaid, let id = repair.entryID,
+                       let entry = ((try? context.fetch(FetchDescriptor<CarEntry>())) ?? []).first(where: { $0.syncID == id }) {
+                        entry.date = newStart
+                        entry.markChanged()
+                        repair.paidAt = newStart
+                    }
                     try? context.save()
                 }
             )

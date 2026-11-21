@@ -157,10 +157,7 @@ struct CarRepairsView: View {
                         row(repair)
                             .swipeActions(edge: .leading) {
                                 if isMine(repair) {
-                                    Button("Сделано", systemImage: "checkmark.circle") {
-                                        startDone = true
-                                        editing = repair
-                                    }.tint(.green)
+                                    Button("Сделано", systemImage: "checkmark.circle") { pay(repair) }.tint(.green)
                                 }
                             }
                             .swipeActions(edge: .trailing) {
@@ -237,7 +234,8 @@ struct CarRepairsView: View {
 
     private func pay(_ repair: CarRepair) {
         let odo = CarMath.currentOdometer(car: car, entries: allEntries.of(car))
-        CarRepairActions.pay(repair, context: context, member: account.current, odometer: odo)
+        CarRepairActions.pay(repair, context: context, member: account.current, odometer: odo,
+                             date: repair.desiredDate ?? .now)
         sync.requestSync()
     }
 
@@ -351,21 +349,8 @@ struct CarRepairFormView: View {
                 if repair != nil {
                     Section {
                         Toggle("Сделано", isOn: $isDone)
-                        if isDone {
-                            DatePicker("Когда сделано", selection: $doneDate, in: ...Date.now.addingTimeInterval(86400), displayedComponents: .date)
-                            LabeledContent("Стоимость, ₽") {
-                                TextField("0", text: $priceText)
-                                    .keyboardType(.decimalPad)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                            LabeledContent("Пробег, км") {
-                                TextField("необязательно", text: $doneOdometerText)
-                                    .keyboardType(.numberPad)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
                     } footer: {
-                        Text("Сумма попадёт в траты машины и в статистику в день выполнения.")
+                        Text("Дата берётся из записи, сумма из цены ремонта. Сделали в другой день: сначала перенесите запись, потом поставьте галочку. Сумма попадёт в траты и аналитику.")
                     }
                 }
             }
@@ -400,16 +385,16 @@ struct CarRepairFormView: View {
         let entries = ((try? context.fetch(FetchDescriptor<CarEntry>())) ?? [])
             .filter { $0.carID == car.syncID && $0.deletedAt == nil }
         if isDone && !target.isPaid {
-            let odo = CarNumber.int(doneOdometerText) ?? CarMath.currentOdometer(car: car, entries: entries)
+            let odo = CarMath.currentOdometer(car: car, entries: entries)
             CarRepairActions.pay(target, context: context, member: account.current, odometer: odo,
-                                 date: doneDate, amount: target.price)
+                                 date: target.desiredDate ?? .now, amount: target.price)
         } else if isDone, let id = target.entryID, let entry = entries.first(where: { $0.syncID == id }) {
             // Уже было сделано: обновляем дату и сумму в тратах.
-            entry.date = doneDate
+            let when = target.desiredDate ?? target.paidAt ?? .now
+            entry.date = when
             entry.amount = target.price
-            if let km = CarNumber.int(doneOdometerText) { entry.odometer = km }
             entry.markChanged()
-            target.paidAt = doneDate
+            target.paidAt = when
             target.markChanged()
             try? context.save()
         } else if !isDone && target.isPaid {
