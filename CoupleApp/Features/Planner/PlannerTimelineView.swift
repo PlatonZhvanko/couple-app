@@ -389,7 +389,7 @@ struct PlannerTimelineView: View {
         // Размер шрифта: самый крупный, при котором самое длинное слово целиком влезает
         // в ширину колонки (слова не рвутся посередине) и строки влезают в высоту.
         let narrow = block.columns > 1
-        let hasMark = block.badge.symbol != nil || block.together
+        let hasMark = block.badge.symbol != nil || block.together || !block.emoji.isEmpty
         let topRow = hasMark && height >= 30
         let topInset: CGFloat = topRow ? 11 : 1
         let trailingInset: CGFloat = (hasMark && !topRow) ? 15 : 1
@@ -422,6 +422,11 @@ struct PlannerTimelineView: View {
         .padding(.bottom, 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(alignment: .topLeading) {
+            if topRow, !block.emoji.isEmpty {
+                Text(block.emoji).font(.system(size: 10)).padding(1)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 0) {
                 if block.together { Text("💞").font(.system(size: 10)) }
@@ -526,7 +531,7 @@ struct PlannerTimelineView: View {
                 color: colorFor(occurrence.event, day), start: start, end: end,
                 badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event),
                 emoji: occurrence.event.errandType.isEmpty
-                    ? (occurrence.event.categoryValue.emoji ?? "")
+                    ? ""
                     : (errandEmojis[occurrence.event.errandType.lowercased()] ?? "💼"),
                 together: occurrence.event.scopeValue == .shared
             ))

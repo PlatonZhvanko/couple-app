@@ -27,6 +27,18 @@ struct PlannerRecordView: View {
     @State private var showMoveSheet = false
     @State private var moveTarget = Date.now
 
+    @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil })
+    private var errandKinds: [PlannerErrandKind]
+
+    /// Название; у регулярного дела впереди эмодзи его типа (меняется вместе с типом).
+    private var headerTitle: String {
+        guard !event.errandType.isEmpty else { return event.displayTitle }
+        let kind = errandKinds.first {
+            $0.member == account.current && $0.name.caseInsensitiveCompare(event.errandType) == .orderedSame
+        }
+        return "\(kind?.displayEmoji ?? "💼") \(event.plainTitle)"
+    }
+
     private var cal: Calendar { PlannerCalendar.calendar }
     private var canEdit: Bool { event.scopeValue.canEdit(by: account.current) }
     private var isCancelled: Bool { event.isCancelled(on: day) }
@@ -105,7 +117,7 @@ struct PlannerRecordView: View {
         Section {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(event.displayTitle)
+                    Text(headerTitle)
                         .font(.title2.bold())
                     Spacer()
                     if let symbol = badge.symbol {
