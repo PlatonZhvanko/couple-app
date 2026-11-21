@@ -52,10 +52,17 @@ final class PlannerColorRule: SyncableModel {
     static func clientKey(_ id: UUID) -> String { "client:" + id.uuidString }
 }
 
+extension Color {
+    /// Цвет совместных дел.
+    static let plannerTogether = Color(red: 0.98, green: 0.80, blue: 0.86)
+}
+
 enum PlannerColorStore {
     /// Какого цвета рисовать запись: свой цвет записи, затем цвет клиента, группы или дела, затем цвет вида.
     static func color(for event: PlannerEvent, rules: [PlannerColorRule]) -> Color {
         if let own = Color(hex: event.colorHex) { return own }
+        // Совместное дело: бледно-розовый, не пересекается с другими цветами.
+        if event.scopeValue == .shared { return Color.plannerTogether }
         func rule(_ key: String) -> Color? {
             rules.first { $0.key == key && $0.deletedAt == nil }.flatMap { Color(hex: $0.hex) }
         }

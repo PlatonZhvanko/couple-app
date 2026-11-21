@@ -29,6 +29,8 @@ struct PlannerTrainingEditor: View {
     @State private var start: Date
     @State private var durationMinutes: Int
     @State private var isPrivate: Bool
+    /// «Совместное дело»: общая запись, видна и у Платони, и у Настеньки.
+    @State private var isTogether: Bool
     @State private var repeatRule: PlannerRepeat
     @State private var repeatInterval: Int
     @State private var repeatWeekdays: [Int]
@@ -68,6 +70,7 @@ struct PlannerTrainingEditor: View {
             _start = State(initialValue: event.start)
             _durationMinutes = State(initialValue: max(30, Int(event.end.timeIntervalSince(event.start) / 60)))
             _isPrivate = State(initialValue: event.isPrivate)
+            _isTogether = State(initialValue: event.scopeValue == .shared)
             _repeatRule = State(initialValue: event.repeatValue)
             _repeatInterval = State(initialValue: event.repeatInterval)
             _repeatWeekdays = State(initialValue: event.repeatWeekdays)
@@ -85,6 +88,7 @@ struct PlannerTrainingEditor: View {
             _start = State(initialValue: begin)
             _durationMinutes = State(initialValue: 60)
             _isPrivate = State(initialValue: false)
+            _isTogether = State(initialValue: false)
             _repeatRule = State(initialValue: .none)
             _repeatInterval = State(initialValue: 1)
             _repeatWeekdays = State(initialValue: [])
@@ -247,10 +251,17 @@ struct PlannerTrainingEditor: View {
 
                 Section {
                     Toggle("Не показывать партнёру", isOn: $isPrivate)
+                        .disabled(isTogether)
                     PlannerColorField(title: "Свой цвет записи", hex: $colorHex, defaultColor: category.color)
                     Picker("Напоминание", selection: $reminder) {
                         ForEach(PlannerReminderOption.options(allDay: false)) { Text($0.title).tag($0.minutes) }
                     }
+                }
+
+                Section {
+                    Toggle("💞 Совместное дело", isOn: $isTogether)
+                } footer: {
+                    Text("Появится в планнере и у Платони, и у Настеньки. Цвет по умолчанию бледно-розовый, его можно поменять в «Свой цвет записи».")
                 }
 
                 Section("📝 Заметка") {
@@ -505,8 +516,12 @@ struct PlannerTrainingEditor: View {
         target.isAllDay = false
         target.start = start
         target.end = start.addingTimeInterval(TimeInterval(durationMinutes * 60))
-        if event == nil { target.scope = PlannerScope.personal(account.current).rawValue }
-        target.isPrivate = isPrivate
+        if isTogether {
+            target.scope = PlannerScope.shared.rawValue
+        } else if event == nil || target.scopeValue == .shared {
+            target.scope = PlannerScope.personal(account.current).rawValue
+        }
+        target.isPrivate = isPrivate && !isTogether
         target.category = category.rawValue
         target.repeatRule = repeatRule.rawValue
         target.repeatInterval = repeatInterval

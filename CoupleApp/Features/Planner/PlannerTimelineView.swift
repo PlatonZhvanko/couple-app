@@ -369,9 +369,13 @@ struct PlannerTimelineView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .topTrailing) {
-            if let symbol = block.badge.symbol {
-                Text(symbol).font(.system(size: 10)).padding(1)
+            HStack(spacing: 0) {
+                if block.together { Text("💞").font(.system(size: 9)) }
+                if let symbol = block.badge.symbol {
+                    Text(symbol).font(.system(size: 10))
+                }
             }
+            .padding(1)
         }
         .overlay(alignment: .bottomTrailing) {
             if let owner = block.owner {
@@ -467,7 +471,8 @@ struct PlannerTimelineView: View {
                 title: occurrence.event.plainTitle,
                 color: colorFor(occurrence.event, day), start: start, end: end,
                 badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event),
-                emoji: occurrence.event.categoryValue.emoji ?? ""
+                emoji: occurrence.event.categoryValue.emoji ?? "",
+                together: occurrence.event.scopeValue == .shared
             ))
         }
         for item in externalItems(day) {
@@ -526,5 +531,6 @@ struct PlannerTimelineBlock: Identifiable {
     let owner: String?
     var column = 0
     var emoji = ""
+    var together = false
     var columns = 1
 }
