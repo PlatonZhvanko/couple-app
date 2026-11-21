@@ -229,9 +229,9 @@ struct PlannerErrandKindDetail: View {
 
     private func load() {
         guard !loaded else { return }
-        let name = kind.name
+        let kindName = kind.name
         var descriptor = FetchDescriptor<PlannerEvent>(
-            predicate: #Predicate { $0.deletedAt == nil && $0.errandType == name },
+            predicate: #Predicate { $0.deletedAt == nil && $0.errandType == kindName },
             sortBy: [SortDescriptor(\.start, order: .reverse)]
         )
         total = (try? context.fetchCount(descriptor)) ?? 0
@@ -329,9 +329,9 @@ struct PlannerMoneyKindDetail: View {
 
     private func load() {
         guard !loaded else { return }
-        let name = kind.name
+        let kindName = kind.name
         var descriptor = FetchDescriptor<PlannerMoneyOp>(
-            predicate: #Predicate { $0.deletedAt == nil && $0.typeName == name },
+            predicate: #Predicate { $0.deletedAt == nil && $0.typeName == kindName },
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
         total = (try? context.fetchCount(descriptor)) ?? 0
