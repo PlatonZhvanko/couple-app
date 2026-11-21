@@ -29,6 +29,8 @@ struct PlannerCalendarView: View {
     @AppStorage("planner.shiftAmount") private var shiftAmount: Double = PlannerShift.defaultAmount
     /// Режим «Смены»: нажатие на день ставит или снимает смену.
     @State private var shiftMode = false
+    @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil })
+    private var errandKinds: [PlannerErrandKind]
     @State private var shiftEdit: ShiftEditTarget?
 
     private struct ShiftEditTarget: Identifiable {
@@ -319,6 +321,7 @@ struct PlannerCalendarView: View {
                 externalItems: { items(on: $0) },
                 shiftDays: shiftDays,
                 shiftParts: shiftParts,
+                errandEmojis: errandEmojis,
                 onShiftHold: { day in
                     if isOwner && !showsPartner { shiftEdit = ShiftEditTarget(day: day) }
                 },
@@ -370,6 +373,13 @@ struct PlannerCalendarView: View {
         let viewingOwner = (account.current == .owner) != showsPartner
         guard viewingOwner else { return [] }
         return Set(shifts.map { cal.startOfDay(for: $0.day) })
+    }
+
+    /// Эмодзи типов дел для журнала: у текущего человека, иначе чемодан.
+    private var errandEmojis: [String: String] {
+        var result: [String: String] = [:]
+        for kind in errandKinds where kind.member == account.current { result[kind.name.lowercased()] = kind.displayEmoji }
+        return result
     }
 
     /// Часть смены по дням: 0 — вся, 1 — первая половина, 2 — вторая.
@@ -503,7 +513,6 @@ struct PlannerCalendarView: View {
         let isBusy = !items(on: day).isEmpty
         let shiftPart = shiftParts[cal.startOfDay(for: day)]
         let isShift = shiftPart != nil && shiftDays.contains(cal.startOfDay(for: day))
-        let isFullShift = isShift && shiftPart == 0
         let mood = moodMark(day)
 
         let tapAction: () -> Void = {
@@ -531,16 +540,10 @@ struct PlannerCalendarView: View {
                     }
                 }
                 .background {
-                    // Половина смены: горит только половинка кружка (первая слева, вторая справа).
-                    if isShift, let part = shiftPart, part != 0 {
-                        Circle()
+                    // Смена: полный кружок вокруг даты, половина смены: левая или правая половинка.
+                    if isShift, let part = shiftPart {
+                        PlannerShiftDisc(part: part)
                             .fill(Color.red.opacity(0.4))
-                            .mask(
-                                HStack(spacing: 0) {
-                                    Rectangle().opacity(part == 1 ? 1 : 0)
-                                    Rectangle().opacity(part == 2 ? 1 : 0)
-                                }
-                            )
                     }
                 }
                 .foregroundStyle(isSelected ? Color(.systemBackground) : (inMonth ? Color.primary : Color.secondary.opacity(0.5)))
@@ -559,7 +562,7 @@ struct PlannerCalendarView: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 8).fill(
-                isToday ? Color.plannerToday.opacity(0.18) : (isFullShift ? Color.red.opacity(0.18) : Color.clear)
+                isToday ? Color.plannerToday.opacity(0.18) : Color.clear
             )
         )
         .contentShape(Rectangle())

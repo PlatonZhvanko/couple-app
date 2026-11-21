@@ -33,6 +33,7 @@ struct PlannerEventEditor: View {
     @State private var errandRegular: Bool
     @State private var errandType: String
     @State private var newErrandType = ""
+    @State private var newErrandEmoji = ""
     @State private var newMoneyType = ""
     private var durationMinutes: Int { max(0, Int(end.timeIntervalSince(start) / 60)) }
 
@@ -126,6 +127,9 @@ struct PlannerEventEditor: View {
                         .foregroundStyle(Color.accentColor)
                 }
                 HStack {
+                    TextField("💼", text: $newErrandEmoji)
+                        .frame(width: 36)
+                        .multilineTextAlignment(.center)
                     TextField("Поиск или новый тип", text: $newErrandType)
                         .textInputAutocapitalization(.sentences)
                         .onSubmit(addErrandType)
@@ -135,6 +139,15 @@ struct PlannerEventEditor: View {
                         }
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Добавить тип дела")
+                    }
+                }
+                if errandType.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Без типа регулярное дело создать нельзя. Выбери или создай тип (кнопка +).", systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                        Button("Сделать разовым делом") { errandRegular = false }
+                            .font(.footnote.weight(.semibold))
                     }
                 }
                 // Предлагаем не больше двух типов: последние или подходящие под поиск.
@@ -169,10 +182,12 @@ struct PlannerEventEditor: View {
     private func addErrandType() {
         let name = newErrandType.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        PlannerErrandKindStore.ensure(context, name: name, owner: account.current)
-        if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: name) }
+        let emoji = newErrandEmoji.trimmingCharacters(in: .whitespaces)
+        PlannerErrandKindStore.ensure(context, name: name, owner: account.current, emoji: emoji)
+        if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: name, emoji: emoji) }
         errandType = name
         newErrandType = ""
+        newErrandEmoji = ""
         sync.requestSync()
     }
 
@@ -182,6 +197,7 @@ struct PlannerEventEditor: View {
 
     private var isValid: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty && end >= start
+            && (account.current != .owner || !errandRegular || !errandType.trimmingCharacters(in: .whitespaces).isEmpty)
     }
 
     var body: some View {
@@ -396,7 +412,7 @@ struct PlannerEventEditor: View {
         target.reminderMinutes = reminder
         if account.current == .owner {
             let kind = errandType.trimmingCharacters(in: .whitespaces)
-            target.errandType = errandRegular ? (kind.isEmpty ? target.title : kind) : ""
+            target.errandType = errandRegular ? kind : ""
             if errandRegular {
                 PlannerErrandKindStore.ensure(context, name: target.errandType, owner: account.current)
                 if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: target.errandType) }

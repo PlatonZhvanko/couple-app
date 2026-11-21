@@ -15,6 +15,8 @@ struct PlannerTimelineView: View {
     var shiftDays: Set<Date> = []
     /// Часть смены по дням: 0 — вся, 1 — первая половина, 2 — вторая.
     var shiftParts: [Date: Int] = [:]
+    /// Эмодзи типов дел (по названию типа в нижнем регистре).
+    var errandEmojis: [String: String] = [:]
     /// Долгое нажатие на красный промежуток смены.
     var onShiftHold: (Date) -> Void = { _ in }
     /// Смайлик настроения дня (для обоих), пустая строка — нет.
@@ -523,7 +525,9 @@ struct PlannerTimelineView: View {
                 title: occurrence.event.plainTitle,
                 color: colorFor(occurrence.event, day), start: start, end: end,
                 badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event),
-                emoji: occurrence.event.categoryValue.emoji ?? "",
+                emoji: occurrence.event.errandType.isEmpty
+                    ? (occurrence.event.categoryValue.emoji ?? "")
+                    : (errandEmojis[occurrence.event.errandType.lowercased()] ?? "💼"),
                 together: occurrence.event.scopeValue == .shared
             ))
         }
