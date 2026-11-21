@@ -93,7 +93,7 @@ struct CarRootView: View {
     }
 
     private func hasAlerts(_ car: CarVehicle) -> Bool {
-        !CarAttention.alerts(car: car, entries: allEntries.of(car), repairs: allRepairs.of(car), reminders: allReminders.of(car)).isEmpty
+        !CarAttention.alerts(car: car, entries: allEntries.of(car), repairs: allRepairs.of(car), reminders: allReminders.of(car), viewer: account.current.rawValue).isEmpty
     }
 
     private var currentOdometer: Int {
@@ -121,7 +121,7 @@ struct CarRootView: View {
             }
             .listRowSeparator(.hidden)
 
-            let alerts = CarAttention.alerts(car: car, entries: entries, repairs: allRepairs.of(car), reminders: allReminders.of(car))
+            let alerts = CarAttention.alerts(car: car, entries: entries, repairs: allRepairs.of(car), reminders: allReminders.of(car), viewer: account.current.rawValue)
             if !alerts.isEmpty {
                 Section {
                     ForEach(alerts) { alert in
@@ -345,7 +345,7 @@ struct CarRootView: View {
 
     private func rescheduleNotifications() {
         CarNotifications.reschedule(
-            reminders: allReminders, cars: cars, repairs: allRepairs,
+            reminders: allReminders, cars: cars, repairs: allRepairs, viewer: account.current.rawValue,
             lastMileage: allEntries.filter { $0.odometer > 0 }.map(\.date).max()
         )
     }

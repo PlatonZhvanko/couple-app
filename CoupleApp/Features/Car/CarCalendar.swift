@@ -22,20 +22,33 @@ enum CarCalendar {
         guard let repairs = try? context.fetch(descriptor) else { return [] }
         let cars = (try? context.fetch(FetchDescriptor<CarVehicle>())) ?? []
         let names = Dictionary(cars.map { ($0.syncID, $0.displayName) }, uniquingKeysWith: { first, _ in first })
+        let carsByID = Dictionary(cars.map { ($0.syncID, $0) }, uniquingKeysWith: { first, _ in first })
 
         return repairs.compactMap { repair in
             guard let start = repair.desiredDate, start >= from, start < to else { return nil }
             let end = start.addingTimeInterval(Double(max(30, repair.durationMinutes)) * 60)
             guard end > interval.start else { return nil }
             let car = names[repair.carID] ?? "Машина"
+            // Запись видна тому, кто поставил ремонт; второй видит её у него в режиме наблюдателя.
+            let creator = CoupleMember(rawValue: repair.member) ?? owners[repair.carID.uuidString]
+            var open: (@MainActor () -> AnyView)?
+            if let vehicle = carsByID[repair.carID] {
+                open = { AnyView(CarRepairFormView(car: vehicle, repair: repair)) }
+            }
             return CalendarItem(
                 id: "car.repair.\(repair.syncID.uuidString)",
                 title: "\(repair.title.isEmpty ? "Ремонт" : repair.title) · \(car)",
                 start: start,
                 end: end,
-                member: owners[repair.carID.uuidString],
+                member: creator,
                 color: .orange,
-                systemImage: "wrench.and.screwdriver.fill"
+                systemImage: "wrench.and.screwdriver.fill",
+                detail: open,
+                move: { newStart in
+                    repair.desiredDate = newStart
+                    repair.markChanged()
+                    try? context.save()
+                }
             )
         }
     }

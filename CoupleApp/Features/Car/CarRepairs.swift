@@ -156,13 +156,17 @@ struct CarRepairsView: View {
                     ForEach(todo) { repair in
                         row(repair)
                             .swipeActions(edge: .leading) {
-                                Button("Сделано", systemImage: "checkmark.circle") {
-                                    startDone = true
-                                    editing = repair
-                                }.tint(.green)
+                                if isMine(repair) {
+                                    Button("Сделано", systemImage: "checkmark.circle") {
+                                        startDone = true
+                                        editing = repair
+                                    }.tint(.green)
+                                }
                             }
                             .swipeActions(edge: .trailing) {
-                                Button("Удалить", systemImage: "trash", role: .destructive) { remove(repair) }
+                                if isMine(repair) {
+                                    Button("Удалить", systemImage: "trash", role: .destructive) { remove(repair) }
+                                }
                             }
                     }
                 } header: {
@@ -180,10 +184,12 @@ struct CarRepairsView: View {
                     ForEach(paid) { repair in
                         row(repair)
                             .swipeActions {
-                                Button("Не сделано", systemImage: "arrow.uturn.backward") {
-                                    CarRepairActions.unpay(repair, context: context)
-                                    sync.requestSync()
-                                }.tint(.orange)
+                                if isMine(repair) {
+                                    Button("Не сделано", systemImage: "arrow.uturn.backward") {
+                                        CarRepairActions.unpay(repair, context: context)
+                                        sync.requestSync()
+                                    }.tint(.orange)
+                                }
                             }
                     }
                 }
@@ -198,6 +204,9 @@ struct CarRepairsView: View {
         .sheet(isPresented: $adding) { CarRepairFormView(car: car, repair: nil) }
         .sheet(item: $editing, onDismiss: { startDone = false }) { CarRepairFormView(car: car, repair: $0, startDone: startDone) }
     }
+
+    /// Менять ремонт может только тот, кто его поставил.
+    private func isMine(_ repair: CarRepair) -> Bool { repair.member == account.current.rawValue }
 
     private func row(_ repair: CarRepair) -> some View {
         Button { editing = repair } label: {
@@ -271,6 +280,12 @@ struct CarRepairFormView: View {
     @State private var isDone: Bool
     @State private var doneDate: Date
     @State private var doneOdometerText: String
+
+    /// Чужой ремонт (поставил другой человек): только просмотр.
+    private var readOnly: Bool {
+        guard let repair else { return false }
+        return repair.member != account.current.rawValue
+    }
 
     init(car: CarVehicle, repair: CarRepair?, startDone: Bool = false) {
         self.car = car
@@ -354,14 +369,17 @@ struct CarRepairFormView: View {
                     }
                 }
             }
+            .disabled(readOnly)
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle(repair == nil ? "Новый пункт" : "Ремонт")
+            .navigationTitle(repair == nil ? "Новый пункт" : (readOnly ? "Ремонт (просмотр)" : "Ремонт"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Сохранить") { save() }
-                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                ToolbarItem(placement: .cancellationAction) { Button(readOnly ? "Закрыть" : "Отмена") { dismiss() } }
+                if !readOnly {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Сохранить") { save() }
+                            .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                 }
             }
         }

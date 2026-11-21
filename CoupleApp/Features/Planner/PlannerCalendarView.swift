@@ -48,6 +48,7 @@ struct PlannerCalendarView: View {
     @AppStorage("planner.dayFocus") private var dayFocus = false
     @State private var selectedDay = PlannerCalendar.calendar.startOfDay(for: .now)
     @State private var sheetTarget: SheetTarget?
+    @State private var externalDetail: CalendarItem?
     /// Запись, которую сейчас переносят: нужно выбрать новое время.
     @State private var moving: MovingState?
     /// Элементы из других разделов (например, записи клиентов).
@@ -84,12 +85,20 @@ struct PlannerCalendarView: View {
         return visible.filter { $0.scopeValue == .shared || $0.scopeValue == scope }
     }
 
+    /// Чьи записи из других разделов показаны: свои или (в режиме наблюдателя) партнёра.
+    private var viewedMember: CoupleMember { showsPartner ? account.current.other : account.current }
+
+    /// Двигать и править запись другого раздела может только её владелец.
+    private func canEditExternal(_ item: CalendarItem) -> Bool {
+        !showsPartner && item.member == account.current
+    }
+
     /// Свои записи из других разделов.
     private func items(on day: Date) -> [CalendarItem] {
         let dayStart = cal.startOfDay(for: day)
         let dayEnd = PlannerCalendar.addDays(1, to: dayStart)
         return externalItems
-            .filter { ($0.member == nil || $0.member == account.current) && $0.start < dayEnd && $0.end > dayStart }
+            .filter { ($0.member == nil || $0.member == viewedMember) && $0.start < dayEnd && $0.end > dayStart }
             .sorted { $0.start < $1.start }
     }
 
@@ -162,6 +171,11 @@ struct PlannerCalendarView: View {
         }
         .sheet(item: $sheetTarget) { target in
             sheetContent(target)
+        }
+        .sheet(item: $externalDetail, onDismiss: { refresh() }) { item in
+            Group {
+                if let detail = item.detail { detail() } else { EmptyView() }
+            }
         }
         .sheet(item: $shiftEdit) { target in
             PlannerShiftSheet(day: target.day, defaultAmount: shiftAmount)
@@ -320,6 +334,13 @@ struct PlannerCalendarView: View {
                 events: events,
                 colorFor: { event, day in blockColor(event, day) },
                 externalItems: { items(on: $0) },
+                onExternalTap: { externalDetail = $0 },
+                canMoveExternal: { item in canEditExternal(item) && item.move != nil },
+                onExternalMove: { item, newStart in
+                    item.move?(newStart)
+                    sync.requestSync()
+                    refresh()
+                },
                 shiftDays: shiftDays,
                 shiftParts: shiftParts,
                 errandEmojis: errandEmojis,
@@ -627,7 +648,12 @@ struct PlannerCalendarView: View {
             }
 
             ForEach(dayItems) { item in
-                PlannerExternalItemRow(item: item)
+                if item.detail != nil {
+                    Button { externalDetail = item } label: { PlannerExternalItemRow(item: item) }
+                        .buttonStyle(.plain)
+                } else {
+                    PlannerExternalItemRow(item: item)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
