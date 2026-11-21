@@ -161,18 +161,14 @@ struct PlannerErrandKindDetail: View {
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
     @Environment(\.dismiss) private var dismiss
-    @Query(filter: #Predicate<PlannerEvent> { $0.deletedAt == nil })
-    private var events: [PlannerEvent]
 
     @State private var emoji = ""
-    @State private var colorHex = ""
+    @State private var useColor = false
+    @State private var color: Color = .blue
     @State private var confirmDelete = false
     @State private var loaded = false
-
-    private var related: [PlannerEvent] {
-        events.filter { $0.errandType.caseInsensitiveCompare(kind.name) == .orderedSame }
-            .sorted { $0.start > $1.start }
-    }
+    @State private var total = 0
+    @State private var recent: [(title: String, start: Date)] = []
 
     var body: some View {
         Form {
@@ -184,15 +180,18 @@ struct PlannerErrandKindDetail: View {
                         .multilineTextAlignment(.trailing)
                         .frame(width: 80)
                 }
-                PlannerColorField(title: "Свой цвет типа", hex: $colorHex, defaultColor: .accentColor)
+                Toggle("🎨 Свой цвет типа", isOn: $useColor)
+                if useColor {
+                    ColorPicker("Цвет", selection: $color, supportsOpacity: false)
+                }
             }
-            Section("Дела этого типа: \(related.count)") {
-                if related.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
-                ForEach(related.prefix(20)) { event in
+            Section("Дела этого типа: \(total)") {
+                if recent.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
+                ForEach(Array(recent.enumerated()), id: \.offset) { _, row in
                     HStack {
-                        Text(event.title)
+                        Text(row.title)
                         Spacer()
-                        Text(StatisticsFormat.day(event.start)).font(.caption).foregroundStyle(.secondary)
+                        Text(StatisticsFormat.day(row.start)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -204,12 +203,9 @@ struct PlannerErrandKindDetail: View {
         }
         .navigationTitle(kind.name)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            guard !loaded else { return }
-            loaded = true
-            emoji = kind.emoji
-            colorHex = kind.colorHex
-        }
+        .onAppear(perform: load)
+        .onChange(of: emoji) { _, _ in save() }
+        .onChange(of: useColor) { _, _ in save() }
         .onDisappear(perform: save)
         .confirmationDialog("Удалить тип из базы?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
@@ -219,15 +215,36 @@ struct PlannerErrandKindDetail: View {
                 sync.requestSync()
                 dismiss()
             }
+            Button("Отмена", role: .cancel) {}
         }
+    }
+
+    private func load() {
+        guard !loaded else { return }
+        let name = kind.name
+        var descriptor = FetchDescriptor<PlannerEvent>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.errandType == name },
+            sortBy: [SortDescriptor(\.start, order: .reverse)]
+        )
+        total = (try? context.fetchCount(descriptor)) ?? 0
+        descriptor.fetchLimit = 20
+        let rows = (try? context.fetch(descriptor)) ?? []
+        recent = rows.map { (title: $0.title, start: $0.start) }
+        emoji = kind.emoji
+        if let saved = Color(hex: kind.colorHex), !kind.colorHex.isEmpty {
+            useColor = true
+            color = saved
+        }
+        loaded = true
     }
 
     private func save() {
         guard loaded, kind.deletedAt == nil else { return }
-        let clean = emoji.trimmingCharacters(in: .whitespaces)
-        guard clean != kind.emoji || colorHex != kind.colorHex else { return }
-        kind.emoji = clean
-        kind.colorHex = colorHex
+        let newEmoji = emoji.trimmingCharacters(in: .whitespaces)
+        let newHex = useColor ? color.hexString : ""
+        guard newEmoji != kind.emoji || newHex != kind.colorHex else { return }
+        kind.emoji = newEmoji
+        kind.colorHex = newHex
         kind.markChanged()
         try? context.save()
         sync.requestSync()
@@ -241,16 +258,12 @@ struct PlannerMoneyKindDetail: View {
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
     @Environment(\.dismiss) private var dismiss
-    @Query(filter: #Predicate<PlannerMoneyOp> { $0.deletedAt == nil })
-    private var ops: [PlannerMoneyOp]
 
     @State private var emoji = ""
     @State private var confirmDelete = false
     @State private var loaded = false
-
-    private var related: [PlannerMoneyOp] {
-        ops.filter { $0.typeName == kind.name }.sorted { $0.date > $1.date }
-    }
+    @State private var total = 0
+    @State private var recent: [(amount: Double, date: Date)] = []
 
     var body: some View {
         Form {
@@ -263,13 +276,13 @@ struct PlannerMoneyKindDetail: View {
                         .frame(width: 80)
                 }
             }
-            Section("Операции этого типа: \(related.count)") {
-                if related.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
-                ForEach(related.prefix(20)) { op in
+            Section("Операции этого типа: \(total)") {
+                if recent.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
+                ForEach(Array(recent.enumerated()), id: \.offset) { _, row in
                     HStack {
-                        Text(StatisticsFormat.day(op.date))
+                        Text(StatisticsFormat.day(row.date))
                         Spacer()
-                        Text(PlannerPricing.format(op.amount)).foregroundStyle(.secondary)
+                        Text(PlannerPricing.format(row.amount)).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -279,12 +292,8 @@ struct PlannerMoneyKindDetail: View {
         }
         .navigationTitle(kind.name)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            guard !loaded else { return }
-            loaded = true
-            emoji = kind.emoji
-        }
-        .onDisappear(perform: save)
+        .onAppear(perform: load)
+        .onChange(of: emoji) { _, _ in save() }
         .confirmationDialog("Удалить тип из базы?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
                 loaded = false
@@ -293,7 +302,23 @@ struct PlannerMoneyKindDetail: View {
                 sync.requestSync()
                 dismiss()
             }
+            Button("Отмена", role: .cancel) {}
         }
+    }
+
+    private func load() {
+        guard !loaded else { return }
+        let name = kind.name
+        var descriptor = FetchDescriptor<PlannerMoneyOp>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.typeName == name },
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        total = (try? context.fetchCount(descriptor)) ?? 0
+        descriptor.fetchLimit = 20
+        let rows = (try? context.fetch(descriptor)) ?? []
+        recent = rows.map { (amount: $0.amount, date: $0.date) }
+        emoji = kind.emoji
+        loaded = true
     }
 
     private func save() {
