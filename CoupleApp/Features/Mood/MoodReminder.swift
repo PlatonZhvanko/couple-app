@@ -14,8 +14,8 @@ enum MoodReminder {
         static let minute = "mood.reminder.minute"
     }
 
-    /// Сколько дней вперёд заранее ставим напоминания (у каждого своя фраза Мирони).
-    private static let horizon = 30
+    /// Сколько дней вперёд заранее ставим напоминания (у каждого своя фраза Мирони). iPhone хранит не больше 64 уведомлений, список обновляется при каждом открытии приложения.
+    private static let horizon = 7
     static let defaultHour = 22
     static let defaultMinute = 30
 

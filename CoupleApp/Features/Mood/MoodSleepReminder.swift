@@ -6,7 +6,7 @@ enum MoodSleepReminder {
     static let identifier = "mood.sleepReminder"
     static let defaultHour = 22
     static let defaultMinute = 0
-    private static let horizon = 30
+    private static let horizon = 7
 
     enum Keys {
         static let enabled = "mood.sleepReminder.enabled"

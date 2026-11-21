@@ -47,7 +47,7 @@ private struct PetsCatVisitModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .catPeek(cat, topic: .greeting, message: line, duration: 7, isPresented: $show)
+            .catPeek(cat, topic: .greeting, message: line, duration: 9, isPresented: $show)
             .task {
                 try? await Task.sleep(for: .seconds(2))
                 let chosen = Cat.allCases.randomElement() ?? .miron

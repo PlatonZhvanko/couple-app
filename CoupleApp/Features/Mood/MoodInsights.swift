@@ -17,7 +17,8 @@ struct MoodInsight: Identifiable {
 /// Данные одного дня: настроение и всё, что рядом (питание, сон, занятия, деньги).
 struct MoodDayData {
     var day: Date
-    var mood: Double
+    var mood: Double?
+    var moodValue: Double { mood ?? 0 }
     var sleepHours: Double?
     /// Минуты от полудня (23:00 → 660, 01:00 → 780).
     var bedtimeShifted: Int?
@@ -37,7 +38,7 @@ enum MoodInsights {
     private static let windowDays = 60
 
     @MainActor
-    static func collect(context: ModelContext, member: CoupleMember) -> [MoodDayData] {
+    static func collect(context: ModelContext, member: CoupleMember, includeEmptyMood: Bool = false) -> [MoodDayData] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: .now)
         guard let from = calendar.date(byAdding: .day, value: -(windowDays - 1), to: today),
@@ -66,11 +67,13 @@ enum MoodInsights {
         for offset in 0..<windowDays {
             guard let day = calendar.date(byAdding: .day, value: offset, to: from) else { continue }
             let key = MoodDayKey.key(for: day)
-            let mood: Double
+            let mood: Double?
             if let checkIn = checkInByDay[key] {
                 mood = Double(checkIn.overall)
             } else if let average = MoodStats.average(entriesByDay[key] ?? []) {
                 mood = average
+            } else if includeEmptyMood {
+                mood = nil
             } else {
                 continue
             }
@@ -145,7 +148,8 @@ enum MoodInsights {
     }
 
     /// Закономерности и тенденция по последним дням.
-    static func insights(from days: [MoodDayData]) -> [MoodInsight] {
+    static func insights(from allDays: [MoodDayData]) -> [MoodInsight] {
+        let days = allDays.filter { $0.mood != nil }
         var result: [MoodInsight] = []
 
         for factor in factors {
@@ -153,8 +157,8 @@ enum MoodInsights {
             var no: [Double] = []
             for day in days {
                 switch factor.group(day) {
-                case .some(true): yes.append(day.mood)
-                case .some(false): no.append(day.mood)
+                case .some(true): yes.append(day.moodValue)
+                case .some(false): no.append(day.moodValue)
                 case .none: break
                 }
             }
@@ -176,8 +180,8 @@ enum MoodInsights {
 
         // Тенденция: последние 7 дней против предыдущих 7.
         let sorted = days.sorted { $0.day < $1.day }
-        let last = sorted.suffix(7).map(\.mood)
-        let before = sorted.dropLast(min(7, sorted.count)).suffix(7).map(\.mood)
+        let last = sorted.suffix(7).map(\.moodValue)
+        let before = sorted.dropLast(min(7, sorted.count)).suffix(7).map(\.moodValue)
         if last.count >= 3, before.count >= 3 {
             let delta = last.reduce(0, +) / Double(last.count) - before.reduce(0, +) / Double(before.count)
             if delta >= 0.4 {
@@ -211,14 +215,17 @@ struct MoodInsightsView: View {
     @State private var loaded = false
     @State private var sleepRows: [SleepDaySummary] = []
 
-    private var insights: [MoodInsight] { MoodInsights.insights(from: days) }
+    @State private var weightInsights: [MoodInsight] = []
+    @AppStorage("health.targetKg") private var targetKg: Double = 0
+
+    private var insights: [MoodInsight] { weightInsights + MoodInsights.insights(from: days) }
 
     var body: some View {
         List {
             Section {
                 HStack(alignment: .top, spacing: 12) {
                     MoodMironAvatar(size: 44)
-                    Text("Я смотрю, как настроение связано со сном, едой, водой, загрузкой и деньгами. Это не диагноз, просто наблюдения.")
+                    Text("Я смотрю, как настроение и вес связаны со сном, едой, водой, загрузкой и деньгами. Это не диагноз, просто наблюдения.")
                         .font(.subheadline)
                 }
                 .listRowBackground(Color.clear)
@@ -265,7 +272,7 @@ struct MoodInsightsView: View {
 
             Section {
                 LabeledContent("Дней с отметками", value: "\(days.count)")
-                if let average = MoodStats.average(days.map { MoodEntryProxy(level: $0.mood) }) {
+                if let average = MoodStats.average(days.compactMap { $0.mood.map { MoodEntryProxy(level: $0) } }) {
                     LabeledContent("Среднее настроение", value: String(format: "%.1f из 5", average))
                 }
             } header: {
@@ -282,6 +289,7 @@ struct MoodInsightsView: View {
                 from: Calendar.current.date(byAdding: .day, value: -59, to: today) ?? today,
                 until: Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
             )
+            weightInsights = MoodWeightInsights.insights(context: context, member: account.current, targetKg: targetKg)
             loaded = true
         }
     }

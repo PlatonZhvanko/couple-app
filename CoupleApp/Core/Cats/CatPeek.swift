@@ -62,7 +62,7 @@ struct CatPeekView: View {
     let edge: CatPeekEdge
     let message: String
     let position: Int // 0, 1 или 2: где вдоль края
-    var duration: Double = 6
+    var duration: Double = 8
     /// Если задано, кот выглядывает сбоку на этой высоте экрана: рядом с нужным блоком.
     var anchorY: CGFloat? = nil
     var onDismiss: () -> Void
@@ -166,7 +166,7 @@ final class CatPeekCenter {
 
     func show(
         _ cat: Cat, topic: CatTopic, message: String? = nil, edge: CatPeekEdge? = nil,
-        duration: Double = 6, anchorY: CGFloat? = nil
+        duration: Double = 8, anchorY: CGFloat? = nil
     ) {
         let e: CatPeekEdge
         if anchorY != nil {
@@ -195,7 +195,7 @@ enum CatSettings {
     /// Мироня здоровается при запуске не чаще, чем раз в столько секунд (3 часа).
     static let greetingCooldown: TimeInterval = 3 * 3600
     /// Сколько секунд кот остаётся на экране.
-    static let displaySeconds: Double = 6
+    static let displaySeconds: Double = 8
 
     /// Проверяет, можно ли коту показаться сейчас, и если да, запоминает время показа.
     /// `scope` — раздел и тема (например `"nutrition.food"`): у каждого кота в каждом разделе
@@ -243,7 +243,7 @@ extension View {
         topic: CatTopic,
         message: String? = nil,
         edge: CatPeekEdge? = nil,
-        duration: Double = 6,
+        duration: Double = 8,
         isPresented: Binding<Bool>
     ) -> some View {
         modifier(CatPeekModifier(
