@@ -342,7 +342,10 @@ struct PlannerTimelineView: View {
         let first = words.first ?? block.title
         let rest = words.dropFirst().joined(separator: " ")
         let lineCount: CGFloat = twoLines ? 2 : 1
-        let textWidth = max(10, columnWidth / CGFloat(max(block.columns, 1)) - 6)
+        // В низких блоках значок оплаты/статуса стоит справа от названия, а не над ним.
+        let hasMark = block.badge.symbol != nil || block.together
+        let trailingInset: CGFloat = (hasMark && topInset <= 1) ? 15 : 1
+        let textWidth = max(10, columnWidth / CGFloat(max(block.columns, 1)) - 6 - (trailingInset - 1))
         let longest = CGFloat(max(1, twoLines ? max(first.count, rest.count) : block.title.count))
         let byHeight = (height - topInset - 3) / (lineCount * 1.2)
         let byWidth = textWidth / (longest * 0.64)
@@ -365,7 +368,7 @@ struct PlannerTimelineView: View {
             }
         }
         .padding(.leading, 3)
-        .padding(.trailing, 1)
+        .padding(.trailing, trailingInset)
         .padding(.top, topInset)
         .padding(.bottom, 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
