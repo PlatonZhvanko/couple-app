@@ -17,7 +17,10 @@ enum CarFeature {
             CarEntry.self,
             CarReminder.self,
             CarRepair.self,
-        ]
+        ],
+        calendarItems: { context, interval in
+            CarCalendar.items(context: context, interval: interval)
+        }
     ) {
         CarRootView()
     }

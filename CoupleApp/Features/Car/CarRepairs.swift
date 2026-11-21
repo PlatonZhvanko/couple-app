@@ -13,6 +13,7 @@ final class CarRepair: SyncableModel {
         var price: Double
         var desiredDate: Date?
         var desiredOdometer: Int?
+        var durationMinutes: Int?
         var note: String
         var isPaid: Bool
         var paidAt: Date?
@@ -32,6 +33,8 @@ final class CarRepair: SyncableModel {
     var desiredDate: Date? = nil
     /// Желаемый пробег, км. 0 — без пробега. Работает как срок: «по дате или по пробегу».
     var desiredOdometer: Int = 0
+    /// Сколько занимает в планере, минут (для ремонта по дате со временем).
+    var durationMinutes: Int = 60
     var note: String = ""
     var isPaid: Bool = false
     var paidAt: Date? = nil
@@ -55,7 +58,8 @@ final class CarRepair: SyncableModel {
 
     var payload: Payload {
         Payload(carID: carID, title: title, price: price, desiredDate: desiredDate,
-                desiredOdometer: desiredOdometer > 0 ? desiredOdometer : nil, note: note,
+                desiredOdometer: desiredOdometer > 0 ? desiredOdometer : nil,
+                durationMinutes: durationMinutes, note: note,
                 isPaid: isPaid, paidAt: paidAt, entryID: entryID, member: member, createdAt: createdAt)
     }
 
@@ -65,6 +69,7 @@ final class CarRepair: SyncableModel {
         price = payload.price
         desiredDate = payload.desiredDate
         desiredOdometer = payload.desiredOdometer ?? 0
+        durationMinutes = payload.durationMinutes ?? 60
         note = payload.note
         isPaid = payload.isPaid
         paidAt = payload.paidAt
@@ -83,16 +88,18 @@ extension Array where Element == CarRepair {
 enum CarRepairActions {
     /// Отметить оплаченным: сумма попадает в траты машины как «Ремонт».
     @MainActor
-    static func pay(_ repair: CarRepair, context: ModelContext, member: CoupleMember, odometer: Int = 0) {
+    static func pay(_ repair: CarRepair, context: ModelContext, member: CoupleMember, odometer: Int = 0,
+                    date: Date = .now, amount: Double? = nil) {
+        if let amount { repair.price = amount }
         let entry = CarEntry(carID: repair.carID, category: .repair, member: member)
         entry.amount = repair.price
-        entry.date = .now
+        entry.date = date
         entry.note = repair.title
         entry.odometer = odometer
         context.insert(entry)
         entry.markChanged()
         repair.isPaid = true
-        repair.paidAt = .now
+        repair.paidAt = date
         repair.entryID = entry.syncID
         repair.markChanged()
         try? context.save()
@@ -126,6 +133,7 @@ struct CarRepairsView: View {
     @Query(filter: #Predicate<CarEntry> { $0.deletedAt == nil })
     private var allEntries: [CarEntry]
     @State private var editing: CarRepair?
+    @State private var startDone = false
     @State private var adding = false
 
     private var todo: [CarRepair] {
@@ -148,8 +156,9 @@ struct CarRepairsView: View {
                     ForEach(todo) { repair in
                         row(repair)
                             .swipeActions(edge: .leading) {
-                                Button("Оплачено", systemImage: "checkmark.circle") {
-                                    pay(repair)
+                                Button("Сделано", systemImage: "checkmark.circle") {
+                                    startDone = true
+                                    editing = repair
                                 }.tint(.green)
                             }
                             .swipeActions(edge: .trailing) {
@@ -163,15 +172,15 @@ struct CarRepairsView: View {
                         Text(CarFormat.money(todo.reduce(0) { $0 + $1.price }))
                     }
                 } footer: {
-                    Text("Смахните вправо, чтобы отметить оплату: сумма попадёт в траты на машину.")
+                    Text("Смахните вправо или откройте пункт и отметьте «Сделано»: спросим дату и стоимость, сумма попадёт в траты машины в этот день.")
                 }
             }
             if !paid.isEmpty {
-                Section("Оплачено") {
+                Section("Сделано") {
                     ForEach(paid) { repair in
                         row(repair)
                             .swipeActions {
-                                Button("Вернуть", systemImage: "arrow.uturn.backward") {
+                                Button("Не сделано", systemImage: "arrow.uturn.backward") {
                                     CarRepairActions.unpay(repair, context: context)
                                     sync.requestSync()
                                 }.tint(.orange)
@@ -187,7 +196,7 @@ struct CarRepairsView: View {
             }
         }
         .sheet(isPresented: $adding) { CarRepairFormView(car: car, repair: nil) }
-        .sheet(item: $editing) { CarRepairFormView(car: car, repair: $0) }
+        .sheet(item: $editing, onDismiss: { startDone = false }) { CarRepairFormView(car: car, repair: $0, startDone: startDone) }
     }
 
     private func row(_ repair: CarRepair) -> some View {
@@ -202,7 +211,7 @@ struct CarRepairsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     if repair.isPaid, let at = repair.paidAt {
-                        Text("Оплачено \(at.formatted(date: .abbreviated, time: .omitted))")
+                        Text("Сделано \(at.formatted(date: .abbreviated, time: .omitted))")
                             .font(.caption).foregroundStyle(.secondary)
                     } else if let due = repair.desiredDate {
                         Text("Желательно до \(due.formatted(date: .abbreviated, time: .omitted))")
@@ -245,6 +254,7 @@ enum CarRepairPresets {
 struct CarRepairFormView: View {
     let car: CarVehicle
     let repair: CarRepair?
+    var startDone = false
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -261,12 +271,22 @@ struct CarRepairFormView: View {
     init(car: CarVehicle, repair: CarRepair?) {
         self.car = car
         self.repair = repair
+        self.startDone = startDone
+        _duration = State(initialValue: repair?.durationMinutes ?? 60)
+        _isDone = State(initialValue: repair?.isPaid ?? startDone)
+        _doneDate = State(initialValue: repair?.paidAt ?? .now)
         _title = State(initialValue: repair?.title ?? "")
         _priceText = State(initialValue: (repair?.price ?? 0) > 0 ? CarNumber.text(Int(repair?.price ?? 0)) : "")
         _hasDate = State(initialValue: repair?.desiredDate != nil)
         _odometerText = State(initialValue: (repair?.desiredOdometer ?? 0) > 0 ? String(repair?.desiredOdometer ?? 0) : "")
-        _date = State(initialValue: repair?.desiredDate ?? Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now)
+        _date = State(initialValue: repair?.desiredDate ?? Self.defaultDate())
         _note = State(initialValue: repair?.note ?? "")
+    }
+
+    /// По умолчанию: через две недели в 10:00.
+    private static func defaultDate() -> Date {
+        let day = Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now
+        return Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: day) ?? day
     }
 
     var body: some View {
@@ -298,7 +318,8 @@ struct CarRepairFormView: View {
                 Section("Когда желательно") {
                     Toggle("По дате", isOn: $hasDate)
                     if hasDate {
-                        DatePicker("Дата", selection: $date, displayedComponents: .date)
+                        DatePicker("Дата и время", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                        Stepper("Длительность: \(duration) мин", value: $duration, in: 30...600, step: 30)
                     }
                     LabeledContent("По пробегу, км") {
                         TextField("необязательно", text: $odometerText)
@@ -307,13 +328,24 @@ struct CarRepairFormView: View {
                     }
                 }
                 Section("Заметка") { TextField("Где делать, какие запчасти", text: $note, axis: .vertical) }
-                if let repair, repair.isPaid {
-                    Section { Text("Оплачено, сумма уже в тратах на машину.") .foregroundStyle(.secondary) }
-                } else if repair != nil {
+                if repair != nil {
                     Section {
-                        Button("Отметить оплаченным") { save(pay: true) }
+                        Toggle("Сделано", isOn: $isDone)
+                        if isDone {
+                            DatePicker("Когда сделано", selection: $doneDate, in: ...Date.now.addingTimeInterval(86400), displayedComponents: .date)
+                            LabeledContent("Стоимость, ₽") {
+                                TextField("0", text: $priceText)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            LabeledContent("Пробег, км") {
+                                TextField("необязательно", text: $doneOdometerText)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
                     } footer: {
-                        Text("Сумма попадёт в список трат на машину.")
+                        Text("Сумма попадёт в траты машины и в статистику в день выполнения.")
                     }
                 }
             }
@@ -323,27 +355,42 @@ struct CarRepairFormView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Сохранить") { save(pay: false) }
+                    Button("Сохранить") { save() }
                         .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
     }
 
-    private func save(pay: Bool) {
+    private func save() {
         let target = repair ?? CarRepair(carID: car.syncID, member: account.current)
         target.title = title
         target.price = CarNumber.double(priceText) ?? 0
         target.desiredDate = hasDate ? date : nil
+        target.durationMinutes = duration
         target.desiredOdometer = CarNumber.int(odometerText) ?? 0
         target.note = note
         if repair == nil { context.insert(target) }
         target.markChanged()
         try? context.save()
-        if pay {
-            let entries = (try? context.fetch(FetchDescriptor<CarEntry>())) ?? []
-            let odo = CarMath.currentOdometer(car: car, entries: entries.filter { $0.carID == car.syncID && $0.deletedAt == nil })
-            CarRepairActions.pay(target, context: context, member: account.current, odometer: odo)
+
+        let entries = ((try? context.fetch(FetchDescriptor<CarEntry>())) ?? [])
+            .filter { $0.carID == car.syncID && $0.deletedAt == nil }
+        if isDone && !target.isPaid {
+            let odo = CarNumber.int(doneOdometerText) ?? CarMath.currentOdometer(car: car, entries: entries)
+            CarRepairActions.pay(target, context: context, member: account.current, odometer: odo,
+                                 date: doneDate, amount: target.price)
+        } else if isDone, let id = target.entryID, let entry = entries.first(where: { $0.syncID == id }) {
+            // Уже было сделано: обновляем дату и сумму в тратах.
+            entry.date = doneDate
+            entry.amount = target.price
+            if let km = CarNumber.int(doneOdometerText) { entry.odometer = km }
+            entry.markChanged()
+            target.paidAt = doneDate
+            target.markChanged()
+            try? context.save()
+        } else if !isDone && target.isPaid {
+            CarRepairActions.unpay(target, context: context)
         }
         sync.requestSync()
         dismiss()
