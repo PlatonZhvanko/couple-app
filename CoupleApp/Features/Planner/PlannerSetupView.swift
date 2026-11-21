@@ -16,6 +16,11 @@ struct PlannerSetupView: View {
                     Label("📜 Абонементы", systemImage: "ticket.fill")
                 }
                 NavigationLink {
+                    PlannerErrandKindsView()
+                } label: {
+                    Label("🏷 Типы дел", systemImage: "tag")
+                }
+                NavigationLink {
                     PlannerColorSettingsView().navigationTitle("Цвета")
                 } label: {
                     Label("🎨 Цвета", systemImage: "paintpalette.fill")

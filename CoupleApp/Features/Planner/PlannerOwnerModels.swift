@@ -32,7 +32,7 @@ enum PlannerMoneyDirection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .none: "Ничего"
-        case .profit: "Прибыль"
+        case .profit: "Прибыль/Приход"
         case .expense: "Трата"
         }
     }
@@ -54,7 +54,8 @@ extension PlannerEvent {
                 result[day] = .done
             } else if pair[1] == "notDone" {
                 result[day] = .notDone
-            } else if pair[1].hasPrefix("moved@"), let target = Double(pair[1].dropFirst(6)) {
+            } else if pair[1].hasPrefix("moved@"),
+                      let target = pair[1].dropFirst(6).split(separator: "@").first.flatMap({ Double($0) }) {
                 result[day] = .moved(Date(timeIntervalSince1970: target))
             }
         }
@@ -75,6 +76,22 @@ extension PlannerEvent {
         case .moved(let target): parts.append("\(key)=moved@\(Int(target.timeIntervalSince1970))")
         case nil: break
         }
+        statusRaw = parts.joined(separator: ",")
+    }
+
+    /// Запись, созданная переносом в новый день (если день перенесён).
+    func movedCopyID(on day: Date) -> UUID? {
+        let key = Self.statusKey(day)
+        guard let part = statusRaw.split(separator: ",").first(where: { $0.hasPrefix(key + "=moved@") }) else { return nil }
+        let items = part.split(separator: "@")
+        return items.count >= 3 ? UUID(uuidString: String(items[2])) : nil
+    }
+
+    /// Отметить день перенесённым: запоминаем новую запись, чтобы удалить её при отмене переноса.
+    func setMoved(to target: Date, copy: PlannerEvent, on day: Date) {
+        let key = Self.statusKey(day)
+        var parts = statusRaw.split(separator: ",").map(String.init).filter { !$0.hasPrefix(key + "=") }
+        parts.append("\(key)=moved@\(Int(target.timeIntervalSince1970))@\(copy.syncID.uuidString)")
         statusRaw = parts.joined(separator: ",")
     }
 
@@ -227,6 +244,8 @@ final class PlannerShift: SyncableModel {
     struct Payload: Codable {
         var day: Date
         var amount: Double
+        /// 0 — вся смена, 1 — первая половина (9–15), 2 — вторая (15–21). Нет в старых записях.
+        var part: Int?
     }
 
     static let recordKind = "planner.shift"
@@ -238,6 +257,8 @@ final class PlannerShift: SyncableModel {
     var syncID: UUID = UUID()
     var day: Date = Date.now
     var amount: Double = 4000
+    /// 0 — вся смена, 1 — первая половина (9–15), 2 — вторая (15–21).
+    var part: Int = 0
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -254,12 +275,32 @@ final class PlannerShift: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(day: day, amount: amount) }
+    var payload: Payload { Payload(day: day, amount: amount, part: part) }
 
     func apply(_ payload: Payload) {
         day = payload.day
         amount = payload.amount
+        part = payload.part ?? 0
     }
+
+    /// Часы смены: вся 9–21, первая половина 9–15, вторая 15–21.
+    static func hours(part: Int) -> (start: Int, end: Int) {
+        switch part {
+        case 1: (startHour, 15)
+        case 2: (15, endHour)
+        default: (startHour, endHour)
+        }
+    }
+
+    static func partTitle(_ part: Int) -> String {
+        switch part {
+        case 1: "Первая половина 9–15"
+        case 2: "Вторая половина 15–21"
+        default: "Вся смена 9–21"
+        }
+    }
+
+    var title: String { part == 0 ? "Смена" : "Половина смены" }
 
     static func makeID(day: Date) -> UUID {
         PlannerDeterministicID.make("shift|\(Int(PlannerCalendar.calendar.startOfDay(for: day).timeIntervalSince1970))")
@@ -267,6 +308,38 @@ final class PlannerShift: SyncableModel {
 }
 
 enum PlannerShiftStore {
+    /// Поставить смену (целую или половину) с суммой или изменить уже стоящую.
+    @MainActor
+    static func set(_ context: ModelContext, day: Date, part: Int, amount: Double) {
+        let start = PlannerCalendar.calendar.startOfDay(for: day)
+        let id = PlannerShift.makeID(day: start)
+        let found = try? context.fetch(FetchDescriptor<PlannerShift>(predicate: #Predicate { $0.syncID == id }))
+        if let existing = found?.first {
+            existing.deletedAt = nil
+            existing.part = part
+            existing.amount = amount
+            existing.markChanged()
+        } else {
+            let shift = PlannerShift(day: start, amount: amount)
+            shift.part = part
+            context.insert(shift)
+            shift.markChanged()
+        }
+        try? context.save()
+    }
+
+    /// Снять смену с дня.
+    @MainActor
+    static func remove(_ context: ModelContext, day: Date) {
+        let start = PlannerCalendar.calendar.startOfDay(for: day)
+        let id = PlannerShift.makeID(day: start)
+        let found = try? context.fetch(FetchDescriptor<PlannerShift>(predicate: #Predicate { $0.syncID == id }))
+        if let existing = found?.first, existing.deletedAt == nil {
+            existing.markDeleted()
+            try? context.save()
+        }
+    }
+
     /// Поставить или снять смену на день.
     @MainActor
     static func toggle(_ context: ModelContext, day: Date, amount: Double) {
@@ -279,6 +352,7 @@ enum PlannerShiftStore {
             } else {
                 existing.deletedAt = nil
                 existing.amount = amount
+                existing.part = 0
                 existing.markChanged()
             }
         } else {
@@ -309,6 +383,34 @@ struct PlannerLedgerEntry: Identifiable {
 }
 
 enum PlannerLedger {
+    /// Деньги Настеньки за дела: каждое занятие, которое уже прошло и не отменено.
+    static func partnerEntries(events: [PlannerEvent], today: Date = .now) -> [PlannerLedgerEntry] {
+        let cal = PlannerCalendar.calendar
+        let last = cal.startOfDay(for: today)
+        var result: [PlannerLedgerEntry] = []
+        for event in events where event.deletedAt == nil {
+            guard let direction = PlannerMoneyDirection(rawValue: event.partnerMoneyKindRaw), direction != .none,
+                  event.partnerMoneyAmount > 0 else { continue }
+            var day = cal.startOfDay(for: event.start)
+            var steps = 0
+            while day <= last && steps < 800 {
+                if event.startsOn(day), !event.isCancelled(on: day) {
+                    result.append(PlannerLedgerEntry(
+                        id: "pevent.\(event.syncID).\(Int(day.timeIntervalSince1970))", day: day,
+                        title: event.plainTitle, source: .errand,
+                        type: event.partnerMoneyType.isEmpty ? (direction == .profit ? "Прибыль" : "Трата") : event.partnerMoneyType,
+                        amount: direction == .profit ? event.partnerMoneyAmount : -event.partnerMoneyAmount,
+                        errandType: event.errandType
+                    ))
+                }
+                if event.repeatValue == .none { break }
+                day = PlannerCalendar.addDays(1, to: day)
+                steps += 1
+            }
+        }
+        return result
+    }
+
     /// Все деньги Платони: смены, выполненные дела с суммой и разовые операции.
     static func entries(
         events: [PlannerEvent], shifts: [PlannerShift], ops: [PlannerMoneyOp]
@@ -316,7 +418,7 @@ enum PlannerLedger {
         var result: [PlannerLedgerEntry] = []
         for shift in shifts where shift.deletedAt == nil {
             result.append(PlannerLedgerEntry(
-                id: "shift.\(shift.syncID)", day: shift.day, title: "Смена",
+                id: "shift.\(shift.syncID)", day: shift.day, title: shift.title,
                 source: .shift, type: "Смена", amount: shift.amount
             ))
         }
@@ -344,5 +446,53 @@ enum PlannerLedger {
     static func net(on day: Date, entries: [PlannerLedgerEntry]) -> Double {
         let cal = PlannerCalendar.calendar
         return entries.filter { cal.isDate($0.day, inSameDayAs: day) }.reduce(0) { $0 + $1.amount }
+    }
+}
+
+// MARK: - Перенос дела
+
+enum PlannerErrandCarry {
+    /// «Перенос»: старый день остаётся белым с пометкой «перенесено», на новом дне появляется
+    /// новая запись. В отличие от «Переместить», это идёт в статистику.
+    @MainActor
+    static func carry(_ event: PlannerEvent, day: Date, to newStart: Date, context: ModelContext) {
+        revoke(event, day: day, context: context)
+        let cal = PlannerCalendar.calendar
+        let duration = max(0, event.end.timeIntervalSince(event.start))
+        let start = event.isAllDay ? cal.startOfDay(for: newStart) : newStart
+        let copy = PlannerEvent()
+        copy.title = event.title
+        copy.notes = event.notes
+        copy.isAllDay = event.isAllDay
+        copy.start = start
+        copy.end = event.isAllDay ? start : start.addingTimeInterval(duration)
+        copy.scope = event.scope
+        copy.isPrivate = event.isPrivate
+        copy.colorHex = event.colorHex
+        copy.category = event.category
+        copy.repeatRule = PlannerRepeat.none.rawValue
+        copy.reminderMinutes = event.reminderMinutes
+        copy.createdBy = event.createdBy
+        copy.moneyKindRaw = event.moneyKindRaw
+        copy.moneyAmount = event.moneyAmount
+        copy.moneyType = event.moneyType
+        copy.errandType = event.errandType
+        context.insert(copy)
+        copy.markChanged()
+        event.setMoved(to: start, copy: copy, on: day)
+        event.markChanged()
+        try? context.save()
+    }
+
+    /// Перенос отменили (поставили другой статус или сняли): новая запись в новом дне удаляется.
+    @MainActor
+    static func revoke(_ event: PlannerEvent, day: Date, context: ModelContext) {
+        guard let copyID = event.movedCopyID(on: day) else { return }
+        let found = try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.syncID == copyID }))
+        if let copy = found?.first, copy.deletedAt == nil {
+            copy.markDeleted()
+            PlannerPaymentStore.purge(context, eventID: copy.syncID)
+        }
+        try? context.save()
     }
 }

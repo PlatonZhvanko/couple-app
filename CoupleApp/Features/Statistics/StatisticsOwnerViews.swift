@@ -32,8 +32,9 @@ struct StatisticsOwnerMoneyView: View {
         let expense = rows.filter { $0.amount < 0 }
         List {
             Section("Итого") {
-                StatisticsLine(title: "Прибыль", value: PlannerPricing.format(sum(profit))) { details(profit) }
+                StatisticsLine(title: "Прибыль/Приход", value: PlannerPricing.format(sum(profit))) { details(profit) }
                 StatisticsLine(title: "Траты", value: PlannerPricing.format(abs(sum(expense)))) { details(expense) }
+                StatisticsMyCarSpend(period: period)
                 StatisticsLine(title: "Чистыми", value: PlannerPricing.format(sum(rows)), bold: true) { details(rows) }
             }
             Section("Откуда деньги") {

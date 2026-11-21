@@ -21,7 +21,16 @@ struct CarEntryFormView: View {
     @State private var priceText: String
     @State private var isFullTank: Bool
     @State private var note: String
+    @State private var customCategory: String
+    @State private var categorySearch = ""
     @State private var confirmDelete = false
+    @Query(filter: #Predicate<CarEntry> { $0.deletedAt == nil })
+    private var allEntries: [CarEntry]
+
+    /// Свои категории, которые уже встречались в записях обеих машин.
+    private var customSuggestions: [String] {
+        Array(Set(allEntries.map(\.customCategory).filter { !$0.isEmpty })).sorted()
+    }
 
     init(car: CarVehicle, entry: CarEntry?, initialCategory: CarEntryCategory, currentOdometer: Int) {
         self.car = car
@@ -39,6 +48,7 @@ struct CarEntryFormView: View {
         _priceText = State(initialValue: CarNumber.text(price))
         _isFullTank = State(initialValue: entry?.isFullTank ?? true)
         _note = State(initialValue: entry?.note ?? "")
+        _customCategory = State(initialValue: entry?.customCategory ?? "")
     }
 
     private var amount: Double? { CarNumber.double(amountText) }
@@ -48,12 +58,36 @@ struct CarEntryFormView: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker("Что", selection: $category) {
-                        ForEach(CarEntryCategory.allCases) { category in
-                            Label(category.title, systemImage: category.systemImage).tag(category)
+                    DatePicker("Дата", selection: $date, displayedComponents: .date)
+                }
+
+                Section {
+                    HStack {
+                        Text("Выбрано")
+                        Spacer()
+                        Text(selectedCategoryTitle).foregroundStyle(.secondary)
+                    }
+                    TextField("Найти категорию или создать", text: $categorySearch)
+                    let query = categorySearch.trimmingCharacters(in: .whitespaces)
+                    if !query.isEmpty {
+                        ForEach(categoryMatches(query), id: \.self) { name in
+                            Button(name) { chooseCategory(named: name) }
+                        }
+                        if !categoryExists(query) {
+                            Button("+ Создать «\(query)»") { chooseCustom(query) }
                         }
                     }
-                    DatePicker("Дата", selection: $date, displayedComponents: .date)
+                    if selectedCategoryTitle != "Без категории" {
+                        Button("Сбросить категорию", role: .destructive) {
+                            category = .other
+                            customCategory = ""
+                            categorySearch = ""
+                        }
+                    }
+                } header: {
+                    Text("Категория (необязательно)")
+                } footer: {
+                    Text("Введите название, чтобы найти её, или нажмите «+ Создать».")
                 }
 
                 if category == .fuel {
@@ -78,12 +112,11 @@ struct CarEntryFormView: View {
                 }
 
                 Section {
-                    TextField(category == .fuel ? "АЗС, марка топлива" : "Что сделали", text: $note, axis: .vertical)
+                    TextField(category == .fuel ? "АЗС, марка топлива" : "Что за трата", text: $note, axis: .vertical)
                 }
 
                 if let entry {
                     Section {
-                        LabeledContent("Добавил(а)", value: account.name(of: entry.memberValue))
                         Button("Удалить запись", role: .destructive) { confirmDelete = true }
                     }
                 }
@@ -104,6 +137,39 @@ struct CarEntryFormView: View {
                 Button("Удалить", role: .destructive, action: delete)
             }
         }
+    }
+
+    private var selectedCategoryTitle: String {
+        if !customCategory.isEmpty { return customCategory }
+        return category == .other ? "Без категории" : category.title
+    }
+
+    /// Названия, подходящие под поиск: обычные и свои категории.
+    private func categoryMatches(_ query: String) -> [String] {
+        let builtIn = CarEntryCategory.allCases.filter { $0 != .other }.map(\.title)
+        return (builtIn + customSuggestions).filter { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    private func categoryExists(_ query: String) -> Bool {
+        let all = CarEntryCategory.allCases.map(\.title) + customSuggestions
+        return all.contains { $0.compare(query, options: .caseInsensitive) == .orderedSame }
+    }
+
+    private func chooseCategory(named name: String) {
+        if let builtIn = CarEntryCategory.allCases.first(where: { $0.title == name }) {
+            category = builtIn
+            customCategory = ""
+        } else {
+            chooseCustom(name)
+            return
+        }
+        categorySearch = ""
+    }
+
+    private func chooseCustom(_ name: String) {
+        category = .other
+        customCategory = name
+        categorySearch = ""
     }
 
     private func numberField(_ title: String, text: Binding<String>, decimal: Bool, prompt: String? = nil) -> some View {
@@ -136,6 +202,7 @@ struct CarEntryFormView: View {
         item.liters = category == .fuel ? (CarNumber.double(litersText) ?? 0) : 0
         item.isFullTank = category == .fuel ? isFullTank : false
         item.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.customCategory = customCategory.trimmingCharacters(in: .whitespacesAndNewlines)
         item.markChanged()
         try? context.save()
         sync.requestSync()

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Журнал: дни колонками, время слева с шагом 30 минут, записи блоками.
 /// Неделя или один день. Нажатие на пустое время создаёт запись, на блок открывает её,
@@ -12,6 +13,12 @@ struct PlannerTimelineView: View {
     let externalItems: (Date) -> [CalendarItem]
     /// Дни со сменой (красноватая полоса 9:00–23:00).
     var shiftDays: Set<Date> = []
+    /// Часть смены по дням: 0 — вся, 1 — первая половина, 2 — вторая.
+    var shiftParts: [Date: Int] = [:]
+    /// Эмодзи типов дел (по названию типа в нижнем регистре).
+    var errandEmojis: [String: String] = [:]
+    /// Долгое нажатие на красный промежуток смены.
+    var onShiftHold: (Date) -> Void = { _ in }
     /// Смайлик настроения дня (для обоих), пустая строка — нет.
     var dayMark: (Date) -> String = { _ in "" }
     /// Значок оплаты записи за этот день.
@@ -243,11 +250,12 @@ struct PlannerTimelineView: View {
         let rangeStart = dayStart.addingTimeInterval(Double(range.lowerBound * Self.slotMinutes * 60))
 
         let isShift = shiftDays.contains(dayStart)
-        let bandStart = dayStart.addingTimeInterval(Double(PlannerShift.startHour) * 3600)
+        let shiftHours = PlannerShift.hours(part: shiftParts[dayStart] ?? 0)
+        let bandStart = dayStart.addingTimeInterval(Double(shiftHours.start) * 3600)
         let bandTop = max(0, y(of: bandStart, from: rangeStart, slotHeight: slotHeight))
         let bandBottom = min(
             slotHeight * CGFloat(range.count),
-            y(of: dayStart.addingTimeInterval(Double(PlannerShift.endHour) * 3600), from: rangeStart, slotHeight: slotHeight)
+            y(of: dayStart.addingTimeInterval(Double(shiftHours.end) * 3600), from: rangeStart, slotHeight: slotHeight)
         )
 
         return ZStack(alignment: .topLeading) {
@@ -274,6 +282,12 @@ struct PlannerTimelineView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             onSlotTap(dayStart.addingTimeInterval(Double(slot * Self.slotMinutes * 60)))
+                        }
+                        .onLongPressGesture(minimumDuration: 0.6) {
+                            let minutes = slot * Self.slotMinutes
+                            if isShift, minutes >= shiftHours.start * 60, minutes < shiftHours.end * 60 {
+                                onShiftHold(dayStart)
+                            }
                         }
                 }
             }
@@ -326,6 +340,43 @@ struct PlannerTimelineView: View {
         .allowsHitTesting(false)
     }
 
+    /// Ширина текста на 1 пункт шрифта (жирный системный): считаем по-настоящему, а не на глаз.
+    private static func unitWidth(_ text: String) -> CGFloat {
+        let font = UIFont.systemFont(ofSize: 100, weight: .bold)
+        return (text as NSString).size(withAttributes: [.font: font]).width / 100
+    }
+
+    /// Как написать название в блоке: строки и размер шрифта.
+    /// Размер — самый крупный, при котором все строки целиком влезают в ширину
+    /// (слова не рвутся) и в высоту. Две строки делим по словам так, чтобы они были
+    /// ближе по ширине. Только если совсем мелко, остаётся одно первое слово целиком.
+    static func titleLayout(_ title: String, width: CGFloat, height: CGFloat, maxFont: CGFloat)
+        -> (text: String, lines: Int, font: CGFloat) {
+        func fit(_ lines: [String]) -> CGFloat {
+            let widest = max(0.1, lines.map(unitWidth).max() ?? 1)
+            return min(maxFont, height / (CGFloat(lines.count) * 1.18), width / widest)
+        }
+        let words = title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard words.count >= 2 else { return (title, 1, max(6, fit([title]))) }
+
+        var best: (lines: [String], font: CGFloat) = ([title], fit([title]))
+        var bestSplit: [String]?
+        var bestWidth = CGFloat.greatestFiniteMagnitude
+        for split in 1..<words.count {
+            let pair = [words[..<split].joined(separator: " "), words[split...].joined(separator: " ")]
+            let widest = pair.map(unitWidth).max() ?? 0
+            if widest < bestWidth { bestWidth = widest; bestSplit = pair }
+        }
+        if let pair = bestSplit, fit(pair) > best.font { best = (pair, fit(pair)) }
+
+        // Совсем мелко: одно слово целиком, но крупнее.
+        if best.font < 7, let word = words.max(by: { unitWidth($0) < unitWidth($1) }) {
+            let single = fit([words[0]])
+            return (words[0], 1, max(6, max(single, fit([word]))))
+        }
+        return (best.lines.joined(separator: "\n"), best.lines.count, max(6, best.font))
+    }
+
     // MARK: - Блок
 
     @ViewBuilder
@@ -333,28 +384,29 @@ struct PlannerTimelineView: View {
         _ block: PlannerTimelineBlock, height: CGFloat, day: Date, index: Int,
         range: Range<Int>, slotHeight: CGFloat, columnWidth: CGFloat
     ) -> some View {
-        // Фамилия сверху, имя снизу, обе строки одного размера и всегда ниже значка оплаты.
-        // Шрифт берём самый крупный из тех, что помещаются по высоте и ширине блока.
+        // Значок статуса или оплаты стоит строкой сверху, название всегда ниже него.
+        // В низких блоках (получас) значок уходит вправо, чтобы название осталось крупным.
+        // Размер шрифта: самый крупный, при котором самое длинное слово целиком влезает
+        // в ширину колонки (слова не рвутся посередине) и строки влезают в высоту.
         let narrow = block.columns > 1
-        let words = block.title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-        let topInset: CGFloat = height >= 34 ? 11 : 1
-        let twoLines = words.count >= 2 && height - topInset >= 24
-        let first = words.first ?? block.title
-        let rest = words.dropFirst().joined(separator: " ")
-        let lineCount: CGFloat = twoLines ? 2 : 1
-        let textWidth = max(10, columnWidth / CGFloat(max(block.columns, 1)) - 6)
-        let longest = CGFloat(max(1, twoLines ? max(first.count, rest.count) : block.title.count))
-        let byHeight = (height - topInset - 3) / (lineCount * 1.2)
-        let byWidth = textWidth / (longest * 0.64)
-        let maxFont: CGFloat = isDayMode ? 22 : 17
-        let fontSize = max(8, min(maxFont, byHeight, byWidth))
-        let showTime = !narrow && height - topInset - 3 > fontSize * lineCount * 1.2 + 14
+        let hasMark = block.badge.symbol != nil || block.together
+        let topRow = hasMark && height >= 30
+        let topInset: CGFloat = topRow ? 11 : 1
+        let trailingInset: CGFloat = (hasMark && !topRow) ? 15 : 1
+        let textWidth = max(10, columnWidth / CGFloat(max(block.columns, 1)) - 6 - (trailingInset - 1))
+        let availHeight = max(6, height - topInset - 2)
+        let maxFont: CGFloat = isDayMode ? 22 : 18
+        let fit = Self.titleLayout(block.title, width: textWidth, height: availHeight, maxFont: maxFont)
+        let lineCount = CGFloat(fit.lines)
+        let fontSize = fit.font
+        let showTime = !narrow && availHeight > fontSize * lineCount * 1.2 + 14
         let content = VStack(alignment: .leading, spacing: 0) {
             // Одним текстом, чтобы при нехватке места обе строки уменьшались вместе.
-            Text(twoLines ? first + "\n" + rest : block.title)
+            Text(fit.text)
                 .font(.system(size: fontSize, weight: .bold))
-                .lineLimit(Int(lineCount))
-                .minimumScaleFactor(0.5)
+                .lineLimit(fit.lines)
+                .minimumScaleFactor(0.85)
+                .allowsTightening(true)
                 .multilineTextAlignment(.leading)
             if showTime {
                 Text("\(PlannerCalendar.time(block.start))–\(PlannerCalendar.time(block.end))")
@@ -365,16 +417,16 @@ struct PlannerTimelineView: View {
             }
         }
         .padding(.leading, 3)
-        .padding(.trailing, 1)
+        .padding(.trailing, trailingInset)
         .padding(.top, topInset)
         .padding(.bottom, 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 0) {
-                if block.together { Text("💞").font(.system(size: 9)) }
+                if block.together { Text("💞").font(.system(size: 10)) }
                 if let symbol = block.badge.symbol {
-                    Text(symbol).font(.system(size: 10))
+                    Text(symbol).font(.system(size: 11))
                 }
             }
             .padding(1)
@@ -473,7 +525,9 @@ struct PlannerTimelineView: View {
                 title: occurrence.event.plainTitle,
                 color: colorFor(occurrence.event, day), start: start, end: end,
                 badge: badge(occurrence.event, day), owner: ownerLetter(occurrence.event),
-                emoji: occurrence.event.categoryValue.emoji ?? "",
+                emoji: occurrence.event.errandType.isEmpty
+                    ? (occurrence.event.categoryValue.emoji ?? "")
+                    : (errandEmojis[occurrence.event.errandType.lowercased()] ?? "💼"),
                 together: occurrence.event.scopeValue == .shared
             ))
         }

@@ -33,6 +33,28 @@ struct PlannerEventEditor: View {
     @State private var errandRegular: Bool
     @State private var errandType: String
     @State private var newErrandType = ""
+    @State private var newErrandEmoji = ""
+    @State private var newMoneyType = ""
+    private var durationMinutes: Int { max(0, Int(end.timeIntervalSince(start) / 60)) }
+
+    private func setDuration(_ minutes: Int) {
+        end = start.addingTimeInterval(TimeInterval(min(max(minutes, 30), 24 * 60) * 60))
+    }
+
+    private var durationText: String {
+        let hours = durationMinutes / 60
+        let minutes = durationMinutes % 60
+        switch (hours, minutes) {
+        case (0, _): return "\(minutes) мин"
+        case (_, 0): return "\(hours) ч"
+        default: return "\(hours) ч \(minutes) мин"
+        }
+    }
+
+    private var trimmedMoneyType: String { newMoneyType.trimmingCharacters(in: .whitespaces) }
+    private var moneyTypeExists: Bool {
+        moneyKinds.contains { $0.isProfit == (moneyDirection == .profit) && $0.name.lowercased() == trimmedMoneyType.lowercased() }
+    }
     @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil }, sort: \PlannerErrandKind.name)
     private var errandKinds: [PlannerErrandKind]
     @Query(filter: #Predicate<PlannerMoneyKind> { $0.deletedAt == nil }, sort: \PlannerMoneyKind.name)
@@ -100,24 +122,40 @@ struct PlannerEventEditor: View {
             }
             .pickerStyle(.segmented)
             if errandRegular {
-                ForEach(errandKinds) { kind in
-                    Button { errandType = errandType == kind.name ? "" : kind.name } label: {
-                        HStack {
-                            Label(kind.name, systemImage: "tag")
-                            Spacer()
-                            if errandType == kind.name { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
-                        }
-                    }
-                    .foregroundStyle(.primary)
+                if !errandType.isEmpty {
+                    Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(Color.accentColor)
                 }
                 HStack {
-                    TextField("Новый тип дела", text: $newErrandType)
+                    TextField("💼", text: $newErrandEmoji)
+                        .frame(width: 36)
+                        .multilineTextAlignment(.center)
+                    TextField("Поиск или новый тип", text: $newErrandType)
+                        .textInputAutocapitalization(.sentences)
                         .onSubmit(addErrandType)
-                    Button(action: addErrandType) {
-                        Image(systemName: "plus.circle.fill").font(.title3)
+                    if !trimmedNewType.isEmpty && !newTypeExists {
+                        Button(action: addErrandType) {
+                            Image(systemName: "plus.circle.fill").font(.title3)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Добавить тип дела")
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(newErrandType.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                if errandType.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Без типа регулярное дело создать нельзя. Выбери или создай тип (кнопка +).", systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                        Button("Сделать разовым делом") { errandRegular = false }
+                            .font(.footnote.weight(.semibold))
+                    }
+                }
+                // Предлагаем не больше двух типов: последние или подходящие под поиск.
+                ForEach(typeSuggestions) { kind in
+                    Button { errandType = kind.name; newErrandType = "" } label: {
+                        Label(kind.name, systemImage: kind.name == errandType ? "checkmark" : "tag")
+                    }
+                    .foregroundStyle(.primary)
                 }
             }
         } header: {
@@ -129,12 +167,27 @@ struct PlannerEventEditor: View {
         }
     }
 
+    private var trimmedNewType: String { newErrandType.trimmingCharacters(in: .whitespaces) }
+
+    private var newTypeExists: Bool {
+        errandKinds.visible(to: account.current).contains { $0.name.caseInsensitiveCompare(trimmedNewType) == .orderedSame }
+    }
+
+    private var typeSuggestions: [PlannerErrandKind] {
+        let sorted = errandKinds.visible(to: account.current).sorted { $0.updatedAt > $1.updatedAt }
+        guard !trimmedNewType.isEmpty else { return [] }
+        return Array(sorted.filter { $0.name.localizedCaseInsensitiveContains(trimmedNewType) }.prefix(2))
+    }
+
     private func addErrandType() {
         let name = newErrandType.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        PlannerErrandKindStore.ensure(context, name: name)
+        let emoji = newErrandEmoji.trimmingCharacters(in: .whitespaces)
+        PlannerErrandKindStore.ensure(context, name: name, owner: account.current, emoji: emoji)
+        if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: name, emoji: emoji) }
         errandType = name
         newErrandType = ""
+        newErrandEmoji = ""
         sync.requestSync()
     }
 
@@ -144,6 +197,7 @@ struct PlannerEventEditor: View {
 
     private var isValid: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty && end >= start
+            && (account.current != .owner || !errandRegular || !errandType.trimmingCharacters(in: .whitespaces).isEmpty)
     }
 
     var body: some View {
@@ -176,10 +230,28 @@ struct PlannerEventEditor: View {
                                     .multilineTextAlignment(.trailing)
                                 Text("₽")
                             }
-                            Picker("Тип", selection: $moneyType) {
-                                Text("Без типа").tag("")
-                                ForEach(moneyKinds.filter { $0.isProfit == (moneyDirection == .profit) }) {
-                                    Text($0.title).tag($0.name)
+                            if !moneyType.isEmpty {
+                                Label("Тип: \(moneyType)", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                            HStack {
+                                TextField("Поиск или новый тип", text: $newMoneyType)
+                                if !trimmedMoneyType.isEmpty && !moneyTypeExists {
+                                    Button {
+                                        if let kind = PlannerMoneyKindStore.ensure(context, name: trimmedMoneyType, isProfit: moneyDirection == .profit) {
+                                            moneyType = kind.name
+                                        }
+                                        newMoneyType = ""
+                                    } label: { Image(systemName: "plus.circle.fill").font(.title3) }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+                            if !trimmedMoneyType.isEmpty {
+                                ForEach(moneyKinds.filter { $0.isProfit == (moneyDirection == .profit) && $0.name.localizedCaseInsensitiveContains(trimmedMoneyType) }.prefix(3)) { kind in
+                                    Button { moneyType = kind.name; newMoneyType = "" } label: {
+                                        Label(kind.title, systemImage: kind.name == moneyType ? "checkmark" : "tag")
+                                    }
+                                    .foregroundStyle(.primary)
                                 }
                             }
                         }
@@ -187,8 +259,8 @@ struct PlannerEventEditor: View {
                         Text("💰 Деньги")
                     } footer: {
                         Text(moneyDirection == .none
-                             ? "Если дело что-то приносит или стоит денег, выбери «Прибыль» или «Трата»."
-                             : "Деньги идут в статистику, когда в записи отмечено «Сделано». Типы создаются в «Настройки дел».")
+                             ? "Если дело что-то приносит или стоит денег, выбери «Прибыль/Приход» или «Трата»."
+                             : "Деньги идут в статистику, когда в записи отмечено «Сделано». Тип ищи по названию или создай через «+».")
                     }
                 }
 
@@ -205,6 +277,22 @@ struct PlannerEventEditor: View {
                     Toggle("Весь день", isOn: $isAllDay)
                     DatePicker("Начало", selection: $start, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
                     DatePicker("Конец", selection: $end, in: start..., displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                    if !isAllDay {
+                        HStack {
+                            Text("Длительность")
+                            Spacer()
+                            Text(durationText)
+                                .foregroundStyle(.secondary)
+                            Button { setDuration(durationMinutes - 30) } label: {
+                                Image(systemName: "minus.circle.fill").font(.title2)
+                            }
+                            .disabled(durationMinutes <= 30)
+                            Button { setDuration(durationMinutes + 30) } label: {
+                                Image(systemName: "plus.circle.fill").font(.title2)
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                    }
                     PlannerRepeatFields(
                         rule: $repeatRule, interval: $repeatInterval, weekdays: $repeatWeekdays,
                         until: $repeatUntil, start: start
@@ -324,8 +412,11 @@ struct PlannerEventEditor: View {
         target.reminderMinutes = reminder
         if account.current == .owner {
             let kind = errandType.trimmingCharacters(in: .whitespaces)
-            target.errandType = errandRegular ? (kind.isEmpty ? target.title : kind) : ""
-            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.errandType) }
+            target.errandType = errandRegular ? kind : ""
+            if errandRegular {
+                PlannerErrandKindStore.ensure(context, name: target.errandType, owner: account.current)
+                if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: target.errandType) }
+            }
             target.moneyKindRaw = moneyDirection.rawValue
             target.moneyAmount = moneyDirection == .none ? 0 : max(0, moneyAmount ?? 0)
             target.moneyType = moneyDirection == .none ? "" : moneyType

@@ -12,10 +12,6 @@ struct PlannerOwnerSetupView: View {
     @Query(filter: #Predicate<PlannerMoneyOp> { $0.deletedAt == nil }, sort: \PlannerMoneyOp.date, order: .reverse)
     private var ops: [PlannerMoneyOp]
 
-    @State private var newName = ""
-    @State private var newEmoji = ""
-    @State private var newIsProfit = true
-
     var body: some View {
         NavigationStack {
             List {
@@ -35,25 +31,21 @@ struct PlannerOwnerSetupView: View {
                     Text("Смены ставятся в календаре кнопкой «Смены». Каждая идёт в статистику на указанную сумму.")
                 }
 
-                kindsSection(title: "📈 Типы прибыли", profit: true)
-                kindsSection(title: "📉 Типы трат", profit: false)
-
-                Section("➕ Новый тип") {
-                    Picker("Что это", selection: $newIsProfit) {
-                        Text("Прибыль").tag(true)
-                        Text("Трата").tag(false)
+                Section {
+                    NavigationLink {
+                        PlannerMoneyKindsView(profit: true)
+                    } label: {
+                        Label("📈 Типы прибыли/прихода", systemImage: "arrow.up.right.circle")
                     }
-                    .pickerStyle(.segmented)
-                    HStack {
-                        TextField("🙂", text: $newEmoji)
-                            .frame(width: 36)
-                        TextField("Название, например «Продажа»", text: $newName)
-                            .onSubmit(addKind)
-                        Button(action: addKind) {
-                            Image(systemName: "plus.circle.fill").font(.title3)
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    NavigationLink {
+                        PlannerMoneyKindsView(profit: false)
+                    } label: {
+                        Label("📉 Типы трат", systemImage: "arrow.down.right.circle")
+                    }
+                    NavigationLink {
+                        PlannerErrandKindsView()
+                    } label: {
+                        Label("🏷 Типы дел", systemImage: "tag")
                     }
                 }
 
@@ -92,29 +84,6 @@ struct PlannerOwnerSetupView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .environment(\.locale, PlannerCalendar.locale)
-    }
-
-    private func kindsSection(title: String, profit: Bool) -> some View {
-        let items = kinds.filter { $0.isProfit == profit }
-        return Section(title) {
-            if items.isEmpty { Text("Пока нет").foregroundStyle(.secondary) }
-            ForEach(items) { kind in Text(kind.title) }
-                .onDelete { offsets in
-                    for index in offsets { items[index].markDeleted() }
-                    try? context.save()
-                    sync.requestSync()
-                }
-        }
-    }
-
-    private func addKind() {
-        PlannerMoneyKindStore.ensure(
-            context, name: newName, isProfit: newIsProfit,
-            emoji: newEmoji.trimmingCharacters(in: .whitespaces)
-        )
-        newName = ""
-        newEmoji = ""
-        sync.requestSync()
     }
 }
 
@@ -159,7 +128,7 @@ struct PlannerMoneyOpSheet: View {
             Form {
                 Section {
                     Picker("Что", selection: $isProfit) {
-                        Text("Продажа / приход").tag(true)
+                        Text("Прибыль/Приход").tag(true)
                         Text("Трата").tag(false)
                     }
                     .pickerStyle(.segmented)
@@ -174,29 +143,38 @@ struct PlannerMoneyOpSheet: View {
                     DatePicker("Дата", selection: $date, displayedComponents: .date)
                 }
                 Section("Тип") {
-                    if matching.isEmpty { Text("Типов пока нет. Создай ниже.").foregroundStyle(.secondary) }
-                    ForEach(matching) { kind in
-                        Button {
-                            typeName = typeName == kind.name ? "" : kind.name
-                        } label: {
-                            HStack {
-                                Text(kind.title)
-                                Spacer()
-                                if typeName == kind.name { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
-                            }
-                        }
-                        .foregroundStyle(.primary)
+                    if !typeName.isEmpty {
+                        Label("Выбрано: \(typeName)", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
                     }
                     HStack {
-                        TextField("Новый тип", text: $newType)
-                        Button("Создать") {
-                            if let kind = PlannerMoneyKindStore.ensure(context, name: newType, isProfit: isProfit) {
-                                typeName = kind.name
-                            }
-                            newType = ""
-                            sync.requestSync()
+                        TextField("Поиск или новый тип", text: $newType)
+                        if !newType.trimmingCharacters(in: .whitespaces).isEmpty
+                            && !matching.contains(where: { $0.name.lowercased() == newType.trimmingCharacters(in: .whitespaces).lowercased() }) {
+                            Button {
+                                if let kind = PlannerMoneyKindStore.ensure(context, name: newType, isProfit: isProfit) {
+                                    typeName = kind.name
+                                }
+                                newType = ""
+                                sync.requestSync()
+                            } label: { Image(systemName: "plus.circle.fill").font(.title3) }
+                            .buttonStyle(.borderless)
                         }
-                        .disabled(newType.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    if !newType.trimmingCharacters(in: .whitespaces).isEmpty {
+                        ForEach(matching.filter { $0.name.localizedCaseInsensitiveContains(newType.trimmingCharacters(in: .whitespaces)) }.prefix(3)) { kind in
+                            Button {
+                                typeName = kind.name
+                                newType = ""
+                            } label: {
+                                HStack {
+                                    Text(kind.title)
+                                    Spacer()
+                                    if typeName == kind.name { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                                }
+                            }
+                            .foregroundStyle(.primary)
+                        }
                     }
                 }
                 Section("Заметка") {
@@ -225,5 +203,113 @@ struct PlannerMoneyOpSheet: View {
         try? context.save()
         sync.requestSync()
         dismiss()
+    }
+}
+
+/// Правка смены на конкретный день: вся или половина, сумма за этот день.
+struct PlannerShiftSheet: View {
+    let day: Date
+    let defaultAmount: Double
+
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+    @Query(filter: #Predicate<PlannerShift> { $0.deletedAt == nil })
+    private var shifts: [PlannerShift]
+
+    @State private var part = 0
+    @State private var amount: Double?
+    @State private var loaded = false
+
+    private var current: PlannerShift? {
+        let start = PlannerCalendar.calendar.startOfDay(for: day)
+        return shifts.first { PlannerCalendar.calendar.startOfDay(for: $0.day) == start }
+    }
+
+    private func suggested(_ part: Int) -> Double {
+        part == 0 ? defaultAmount : (defaultAmount / 2).rounded()
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Смена", selection: $part) {
+                        Text("Вся 9–21").tag(0)
+                        Text("9–15").tag(1)
+                        Text("15–21").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                    HStack {
+                        Text("Оплата за этот день")
+                        Spacer()
+                        TextField("0", value: $amount, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                        Text("₽")
+                    }
+                } header: {
+                    Text(PlannerCalendar.dayTitle(day))
+                } footer: {
+                    Text("Сумма идёт в статистику. Для половины смены по умолчанию берётся половина обычной.")
+                }
+                if current != nil {
+                    Section {
+                        Button("Снять смену с этого дня", role: .destructive) {
+                            PlannerShiftStore.remove(context, day: day)
+                            sync.requestSync()
+                            dismiss()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Смена")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Сохранить") {
+                        PlannerShiftStore.set(context, day: day, part: part, amount: amount ?? suggested(part))
+                        sync.requestSync()
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                guard !loaded else { return }
+                loaded = true
+                part = current?.part ?? 0
+                amount = current?.amount ?? suggested(part)
+            }
+            .onChange(of: part) { _, newValue in
+                // Меняя половину, подставляем обычную сумму для неё, если ещё не правили вручную.
+                if let current, current.part == newValue { amount = current.amount } else { amount = suggested(newValue) }
+            }
+        }
+        .presentationDetents([.medium])
+        .environment(\.locale, PlannerCalendar.locale)
+    }
+}
+
+/// Кружок смены в календаре: целый или левая (9–15) / правая (15–21) половинка.
+struct PlannerShiftDisc: Shape {
+    let part: Int
+
+    func path(in rect: CGRect) -> Path {
+        let side = min(rect.width, rect.height)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = side / 2
+        var path = Path()
+        switch part {
+        case 1:
+            path.addArc(center: center, radius: radius, startAngle: .degrees(90), endAngle: .degrees(270), clockwise: false)
+            path.closeSubpath()
+        case 2:
+            path.addArc(center: center, radius: radius, startAngle: .degrees(270), endAngle: .degrees(90), clockwise: false)
+            path.closeSubpath()
+        default:
+            path.addEllipse(in: CGRect(x: center.x - radius, y: center.y - radius, width: side, height: side))
+        }
+        return path
     }
 }

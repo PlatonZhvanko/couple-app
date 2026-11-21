@@ -92,6 +92,10 @@ struct StatisticsMoneyView: View {
                 }
             }
 
+            Section("🚗 Машина") {
+                StatisticsMyCarSpend(period: period)
+            }
+
             Section("🎾 Занятия") {
                 StatisticsLine(title: "Проведено", value: "\(inPeriod.count)") {
                     ForEach(inPeriod) { visitRow($0, showClient: true) }

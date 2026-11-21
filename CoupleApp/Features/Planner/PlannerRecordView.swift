@@ -8,6 +8,8 @@ struct PlannerRecordView: View {
     let day: Date
     let onEdit: () -> Void
     let onMove: () -> Void
+    /// «Перенос» дела: режим выбора нового места в журнале.
+    var onCarry: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDelete = false
@@ -145,17 +147,14 @@ struct PlannerRecordView: View {
     private var ownerStatusSection: some View {
         Section {
             HStack(spacing: 8) {
-                statusButton("✅ Сделано", color: .green, active: event.status(on: day) == .done) { setStatus(.done) }
-                statusButton("❌ Не сделано", color: .red, active: event.status(on: day) == .notDone) { setStatus(.notDone) }
+                statusButton("✅\nСделано", color: .green, active: event.status(on: day) == .done) { setStatus(.done) }
+                statusButton("❌\nНе сделано", color: .red, active: event.status(on: day) == .notDone) { setStatus(.notDone) }
+                statusButton("↪️\nПеренос", color: .gray, active: isMovedStatus) {
+                    moveTarget = PlannerCalendar.combine(day: PlannerCalendar.addDays(1, to: day), time: event.start)
+                    showMoveSheet = true
+                }
             }
             .buttonStyle(.borderless)
-            Button {
-                moveTarget = PlannerCalendar.combine(day: PlannerCalendar.addDays(1, to: day), time: event.start)
-                showMoveSheet = true
-            } label: {
-                Label("↪️ Перенесено на другое время", systemImage: "calendar.badge.clock")
-            }
-            .disabled(!canEdit)
             if case .moved(let target) = event.status(on: day) {
                 Text("Перенесено на \(PlannerCalendar.dayTitle(target)), \(PlannerCalendar.time(target))")
                     .font(.footnote.weight(.semibold))
@@ -178,10 +177,18 @@ struct PlannerRecordView: View {
         .disabled(!canEdit)
     }
 
+    private var isMovedStatus: Bool {
+        if case .moved = event.status(on: day) { return true }
+        return false
+    }
+
     private func statusButton(_ title: String, color: Color, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.subheadline.weight(.semibold))
+                .font(.footnote.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(RoundedRectangle(cornerRadius: 10).fill(color.opacity(active ? 0.55 : 0.15)))
@@ -190,6 +197,8 @@ struct PlannerRecordView: View {
     }
 
     private func setStatus(_ status: PlannerErrandStatus?) {
+        // Если отменяется перенос, новая запись в новом дне удаляется.
+        PlannerErrandCarry.revoke(event, day: day, context: context)
         event.setStatus(status, on: day)
         event.markChanged()
         try? context.save()
@@ -199,9 +208,25 @@ struct PlannerRecordView: View {
     private var moveSheet: some View {
         NavigationStack {
             Form {
-                DatePicker("Новое время", selection: $moveTarget)
+                Section {
+                    quickMove("Завтра (то же время)", days: 1)
+                    Button {
+                        showMoveSheet = false
+                        dismiss()
+                        onCarry()
+                    } label: {
+                        Label("Выбрать место в журнале", systemImage: "hand.tap")
+                    }
+                } header: {
+                    Text("Быстро")
+                } footer: {
+                    Text("В журнале выбери день и нажми пальцем на нужное время.")
+                }
+                Section("Или ввести день и время") {
+                    DatePicker("Новое время", selection: $moveTarget)
+                }
             }
-            .navigationTitle("Перенести дело")
+            .navigationTitle("Перенос дела")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Отмена") { showMoveSheet = false } }
@@ -212,30 +237,16 @@ struct PlannerRecordView: View {
         .environment(\.locale, PlannerCalendar.locale)
     }
 
+    private func quickMove(_ title: String, days: Int) -> some View {
+        Button(title) {
+            moveTarget = PlannerCalendar.combine(day: PlannerCalendar.addDays(days, to: day), time: event.start)
+            performMove()
+        }
+    }
+
     /// Старый день остаётся белым с пометкой, а на новом дне появляется такая же запись.
     private func performMove() {
-        let duration = max(0, event.end.timeIntervalSince(event.start))
-        let copy = PlannerEvent()
-        copy.title = event.title
-        copy.notes = event.notes
-        copy.isAllDay = event.isAllDay
-        copy.start = event.isAllDay ? cal.startOfDay(for: moveTarget) : moveTarget
-        copy.end = event.isAllDay ? copy.start : moveTarget.addingTimeInterval(duration)
-        copy.scope = event.scope
-        copy.isPrivate = event.isPrivate
-        copy.colorHex = event.colorHex
-        copy.category = event.category
-        copy.repeatRule = PlannerRepeat.none.rawValue
-        copy.reminderMinutes = event.reminderMinutes
-        copy.createdBy = event.createdBy
-        copy.moneyKindRaw = event.moneyKindRaw
-        copy.moneyAmount = event.moneyAmount
-        copy.moneyType = event.moneyType
-        context.insert(copy)
-        copy.markChanged()
-        event.setStatus(.moved(copy.start), on: day)
-        event.markChanged()
-        try? context.save()
+        PlannerErrandCarry.carry(event, day: day, to: moveTarget, context: context)
         sync.requestSync()
         showMoveSheet = false
         dismiss()
@@ -380,7 +391,7 @@ struct PlannerRecordView: View {
                     dismiss()
                     onMove()
                 } label: {
-                    Label("Перенести", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
+                    Label("Переместить", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
                 }
                 Button {
                     dismiss()

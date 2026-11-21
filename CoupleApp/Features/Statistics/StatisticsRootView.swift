@@ -7,6 +7,7 @@ enum StatisticsSection: String, CaseIterable, Identifiable {
     case clients = "🙋 Клиенты"
     case cancels = "🚫 Отмены"
     case debts = "📋 Долги"
+    case errands = "📌 Дела"
     var id: String { rawValue }
 }
 
@@ -114,6 +115,8 @@ struct StatisticsRootView: View {
                 case .debts:
                     StatisticsDebtsView(snapshot: snapshot, period: period)
                         .catAnchor()
+                case .errands:
+                    StatisticsOwnerMoneyView(entries: PlannerLedger.partnerEntries(events: events), period: period)
                 }
             }
         }

@@ -12,6 +12,15 @@ enum PetsCatStyle: String, CaseIterable {
         }
     }
 
+    /// Тот же кот в общем стиле приложения.
+    var appCat: Cat {
+        switch self {
+        case .tuxedo: .miron
+        case .slim: .gosha
+        case .grey: .chloe
+        }
+    }
+
     var background: Color {
         switch self {
         case .tuxedo: Color(red: 0.98, green: 0.86, blue: 0.88)
@@ -93,7 +102,11 @@ struct PetsAvatar: View {
 
     var body: some View {
         if let style = PetsCatStyle(rawValue: pet.iconKey) {
-            PetsCatIcon(style: style, size: size)
+            // Тот же нарисованный кот, что в заставке и репликах.
+            CatAvatar(cat: style.appCat, size: size * 0.9, expression: .happy)
+                .frame(width: size, height: size)
+                .background(Circle().fill(style.background))
+                .clipShape(Circle())
         } else {
             Image(systemName: "pawprint.fill")
                 .font(.system(size: size * 0.45))

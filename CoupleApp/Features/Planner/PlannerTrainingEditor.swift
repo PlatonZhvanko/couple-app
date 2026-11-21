@@ -44,6 +44,12 @@ struct PlannerTrainingEditor: View {
     @State private var confirmDelete = false
     @State private var newKindName = ""
     @State private var errandRegular = false
+    @State private var pMoney: PlannerMoneyDirection = .none
+    @State private var pAmount: Double?
+    @State private var pType = ""
+    @State private var pTypeQuery = ""
+    @Query(filter: #Predicate<PlannerMoneyKind> { $0.deletedAt == nil }, sort: \PlannerMoneyKind.name)
+    private var moneyKinds: [PlannerMoneyKind]
     @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil }, sort: \PlannerErrandKind.name)
     private var errandKinds: [PlannerErrandKind]
     @Query(filter: #Predicate<PlannerGroupKind> { $0.deletedAt == nil }, sort: \PlannerGroupKind.name)
@@ -66,6 +72,9 @@ struct PlannerTrainingEditor: View {
             _groupCategory = State(initialValue: category == .school ? .school : .group)
             _title = State(initialValue: event.title)
             _errandRegular = State(initialValue: category == .errand && event.repeatRule != PlannerRepeat.none.rawValue)
+            _pMoney = State(initialValue: PlannerMoneyDirection(rawValue: event.partnerMoneyKindRaw) ?? .none)
+            _pAmount = State(initialValue: event.partnerMoneyAmount > 0 ? event.partnerMoneyAmount : nil)
+            _pType = State(initialValue: event.partnerMoneyType)
             _notes = State(initialValue: event.notes)
             _start = State(initialValue: event.start)
             _durationMinutes = State(initialValue: max(30, Int(event.end.timeIntervalSince(event.start) / 60)))
@@ -196,7 +205,7 @@ struct PlannerTrainingEditor: View {
                                     .textInputAutocapitalization(.sentences)
                                 if !trimmedTitle.isEmpty && !errandKindExists {
                                     Button {
-                                        PlannerErrandKindStore.ensure(context, name: trimmedTitle)
+                                        PlannerErrandKindStore.ensure(context, name: trimmedTitle, owner: account.current)
                                         sync.requestSync()
                                     } label: {
                                         Image(systemName: "plus.circle.fill").font(.title3)
@@ -216,6 +225,7 @@ struct PlannerTrainingEditor: View {
                     } header: {
                         Text("🧳 Дело")
                     }
+                    partnerMoneySection
                 }
 
                 Section {
@@ -306,6 +316,59 @@ struct PlannerTrainingEditor: View {
         }
     }
 
+    // MARK: - Деньги дела (личные)
+
+    private var trimmedPType: String { pTypeQuery.trimmingCharacters(in: .whitespaces) }
+
+    private var partnerMoneySection: some View {
+        Section {
+            Picker("Деньги", selection: $pMoney.animation()) {
+                ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            if pMoney != .none {
+                HStack {
+                    Text("Сумма")
+                    Spacer()
+                    TextField("0", value: $pAmount, format: .number)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                    Text("₽")
+                }
+                if !pType.isEmpty {
+                    Label("Тип: \(pType)", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(Color.accentColor)
+                }
+                HStack {
+                    TextField("Поиск или новый тип", text: $pTypeQuery)
+                    if !trimmedPType.isEmpty,
+                       !moneyKinds.contains(where: { $0.isProfit == (pMoney == .profit) && $0.name.caseInsensitiveCompare(trimmedPType) == .orderedSame }) {
+                        Button {
+                            if let kind = PlannerMoneyKindStore.ensure(context, name: trimmedPType, isProfit: pMoney == .profit) {
+                                pType = kind.name
+                            }
+                            pTypeQuery = ""
+                        } label: { Image(systemName: "plus.circle.fill").font(.title3) }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                if !trimmedPType.isEmpty {
+                    ForEach(moneyKinds.filter { $0.isProfit == (pMoney == .profit) && $0.name.localizedCaseInsensitiveContains(trimmedPType) }.prefix(3)) { kind in
+                        Button { pType = kind.name; pTypeQuery = "" } label: {
+                            Label(kind.title, systemImage: kind.name == pType ? "checkmark" : "tag")
+                        }
+                        .foregroundStyle(.primary)
+                    }
+                }
+            }
+        } header: {
+            Text("💰 Деньги за дело")
+        } footer: {
+            Text("По умолчанию ничего. Это твои личные деньги: у совместного дела у каждого свои, в статистике «Дела».")
+        }
+        .onChange(of: pMoney) { _, _ in pType = "" }
+    }
+
     // MARK: - Клиенты
 
     private func loadDirectory() {
@@ -337,14 +400,14 @@ struct PlannerTrainingEditor: View {
 
     private var groupKindChips: some View {
         Group {
-            if groupKinds.isEmpty {
-                Text("Пока нет групп. Впиши название и нажми +, дальше она будет в быстром выборе.")
+            if trimmedKindName.isEmpty {
+                Text("Впиши название для поиска или нового вида и нажми +.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(groupKinds) { kind in
+                        ForEach(groupKinds.filter { $0.name.localizedCaseInsensitiveContains(trimmedKindName) }.prefix(3)) { kind in
                             let selected = title == kind.name
                             Button {
                                 selectGroupKind(kind)
@@ -388,7 +451,7 @@ struct PlannerTrainingEditor: View {
         let selected = Set(participants.map(\.id))
         let pool = directory.filter { !selected.contains($0.id) }
         // Без запроса показываем только двух недавних.
-        guard !trimmedQuery.isEmpty else { return Array(pool.prefix(2)) }
+        guard !trimmedQuery.isEmpty else { return [] }
         return Array(pool.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(6))
     }
 
@@ -453,12 +516,13 @@ struct PlannerTrainingEditor: View {
     private var trimmedTitle: String { title.trimmingCharacters(in: .whitespaces) }
 
     private var errandKindExists: Bool {
-        errandKinds.contains { $0.name.caseInsensitiveCompare(trimmedTitle) == .orderedSame }
+        errandKinds.visible(to: account.current).contains { $0.name.caseInsensitiveCompare(trimmedTitle) == .orderedSame }
     }
 
     private var errandMatches: [PlannerErrandKind] {
-        guard !trimmedTitle.isEmpty else { return Array(errandKinds.prefix(5)) }
-        return Array(errandKinds.filter { $0.name.localizedCaseInsensitiveContains(trimmedTitle) }.prefix(5))
+        let mine = errandKinds.visible(to: account.current)
+        guard !trimmedTitle.isEmpty else { return [] }
+        return Array(mine.filter { $0.name.localizedCaseInsensitiveContains(trimmedTitle) }.prefix(5))
     }
 
     /// Если такой клиент уже есть, выбираем его, иначе заводим нового в общей базе.
@@ -509,7 +573,8 @@ struct PlannerTrainingEditor: View {
         case .errand:
             target.title = title.trimmingCharacters(in: .whitespaces)
             target.participantIDs = []
-            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.title) }
+            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.title, owner: account.current)
+                if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: target.title) } }
             target.errandType = errandRegular ? target.title : ""
         }
         target.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -529,6 +594,11 @@ struct PlannerTrainingEditor: View {
         target.repeatUntil = repeatUntil
         target.colorHex = colorHex
         target.reminderMinutes = reminder
+        if category == .errand {
+            target.partnerMoneyKindRaw = pMoney.rawValue
+            target.partnerMoneyAmount = pMoney == .none ? 0 : max(0, pAmount ?? 0)
+            target.partnerMoneyType = pMoney == .none ? "" : pType
+        }
         target.markChanged()
         try? context.save()
         sync.requestSync()

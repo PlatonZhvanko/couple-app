@@ -163,10 +163,12 @@ struct CarRemindersView: View {
     }
 }
 
-/// Итоги: сколько потрачено, на что, кем, и расход топлива.
+/// Аналитика трат машины. Всё считается один раз при открытии, без тяжёлых элементов:
+/// простые строки с суммами.
 struct CarStatsView: View {
     let car: CarVehicle
 
+    /// Оставлено для совместимости с другими экранами.
     enum Period: String, CaseIterable, Identifiable {
         case month, year, all
         var id: String { rawValue }
@@ -179,71 +181,89 @@ struct CarStatsView: View {
         }
     }
 
-    @Environment(AccountStore.self) private var account
-    @Query(filter: #Predicate<CarEntry> { $0.deletedAt == nil }, sort: \CarEntry.date)
-    private var allEntries: [CarEntry]
-    @State private var period: Period = .month
-
-    private var interval: DateInterval {
-        switch period {
-        case .month: CarMath.currentMonth()
-        case .year: CarMath.currentYear()
-        case .all: DateInterval(start: .distantPast, end: .distantFuture)
-        }
+    private struct Summary {
+        var total = 0.0
+        var year = 0.0
+        var month = 0.0
+        var categories: [(title: String, sum: Double)] = []
+        var average: String = "—"
+        var last: String = "—"
+        var perKm: String = "—"
+        var planned = 0.0
+        var count = 0
     }
 
+    @Environment(\.modelContext) private var context
+    @State private var summary: Summary?
+
     var body: some View {
-        let entries = allEntries.of(car)
-        let inPeriod = entries.filter { interval.contains($0.date) }
-        let total = inPeriod.reduce(0) { $0 + $1.amount }
-        let byCategory = CarMath.totalsByCategory(entries, in: interval)
-        let fuel = CarMath.fuelStats(entries)
-
         List {
-            Section {
-                Picker("Период", selection: $period) {
-                    ForEach(Period.allCases) { Text($0.title).tag($0) }
+            if let summary {
+                if summary.count == 0 {
+                    Section { Text("Трат пока нет.").foregroundStyle(.secondary) }
                 }
-                .pickerStyle(.segmented)
-                LabeledContent("Всего потрачено") {
-                    Text(CarFormat.money(total)).font(.headline).monospacedDigit()
+                Section("Сколько потрачено") {
+                    LabeledContent("Всё время", value: CarFormat.money(summary.total))
+                    LabeledContent("За год", value: CarFormat.money(summary.year))
+                    LabeledContent("За месяц", value: CarFormat.money(summary.month))
+                    if summary.planned > 0 {
+                        LabeledContent("Ремонты в планах", value: CarFormat.money(summary.planned))
+                    }
                 }
-            }
-
-            if !byCategory.isEmpty {
-                Section("На что") {
-                    ForEach(byCategory) { item in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Label(item.category.title, systemImage: item.category.systemImage)
-                                    .foregroundStyle(item.category.color)
-                                Spacer()
-                                Text(CarFormat.money(item.sum)).monospacedDigit()
-                            }
-                            ProgressView(value: total > 0 ? item.sum / total : 0)
-                                .tint(item.category.color)
+                if !summary.categories.isEmpty {
+                    Section("На что (всё время)") {
+                        ForEach(0..<summary.categories.count, id: \.self) { index in
+                            LabeledContent(summary.categories[index].title,
+                                           value: CarFormat.money(summary.categories[index].sum))
                         }
                     }
                 }
-
-                Section("Кто платил") {
-                    ForEach(CoupleMember.allCases) { member in
-                        let sum = inPeriod.filter { $0.memberValue == member }.reduce(0) { $0 + $1.amount }
-                        LabeledContent(account.name(of: member), value: CarFormat.money(sum))
-                    }
+                Section("Топливо и пробег") {
+                    LabeledContent("Средний расход", value: summary.average)
+                    LabeledContent("Последний бак", value: summary.last)
+                    LabeledContent("Стоимость 1 км", value: summary.perKm)
                 }
-            }
-
-            Section {
-                LabeledContent("Средний расход", value: fuel.averageLitersPer100.map { CarFormat.consumption($0) } ?? "—")
-                LabeledContent("Последний бак", value: fuel.lastLitersPer100.map { CarFormat.consumption($0) } ?? "—")
-                LabeledContent("Стоимость 1 км", value: CarMath.costPerKm(entries).map { CarFormat.money($0) } ?? "—")
-            } header: {
-                Text("Топливо и пробег")
-            } footer: {
-                Text("Расход и стоимость километра считаются за всё время. Для расхода нужны хотя бы две заправки до полного бака с пробегом.")
+            } else {
+                Section { Text("Считаю…").foregroundStyle(.secondary) }
             }
         }
-        .navigationTitle("Итоги")
+        .navigationTitle("Аналитика")
+        .task { summary = load() }
+    }
+
+    /// Один запрос по этой машине и простые подсчёты.
+    private func load() -> Summary {
+        let carID = car.syncID
+        let descriptor = FetchDescriptor<CarEntry>(
+            predicate: #Predicate { $0.carID == carID && $0.deletedAt == nil }
+        )
+        let entries = (try? context.fetch(descriptor)) ?? []
+        let repairDescriptor = FetchDescriptor<CarRepair>(
+            predicate: #Predicate { $0.carID == carID && $0.deletedAt == nil && $0.isPaid == false }
+        )
+        let planned = ((try? context.fetch(repairDescriptor)) ?? []).reduce(0) { $0 + $1.price }
+
+        var result = Summary()
+        result.count = entries.count
+        result.planned = planned
+        let now = Date.now
+        let calendar = Calendar.current
+        let monthStart = calendar.dateInterval(of: .month, for: now)?.start ?? now
+        let yearStart = calendar.dateInterval(of: .year, for: now)?.start ?? now
+
+        var byCategory: [String: Double] = [:]
+        for entry in entries where entry.amount > 0 {
+            result.total += entry.amount
+            if entry.date >= yearStart { result.year += entry.amount }
+            if entry.date >= monthStart { result.month += entry.amount }
+            byCategory[entry.categoryTitle, default: 0] += entry.amount
+        }
+        result.categories = byCategory.map { (title: $0.key, sum: $0.value) }.sorted { $0.sum > $1.sum }
+
+        let fuel = CarMath.fuelStats(entries)
+        result.average = fuel.averageLitersPer100.map { CarFormat.consumption($0) } ?? "—"
+        result.last = fuel.lastLitersPer100.map { CarFormat.consumption($0) } ?? "—"
+        result.perKm = CarMath.costPerKm(entries).map { CarFormat.money($0) } ?? "—"
+        return result
     }
 }
