@@ -31,6 +31,22 @@ enum PlannerClientDirectory {
 }
 
 extension PlannerClientDirectory {
+    /// Клиента удалили: его индивидуальные занятия удаляются, а из групп он просто убирается.
+    @MainActor
+    static func removeEvents(of clientID: UUID, context: ModelContext) {
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        for event in events where event.participantIDs.contains(clientID) {
+            let others = event.participantIDs.filter { $0 != clientID }
+            if others.isEmpty && event.categoryValue == .personal {
+                event.markDeleted()
+            } else {
+                event.participantIDs = others
+                event.markChanged()
+            }
+        }
+        try? context.save()
+    }
+
     /// Сколько было тренировок с клиентом в журнале и сколько он оплатил.
     @MainActor
     static func stats(for clientID: UUID, context: ModelContext) -> (visits: Int, earned: Double) {

@@ -252,7 +252,7 @@ struct ClientsClientEditor: View {
                 }
             }
             .confirmationDialog("Удалить клиента?", isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("Удалить", role: .destructive, action: delete)
+                Button("Удалить клиента и его записи", role: .destructive, action: delete)
             }
         }
     }
@@ -271,6 +271,7 @@ struct ClientsClientEditor: View {
     }
 
     private func delete() {
+        if let id = client?.syncID { PlannerClientDirectory.removeEvents(of: id, context: context) }
         client?.markDeleted()
         try? context.save()
         sync.requestSync()
