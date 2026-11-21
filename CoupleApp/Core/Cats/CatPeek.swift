@@ -155,12 +155,19 @@ final class CatPeekCenter {
     /// Высота (на экране) блока, рядом с которым коту логично показаться. Ставится `.catAnchor()`.
     var anchorY: CGFloat?
 
-    func present(_ view: AnyView) {
-        token = UUID()
+    func present(_ view: AnyView, token newToken: UUID = UUID()) {
+        token = newToken
         current = view
     }
 
     func dismiss() {
+        current = nil
+    }
+
+    /// Убирает кота, только если на экране всё ещё он: таймер прежнего кота не должен
+    /// прятать нового, который уже появился.
+    func dismiss(ifToken expected: UUID) {
+        guard token == expected else { return }
         current = nil
     }
 
@@ -175,12 +182,13 @@ final class CatPeekCenter {
             e = edge ?? CatPeekEdge.allCases.randomElement() ?? .bottom
         }
         let text = message ?? CatPhrases.random(for: cat, topic: topic)
+        let myToken = UUID()
         present(AnyView(
             CatPeekView(cat: cat, edge: e, message: text, position: Int.random(in: 0...2),
                         duration: duration, anchorY: anchorY) { [weak self] in
-                self?.dismiss()
+                self?.dismiss(ifToken: myToken)
             }
-        ))
+        ), token: myToken)
     }
 }
 
