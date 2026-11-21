@@ -13,6 +13,10 @@ struct PlannerTimelineView: View {
     let externalItems: (Date) -> [CalendarItem]
     /// Дни со сменой (красноватая полоса 9:00–23:00).
     var shiftDays: Set<Date> = []
+    /// Часть смены по дням: 0 — вся, 1 — первая половина, 2 — вторая.
+    var shiftParts: [Date: Int] = [:]
+    /// Долгое нажатие на красный промежуток смены.
+    var onShiftHold: (Date) -> Void = { _ in }
     /// Смайлик настроения дня (для обоих), пустая строка — нет.
     var dayMark: (Date) -> String = { _ in "" }
     /// Значок оплаты записи за этот день.
@@ -244,11 +248,12 @@ struct PlannerTimelineView: View {
         let rangeStart = dayStart.addingTimeInterval(Double(range.lowerBound * Self.slotMinutes * 60))
 
         let isShift = shiftDays.contains(dayStart)
-        let bandStart = dayStart.addingTimeInterval(Double(PlannerShift.startHour) * 3600)
+        let shiftHours = PlannerShift.hours(part: shiftParts[dayStart] ?? 0)
+        let bandStart = dayStart.addingTimeInterval(Double(shiftHours.start) * 3600)
         let bandTop = max(0, y(of: bandStart, from: rangeStart, slotHeight: slotHeight))
         let bandBottom = min(
             slotHeight * CGFloat(range.count),
-            y(of: dayStart.addingTimeInterval(Double(PlannerShift.endHour) * 3600), from: rangeStart, slotHeight: slotHeight)
+            y(of: dayStart.addingTimeInterval(Double(shiftHours.end) * 3600), from: rangeStart, slotHeight: slotHeight)
         )
 
         return ZStack(alignment: .topLeading) {
@@ -275,6 +280,12 @@ struct PlannerTimelineView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             onSlotTap(dayStart.addingTimeInterval(Double(slot * Self.slotMinutes * 60)))
+                        }
+                        .onLongPressGesture(minimumDuration: 0.6) {
+                            let minutes = slot * Self.slotMinutes
+                            if isShift, minutes >= shiftHours.start * 60, minutes < shiftHours.end * 60 {
+                                onShiftHold(dayStart)
+                            }
                         }
                 }
             }
