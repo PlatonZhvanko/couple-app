@@ -242,7 +242,7 @@ struct PlannerTimelineView: View {
         let blocks = layout(day)
         let rangeStart = dayStart.addingTimeInterval(Double(range.lowerBound * Self.slotMinutes * 60))
 
-        let isShift = shiftDays.contains(dayStart) && !isToday
+        let isShift = shiftDays.contains(dayStart)
         let bandStart = dayStart.addingTimeInterval(Double(PlannerShift.startHour) * 3600)
         let bandTop = max(0, y(of: bandStart, from: rangeStart, slotHeight: slotHeight))
         let bandBottom = min(
@@ -252,8 +252,11 @@ struct PlannerTimelineView: View {
 
         return ZStack(alignment: .topLeading) {
             if isShift, bandBottom > bandTop {
+                // Смена занимает ровно 9:00–21:00: полоса с красной кромкой слева.
                 Rectangle()
-                    .fill(Color.red.opacity(0.16))
+                    .fill(Color.red.opacity(0.22))
+                    .overlay(alignment: .leading) { Rectangle().fill(Color.red.opacity(0.7)).frame(width: 3) }
+                    .frame(maxWidth: .infinity)
                     .frame(height: bandBottom - bandTop)
                     .offset(y: bandTop)
                     .allowsHitTesting(false)
