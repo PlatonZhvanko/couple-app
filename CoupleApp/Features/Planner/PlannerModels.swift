@@ -197,6 +197,10 @@ final class PlannerEvent: SyncableModel {
         var statuses: String?
         /// Тип дела из базы типов (регулярное дело), пусто — разовое.
         var errandType: String?
+        /// Деньги Настеньки за это дело (личные, у совместного дела у каждого свои).
+        var partnerMoneyKind: String?
+        var partnerMoneyAmount: Double?
+        var partnerMoneyType: String?
     }
 
     static let recordKind = "planner.event"
@@ -237,6 +241,10 @@ final class PlannerEvent: SyncableModel {
     var moneyAmount: Double = 0
     /// Название созданного типа денег (например «Продажа»).
     var moneyType: String = ""
+    /// Личные деньги Настеньки за дело: пусто — ничего, «profit» / «expense».
+    var partnerMoneyKindRaw: String = ""
+    var partnerMoneyAmount: Double = 0
+    var partnerMoneyType: String = ""
     /// Статусы по дням (сделано / не сделано / перенесено).
     var statusRaw: String = ""
     /// Тип дела из базы («Тренировка», «Закупка»). Пусто — разовое дело.
@@ -261,7 +269,10 @@ final class PlannerEvent: SyncableModel {
             repeatInterval: repeatInterval, repeatWeekdays: repeatWeekdaysRaw,
             repeatUntil: repeatUntil, colorHex: colorHex, cancelledDays: cancelledDaysRaw,
             moneyKind: moneyKindRaw, moneyAmount: moneyAmount, moneyType: moneyType, statuses: statusRaw,
-            errandType: errandType
+            errandType: errandType,
+            partnerMoneyKind: partnerMoneyKindRaw.isEmpty ? nil : partnerMoneyKindRaw,
+            partnerMoneyAmount: partnerMoneyAmount == 0 ? nil : partnerMoneyAmount,
+            partnerMoneyType: partnerMoneyType.isEmpty ? nil : partnerMoneyType
         )
     }
 
@@ -290,6 +301,9 @@ final class PlannerEvent: SyncableModel {
         moneyType = payload.moneyType ?? ""
         statusRaw = payload.statuses ?? ""
         errandType = payload.errandType ?? ""
+        partnerMoneyKindRaw = payload.partnerMoneyKind ?? ""
+        partnerMoneyAmount = payload.partnerMoneyAmount ?? 0
+        partnerMoneyType = payload.partnerMoneyType ?? ""
     }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }
