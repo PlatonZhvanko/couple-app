@@ -51,7 +51,9 @@ struct SyncAdapter {
                     existing[item.syncID] = item
                 }
                 for record in records {
-                    let payload = try JSONDecoder.sync.decode(Model.Payload.self, from: record.payload)
+                    // Запись, которую эта версия приложения не понимает (например, из более
+                    // новой версии), пропускаем, а не ломаем всю синхронизацию.
+                    guard let payload = try? JSONDecoder.sync.decode(Model.Payload.self, from: record.payload) else { continue }
                     if let local = existing[record.id] {
                         // Побеждает последнее изменение.
                         guard record.updatedAt > local.updatedAt else { continue }
