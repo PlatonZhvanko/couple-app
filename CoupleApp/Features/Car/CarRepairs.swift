@@ -12,6 +12,7 @@ final class CarRepair: SyncableModel {
         var title: String
         var price: Double
         var desiredDate: Date?
+        var desiredOdometer: Int?
         var note: String
         var isPaid: Bool
         var paidAt: Date?
@@ -29,6 +30,8 @@ final class CarRepair: SyncableModel {
     var price: Double = 0
     /// Когда желательно сделать. `nil` — без срока.
     var desiredDate: Date? = nil
+    /// Желаемый пробег, км. 0 — без пробега. Работает как срок: «по дате или по пробегу».
+    var desiredOdometer: Int = 0
     var note: String = ""
     var isPaid: Bool = false
     var paidAt: Date? = nil
@@ -51,7 +54,8 @@ final class CarRepair: SyncableModel {
     }
 
     var payload: Payload {
-        Payload(carID: carID, title: title, price: price, desiredDate: desiredDate, note: note,
+        Payload(carID: carID, title: title, price: price, desiredDate: desiredDate,
+                desiredOdometer: desiredOdometer > 0 ? desiredOdometer : nil, note: note,
                 isPaid: isPaid, paidAt: paidAt, entryID: entryID, member: member, createdAt: createdAt)
     }
 
@@ -60,6 +64,7 @@ final class CarRepair: SyncableModel {
         title = payload.title
         price = payload.price
         desiredDate = payload.desiredDate
+        desiredOdometer = payload.desiredOdometer ?? 0
         note = payload.note
         isPaid = payload.isPaid
         paidAt = payload.paidAt
@@ -192,6 +197,10 @@ struct CarRepairsView: View {
                     .foregroundStyle(repair.isPaid ? .green : .orange)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(repair.title.isEmpty ? "Без названия" : repair.title)
+                    if !repair.isPaid, repair.desiredOdometer > 0 {
+                        Text("На пробеге \(CarFormat.km(repair.desiredOdometer))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if repair.isPaid, let at = repair.paidAt {
                         Text("Оплачено \(at.formatted(date: .abbreviated, time: .omitted))")
                             .font(.caption).foregroundStyle(.secondary)
@@ -221,6 +230,16 @@ struct CarRepairsView: View {
     }
 }
 
+// MARK: - Быстрый выбор
+
+/// ТО (масло, фильтры, тормозная жидкость) тут не нужно: это одна запись «ТО».
+enum CarRepairPresets {
+    static let titles = [
+        "ОСАГО", "КАСКО", "Техосмотр", "Смена шин", "Тормозные колодки",
+        "Аккумулятор", "Развал-схождение", "Диагностика", "Мойка и химчистка",
+    ]
+}
+
 // MARK: - Форма
 
 struct CarRepairFormView: View {
@@ -236,6 +255,7 @@ struct CarRepairFormView: View {
     @State private var priceText: String
     @State private var hasDate: Bool
     @State private var date: Date
+    @State private var odometerText: String
     @State private var note: String
 
     init(car: CarVehicle, repair: CarRepair?) {
@@ -244,6 +264,7 @@ struct CarRepairFormView: View {
         _title = State(initialValue: repair?.title ?? "")
         _priceText = State(initialValue: (repair?.price ?? 0) > 0 ? CarNumber.text(Int(repair?.price ?? 0)) : "")
         _hasDate = State(initialValue: repair?.desiredDate != nil)
+        _odometerText = State(initialValue: (repair?.desiredOdometer ?? 0) > 0 ? String(repair?.desiredOdometer ?? 0) : "")
         _date = State(initialValue: repair?.desiredDate ?? Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now)
         _note = State(initialValue: repair?.note ?? "")
     }
@@ -251,6 +272,19 @@ struct CarRepairFormView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if repair == nil {
+                    Section("Быстрый выбор") {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(CarRepairPresets.titles, id: \.self) { preset in
+                                    Button(preset) { title = preset }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                }
+                            }
+                        }
+                    }
+                }
                 Section {
                     TextField("Что сделать, например «Замена колодок»", text: $title)
                     LabeledContent("Цена, ₽") {
@@ -258,9 +292,18 @@ struct CarRepairFormView: View {
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                     }
-                    Toggle("Когда желательно сделать", isOn: $hasDate)
+                } footer: {
+                    Text("Срок можно задать датой, пробегом или обоими сразу. Напомним, что придёт первым.")
+                }
+                Section("Когда желательно") {
+                    Toggle("По дате", isOn: $hasDate)
                     if hasDate {
                         DatePicker("Дата", selection: $date, displayedComponents: .date)
+                    }
+                    LabeledContent("По пробегу, км") {
+                        TextField("необязательно", text: $odometerText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
                     }
                 }
                 Section("Заметка") { TextField("Где делать, какие запчасти", text: $note, axis: .vertical) }
@@ -292,6 +335,7 @@ struct CarRepairFormView: View {
         target.title = title
         target.price = CarNumber.double(priceText) ?? 0
         target.desiredDate = hasDate ? date : nil
+        target.desiredOdometer = CarNumber.int(odometerText) ?? 0
         target.note = note
         if repair == nil { context.insert(target) }
         target.markChanged()

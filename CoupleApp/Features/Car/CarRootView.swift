@@ -5,6 +5,7 @@ import SwiftUI
 struct CarRootView: View {
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
+    @Environment(AccountStore.self) private var account
 
     @Query(filter: #Predicate<CarVehicle> { $0.deletedAt == nil }, sort: \CarVehicle.createdAt)
     private var cars: [CarVehicle]
@@ -20,6 +21,8 @@ struct CarRootView: View {
     @State private var sheet: CarSheet?
     /// Выбранная на входе машина. Каждый раз при входе в раздел сначала выбор.
     @State private var chosenID: UUID?
+    @State private var showOdometer = false
+    @State private var odometerText = ""
 
     private var chosenCar: CarVehicle? { cars.first { $0.syncID == chosenID } }
 
@@ -42,6 +45,15 @@ struct CarRootView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.35), value: chosenID)
+            .alert("Пробег сейчас, км", isPresented: $showOdometer) {
+                TextField("Например 185000", text: $odometerText).keyboardType(.numberPad)
+                Button("Записать") {
+                    if let car = chosenCar, let km = CarNumber.int(odometerText) {
+                        CarOdometerAction.record(km: km, car: car, member: account.current, context: context, sync: sync)
+                    }
+                }
+                Button("Отмена", role: .cancel) {}
+            }
             .navigationTitle(chosenCar?.displayName ?? "Авто")
             .toolbar { toolbar }
             .sheet(item: $sheet) { sheet in
@@ -63,7 +75,9 @@ struct CarRootView: View {
         let odometer = CarMath.currentOdometer(car: car, entries: entries)
         // 1. ремонт, который пора делать или скоро срок
         let soon = Date.now.addingTimeInterval(7 * 86400)
-        let urgent = allRepairs.of(car).filter { !$0.isPaid && ($0.desiredDate ?? .distantFuture) < soon }
+        let urgent = allRepairs.of(car).filter {
+            !$0.isPaid && (($0.desiredDate ?? .distantFuture) < soon || ($0.desiredOdometer > 0 && odometer >= $0.desiredOdometer - 500))
+        }
             .sorted { ($0.desiredDate ?? .distantFuture) < ($1.desiredDate ?? .distantFuture) }
         if let repair = urgent.first { return .repair(title: repair.title, price: repair.price) }
         // 2. давно не было пробега
@@ -75,6 +89,10 @@ struct CarRootView: View {
         if lastService == nil { return .noService }
         if allRepairs.of(car).contains(where: { !$0.isPaid }) { return .service(lastKm: lastService ?? 0, nowKm: odometer) }
         return .general
+    }
+
+    private func hasAlerts(_ car: CarVehicle) -> Bool {
+        !CarAttention.alerts(car: car, entries: allEntries.of(car), repairs: allRepairs.of(car), reminders: allReminders.of(car)).isEmpty
     }
 
     private var currentOdometer: Int {
@@ -102,6 +120,21 @@ struct CarRootView: View {
             }
             .listRowSeparator(.hidden)
 
+            let alerts = CarAttention.alerts(car: car, entries: entries, repairs: allRepairs.of(car), reminders: allReminders.of(car))
+            if !alerts.isEmpty {
+                Section {
+                    ForEach(alerts) { alert in
+                        Label(alert.text, systemImage: alert.urgent ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
+                            .foregroundStyle(alert.urgent ? .red : .orange)
+                            .font(.subheadline.weight(.medium))
+                    }
+                } header: {
+                    Text("Внимание")
+                } footer: {
+                    Text("Висит, пока ТО или ремонт не сделаны.")
+                }
+            }
+
             Section {
                 HStack(alignment: .top) {
                     CarStatTile(title: "Пробег", value: odometer > 0 ? CarFormat.km(odometer) : "—")
@@ -110,15 +143,19 @@ struct CarRootView: View {
                 }
                 .padding(.vertical, 4)
 
-                HStack(spacing: 8) {
-                    quickButton("Заправка", systemImage: "fuelpump.fill") {
-                        sheet = .entry(car: car, entry: nil, category: .fuel)
+                HStack(spacing: 6) {
+                    quickButton("Бензин", systemImage: "fuelpump.fill") {
+                        sheet = .fuel(car)
                     }
                     quickButton("Трата", systemImage: "rublesign.circle.fill") {
-                        sheet = .entry(car: car, entry: nil, category: .service)
+                        sheet = .entry(car: car, entry: nil, category: .other)
                     }
-                    quickButton("Срок", systemImage: "bell.fill") {
-                        sheet = .reminder(car: car, reminder: nil)
+                    quickButton("ТО", systemImage: "wrench.and.screwdriver.fill") {
+                        sheet = .service(car)
+                    }
+                    quickButton("Пробег", systemImage: "gauge.with.needle") {
+                        odometerText = ""
+                        showOdometer = true
                     }
                 }
             } footer: {
@@ -195,7 +232,7 @@ struct CarRootView: View {
                 NavigationLink("Весь журнал") {
                     CarHistoryView(car: car)
                 }
-                NavigationLink("Итоги и расход") {
+                NavigationLink("Аналитика трат") {
                     CarStatsView(car: car)
                 }
             } header: {
@@ -223,7 +260,12 @@ struct CarRootView: View {
                                 .foregroundStyle(CarModelKind.guess(from: car.displayName) == .audiQ3 ? Color.gray : Color(white: 0.15))
                                 .frame(width: 70)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(car.displayName).font(.headline)
+                                HStack(spacing: 6) {
+                                    Text(car.displayName).font(.headline)
+                                    if hasAlerts(car) {
+                                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                                    }
+                                }
                                 if car.year > 0 { Text("\(car.year) год").font(.subheadline).foregroundStyle(.secondary) }
                             }
                             Spacer()
@@ -245,12 +287,14 @@ struct CarRootView: View {
 
     private func quickButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.medium))
-                .labelStyle(.titleAndIcon)
-                .frame(maxWidth: .infinity)
+            VStack(spacing: 3) {
+                Image(systemName: systemImage).font(.callout)
+                Text(title).font(.caption2.weight(.medium))
+            }
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
+        .controlSize(.small)
     }
 
     private var emptyState: some View {
@@ -315,6 +359,9 @@ struct CarRootView: View {
     }
 
     private func rescheduleNotifications() {
-        CarNotifications.reschedule(reminders: allReminders, cars: cars, repairs: allRepairs)
+        CarNotifications.reschedule(
+            reminders: allReminders, cars: cars, repairs: allRepairs,
+            lastMileage: allEntries.filter { $0.odometer > 0 }.map(\.date).max()
+        )
     }
 }

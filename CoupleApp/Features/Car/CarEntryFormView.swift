@@ -21,7 +21,15 @@ struct CarEntryFormView: View {
     @State private var priceText: String
     @State private var isFullTank: Bool
     @State private var note: String
+    @State private var customCategory: String
     @State private var confirmDelete = false
+    @Query(filter: #Predicate<CarEntry> { $0.deletedAt == nil })
+    private var allEntries: [CarEntry]
+
+    /// Свои категории, которые уже встречались в записях обеих машин.
+    private var customSuggestions: [String] {
+        Array(Set(allEntries.map(\.customCategory).filter { !$0.isEmpty })).sorted()
+    }
 
     init(car: CarVehicle, entry: CarEntry?, initialCategory: CarEntryCategory, currentOdometer: Int) {
         self.car = car
@@ -39,6 +47,7 @@ struct CarEntryFormView: View {
         _priceText = State(initialValue: CarNumber.text(price))
         _isFullTank = State(initialValue: entry?.isFullTank ?? true)
         _note = State(initialValue: entry?.note ?? "")
+        _customCategory = State(initialValue: entry?.customCategory ?? "")
     }
 
     private var amount: Double? { CarNumber.double(amountText) }
@@ -54,6 +63,20 @@ struct CarEntryFormView: View {
                         }
                     }
                     DatePicker("Дата", selection: $date, displayedComponents: .date)
+                }
+
+                Section("Своя категория (необязательно)") {
+                    TextField("Например «Аксессуары»", text: $customCategory)
+                    if !customSuggestions.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(customSuggestions, id: \.self) { name in
+                                    Button(name) { customCategory = name }
+                                        .buttonStyle(.bordered).controlSize(.small)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if category == .fuel {
@@ -78,7 +101,7 @@ struct CarEntryFormView: View {
                 }
 
                 Section {
-                    TextField(category == .fuel ? "АЗС, марка топлива" : "Что сделали", text: $note, axis: .vertical)
+                    TextField(category == .fuel ? "АЗС, марка топлива" : "Что за трата", text: $note, axis: .vertical)
                 }
 
                 if let entry {
@@ -136,6 +159,7 @@ struct CarEntryFormView: View {
         item.liters = category == .fuel ? (CarNumber.double(litersText) ?? 0) : 0
         item.isFullTank = category == .fuel ? isFullTank : false
         item.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.customCategory = customCategory.trimmingCharacters(in: .whitespacesAndNewlines)
         item.markChanged()
         try? context.save()
         sync.requestSync()

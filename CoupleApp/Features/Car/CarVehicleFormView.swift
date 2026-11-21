@@ -16,6 +16,7 @@ struct CarVehicleFormView: View {
     @State private var vin: String
     @State private var yearText: String
     @State private var odometerText: String
+    @State private var intervalText: String
     @State private var confirmDelete = false
 
     init(car: CarVehicle?) {
@@ -25,6 +26,7 @@ struct CarVehicleFormView: View {
         _vin = State(initialValue: car?.vin ?? "")
         _yearText = State(initialValue: CarNumber.text(car?.year ?? 0))
         _odometerText = State(initialValue: CarNumber.text(car?.startOdometer ?? 0))
+        _intervalText = State(initialValue: CarNumber.text(car?.serviceIntervalKm ?? 8000))
     }
 
     private var canSave: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -49,6 +51,11 @@ struct CarVehicleFormView: View {
                 Section {
                     LabeledContent("Пробег сейчас, км") {
                         TextField("0", text: $odometerText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("ТО каждые, км") {
+                        TextField("8000", text: $intervalText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
@@ -91,6 +98,7 @@ struct CarVehicleFormView: View {
         item.vin = vin.trimmingCharacters(in: .whitespaces)
         item.year = CarNumber.int(yearText) ?? 0
         item.startOdometer = CarNumber.int(odometerText) ?? 0
+        item.serviceIntervalKm = max(1000, CarNumber.int(intervalText) ?? 8000)
         item.markChanged()
         try? context.save()
         if car == nil { selectedCarID = item.syncID.uuidString }

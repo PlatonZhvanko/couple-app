@@ -182,6 +182,8 @@ struct CarStatsView: View {
     @Environment(AccountStore.self) private var account
     @Query(filter: #Predicate<CarEntry> { $0.deletedAt == nil }, sort: \CarEntry.date)
     private var allEntries: [CarEntry]
+    @Query(filter: #Predicate<CarRepair> { $0.deletedAt == nil })
+    private var allRepairs: [CarRepair]
     @State private var period: Period = .month
 
     private var interval: DateInterval {
@@ -207,6 +209,13 @@ struct CarStatsView: View {
                 .pickerStyle(.segmented)
                 LabeledContent("Всего потрачено") {
                     Text(CarFormat.money(total)).font(.headline).monospacedDigit()
+                }
+            }
+
+            let planned = allRepairs.of(car).filter { !$0.isPaid }
+            if !planned.isEmpty {
+                Section("Запланировано по ремонтам") {
+                    LabeledContent("Ещё не оплачено", value: CarFormat.money(planned.reduce(0) { $0 + $1.price }))
                 }
             }
 
@@ -244,6 +253,6 @@ struct CarStatsView: View {
                 Text("Расход и стоимость километра считаются за всё время. Для расхода нужны хотя бы две заправки до полного бака с пробегом.")
             }
         }
-        .navigationTitle("Итоги")
+        .navigationTitle("Аналитика")
     }
 }

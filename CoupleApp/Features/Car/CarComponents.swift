@@ -6,6 +6,8 @@ enum CarSheet: Identifiable {
     /// `nil` — новая машина.
     case car(CarVehicle?)
     case entry(car: CarVehicle, entry: CarEntry?, category: CarEntryCategory)
+    case fuel(CarVehicle)
+    case service(CarVehicle)
     case reminder(car: CarVehicle, reminder: CarReminder?)
 
     var id: String {
@@ -13,6 +15,8 @@ enum CarSheet: Identifiable {
         case .car(let car): "car-\(car?.syncID.uuidString ?? "new")"
         case .entry(_, let entry, let category): "entry-\(entry?.syncID.uuidString ?? "new-\(category.rawValue)")"
         case .reminder(_, let reminder): "reminder-\(reminder?.syncID.uuidString ?? "new")"
+        case .fuel(let car): "fuel-\(car.syncID.uuidString)"
+        case .service(let car): "service-\(car.syncID.uuidString)"
         }
     }
 }
@@ -30,6 +34,10 @@ struct CarSheetView: View {
             CarEntryFormView(car: car, entry: entry, initialCategory: category, currentOdometer: currentOdometer)
         case .reminder(let car, let reminder):
             CarReminderFormView(car: car, reminder: reminder, currentOdometer: currentOdometer)
+        case .fuel(let car):
+            CarFuelFormView(car: car, currentOdometer: currentOdometer)
+        case .service(let car):
+            CarServiceFormView(car: car, currentOdometer: currentOdometer)
         }
     }
 }
@@ -59,9 +67,10 @@ struct CarEntryRow: View {
     private var title: String {
         let note = entry.note.trimmingCharacters(in: .whitespaces)
         if entry.category == .fuel, entry.liters > 0 {
-            let fuel = "\(entry.category.title), \(CarFormat.liters(entry.liters))"
+            let fuel = "\(entry.categoryTitle), \(CarFormat.liters(entry.liters))"
             return note.isEmpty ? fuel : "\(fuel) · \(note)"
         }
+        if !entry.customCategory.isEmpty { return note.isEmpty ? entry.categoryTitle : "\(entry.categoryTitle) · \(note)" }
         return note.isEmpty ? entry.category.title : note
     }
 
