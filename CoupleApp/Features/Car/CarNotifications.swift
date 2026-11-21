@@ -18,7 +18,7 @@ enum CarNotifications {
 
     /// Пересоздать все уведомления раздела по текущим напоминаниям.
     @MainActor
-    static func reschedule(reminders: [CarReminder], cars: [CarVehicle], repairs: [CarRepair] = [], lastMileage: Date? = nil) {
+    static func reschedule(reminders: [CarReminder], cars: [CarVehicle], repairs: [CarRepair] = [], viewer: String? = nil, lastMileage: Date? = nil) {
         let names = Dictionary(cars.map { ($0.syncID, $0.displayName) }, uniquingKeysWith: { first, _ in first })
         let calendar = Calendar.current
         let now = Date.now
@@ -42,7 +42,7 @@ enum CarNotifications {
         }
         // Желаемые даты ремонтов: напоминают коты-механики, за неделю, за день и в сам день.
         let mechanics = ["Мироня", "Гоша", "Хлоя"]
-        for repair in repairs where repair.deletedAt == nil && !repair.isPaid {
+        for repair in repairs where repair.deletedAt == nil && !repair.isPaid && (viewer == nil || repair.member == viewer) {
             guard let due = repair.desiredDate else { continue }
             let carName = names[repair.carID] ?? "Машина"
             for days in [7, 1, 0] {

@@ -14,6 +14,10 @@ struct CalendarItem: Identifiable {
     let color: Color
     /// Имя иконки SF Symbols.
     let systemImage: String
+    /// Окно записи (открывается по нажатию в Планере). `nil` — запись только для просмотра.
+    var detail: (@MainActor () -> AnyView)? = nil
+    /// Перенос записи на новое начало (перетаскиванием в Планере). Вызывается только для владельца.
+    var move: (@MainActor (Date) -> Void)? = nil
 }
 
 /// Отдаёт элементы раздела, которые пересекаются с интервалом `interval`.

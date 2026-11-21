@@ -11,6 +11,12 @@ struct PlannerTimelineView: View {
     /// Цвет записи (свой, по группе, делу, клиенту или по виду).
     let colorFor: (PlannerEvent, Date) -> Color
     let externalItems: (Date) -> [CalendarItem]
+    /// Нажали на запись другого раздела (например, ремонт).
+    var onExternalTap: (CalendarItem) -> Void = { _ in }
+    /// Можно ли двигать запись другого раздела.
+    var canMoveExternal: (CalendarItem) -> Bool = { _ in false }
+    /// Запись другого раздела перетащили на новое начало.
+    var onExternalMove: (CalendarItem, Date) -> Void = { _, _ in }
     /// Дни со сменой (красноватая полоса 9:00–23:00).
     var shiftDays: Set<Date> = []
     /// Часть смены по дням: 0 — вся, 1 — первая половина, 2 — вторая.
@@ -458,27 +464,40 @@ struct PlannerTimelineView: View {
                 .onTapGesture { onEventTap(event, block.start) }
             if canMove(event) && !event.isAllDay {
                 base.gesture(moveGesture(
-                    block: block, event: event, index: index, range: range,
-                    slotHeight: slotHeight, columnWidth: columnWidth
+                    block: block, index: index, range: range,
+                    slotHeight: slotHeight, columnWidth: columnWidth,
+                    commit: { onMove(event, block.start, $0) }
                 ))
             } else {
                 base
             }
-        case .external:
-            content
+        case .external(let item):
+            let base = content
                 .foregroundStyle(Color.primary)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.gray.opacity(0.25))
-                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.gray, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                        .fill(item.detail == nil ? Color.gray.opacity(0.25) : item.color.opacity(0.35))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(item.detail == nil ? Color.gray : item.color, style: StrokeStyle(lineWidth: 1, dash: item.detail == nil ? [3, 2] : [])))
                 )
+                .contentShape(Rectangle())
+                .onTapGesture { if item.detail != nil { onExternalTap(item) } }
+            if canMoveExternal(item) {
+                base.gesture(moveGesture(
+                    block: block, index: index, range: range,
+                    slotHeight: slotHeight, columnWidth: columnWidth,
+                    commit: { onExternalMove(item, $0) }
+                ))
+            } else {
+                base
+            }
         }
     }
 
     /// Зажать блок и перетащить: на другое время или в другой день.
     private func moveGesture(
-        block: PlannerTimelineBlock, event: PlannerEvent, index: Int,
-        range: Range<Int>, slotHeight: CGFloat, columnWidth: CGFloat
+        block: PlannerTimelineBlock, index: Int,
+        range: Range<Int>, slotHeight: CGFloat, columnWidth: CGFloat,
+        commit: @escaping (Date) -> Void
     ) -> some Gesture {
         LongPressGesture(minimumDuration: 0.35)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("grid")))
@@ -510,7 +529,7 @@ struct PlannerTimelineView: View {
                 let newStart = cal.startOfDay(for: days[targetIndex])
                     .addingTimeInterval(Double(absoluteSlot * Self.slotMinutes * 60))
                 if abs(newStart.timeIntervalSince(block.start)) >= 60 {
-                    onMove(event, block.start, newStart)
+                    commit(newStart)
                 }
             }
     }
@@ -541,7 +560,7 @@ struct PlannerTimelineView: View {
             let start = max(item.start, dayStart)
             let end = min(max(item.end, start.addingTimeInterval(minimum)), dayEnd)
             raw.append(PlannerTimelineBlock(
-                id: item.id, source: .external, title: item.title,
+                id: item.id, source: .external(item), title: item.title,
                 color: item.color, start: start, end: end, badge: .none, owner: nil
             ))
         }
@@ -580,7 +599,7 @@ struct PlannerTimelineView: View {
 struct PlannerTimelineBlock: Identifiable {
     enum Source {
         case event(PlannerEvent)
-        case external
+        case external(CalendarItem)
     }
 
     let id: String
