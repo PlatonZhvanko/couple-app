@@ -158,6 +158,30 @@ final class PlannerMoneyKind: SyncableModel {
 }
 
 enum PlannerMoneyKindStore {
+    /// Переименовать тип денег: название меняется и в операциях и делах с этим типом.
+    @MainActor
+    static func rename(_ context: ModelContext, kind: PlannerMoneyKind, to newName: String) {
+        let clean = newName.trimmingCharacters(in: .whitespaces)
+        let old = kind.name
+        guard !clean.isEmpty, clean != old else { return }
+        let clash = ((try? context.fetch(FetchDescriptor<PlannerMoneyKind>())) ?? []).contains {
+            $0.deletedAt == nil && $0.isProfit == kind.isProfit && $0.syncID != kind.syncID
+                && $0.name.caseInsensitiveCompare(clean) == .orderedSame
+        }
+        guard !clash else { return }
+        let ops = (try? context.fetch(FetchDescriptor<PlannerMoneyOp>(predicate: #Predicate { $0.typeName == old }))) ?? []
+        for op in ops { op.typeName = clean; op.markChanged() }
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.moneyType == old || $0.partnerMoneyType == old }))) ?? []
+        for event in events {
+            if event.moneyType == old { event.moneyType = clean }
+            if event.partnerMoneyType == old { event.partnerMoneyType = clean }
+            event.markChanged()
+        }
+        kind.name = clean
+        kind.markChanged()
+        try? context.save()
+    }
+
     /// Находит тип по названию или заводит новый (оживляет удалённый).
     @MainActor
     @discardableResult
@@ -166,7 +190,9 @@ enum PlannerMoneyKindStore {
         guard !clean.isEmpty else { return nil }
         let id = PlannerMoneyKind.makeID(name: clean, isProfit: isProfit)
         let found = try? context.fetch(FetchDescriptor<PlannerMoneyKind>(predicate: #Predicate { $0.syncID == id }))
-        if let existing = found?.first {
+        let sameName = ((try? context.fetch(FetchDescriptor<PlannerMoneyKind>())) ?? [])
+            .first { $0.isProfit == isProfit && $0.name.caseInsensitiveCompare(clean) == .orderedSame }
+        if let existing = found?.first ?? sameName {
             if existing.deletedAt != nil {
                 existing.deletedAt = nil
                 existing.emoji = emoji

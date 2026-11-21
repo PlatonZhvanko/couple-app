@@ -71,6 +71,27 @@ extension Sequence where Element == PlannerErrandKind {
 }
 
 enum PlannerErrandKindStore {
+    /// Переименовать тип: название меняется и в самих делах этого типа.
+    @MainActor
+    static func rename(_ context: ModelContext, kind: PlannerErrandKind, to newName: String) {
+        let clean = newName.trimmingCharacters(in: .whitespaces)
+        let old = kind.name
+        guard !clean.isEmpty, clean != old else { return }
+        let clash = ((try? context.fetch(FetchDescriptor<PlannerErrandKind>())) ?? []).contains {
+            $0.deletedAt == nil && $0.member == kind.member && $0.syncID != kind.syncID
+                && $0.name.caseInsensitiveCompare(clean) == .orderedSame
+        }
+        guard !clash else { return }
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.errandType == old }))) ?? []
+        for event in events {
+            event.errandType = clean
+            event.markChanged()
+        }
+        kind.name = clean
+        kind.markChanged()
+        try? context.save()
+    }
+
     /// Находит тип по названию у этого человека или заводит новый (оживляет удалённый).
     @MainActor
     static func ensure(_ context: ModelContext, name: String, owner: CoupleMember, emoji: String = "") {
@@ -78,7 +99,10 @@ enum PlannerErrandKindStore {
         guard !clean.isEmpty else { return }
         let id = PlannerErrandKind.makeID(name: clean, owner: owner)
         let found = try? context.fetch(FetchDescriptor<PlannerErrandKind>(predicate: #Predicate { $0.syncID == id }))
-        if let existing = found?.first {
+        // Тип могли переименовать: id остался старый, ищем ещё и по названию.
+        let sameName = ((try? context.fetch(FetchDescriptor<PlannerErrandKind>())) ?? [])
+            .first { $0.member == owner && $0.name.caseInsensitiveCompare(clean) == .orderedSame }
+        if let existing = found?.first ?? sameName {
             guard existing.deletedAt != nil else { return }
             existing.deletedAt = nil
             if !emoji.isEmpty { existing.emoji = emoji }

@@ -162,6 +162,8 @@ struct PlannerErrandKindDetail: View {
     @Environment(SyncCoordinator.self) private var sync
     @Environment(\.dismiss) private var dismiss
 
+    @State private var name = ""
+    @State private var showEmoji = false
     @State private var emoji = ""
     @State private var useColor = false
     @State private var color: Color = .blue
@@ -172,13 +174,18 @@ struct PlannerErrandKindDetail: View {
 
     var body: some View {
         Form {
+            Section("Название") {
+                TextField("Название типа", text: $name)
+                    .onSubmit(save)
+            }
             Section("Внешний вид") {
-                HStack {
-                    Text("Эмодзи")
-                    Spacer()
-                    TextField("💼", text: $emoji)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                Button { showEmoji = true } label: {
+                    HStack {
+                        Text("Эмодзи").foregroundStyle(.primary)
+                        Spacer()
+                        Text(emoji.isEmpty ? "💼" : emoji).font(.title2)
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Toggle("🎨 Свой цвет типа", isOn: $useColor)
                 if useColor {
@@ -204,6 +211,7 @@ struct PlannerErrandKindDetail: View {
         .navigationTitle(kind.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: load)
+        .sheet(isPresented: $showEmoji) { PlannerEmojiPickerSheet(selection: $emoji) }
         .onChange(of: emoji) { _, _ in save() }
         .onChange(of: useColor) { _, _ in save() }
         .onDisappear(perform: save)
@@ -231,6 +239,7 @@ struct PlannerErrandKindDetail: View {
         let rows = (try? context.fetch(descriptor)) ?? []
         recent = rows.map { (title: $0.title, start: $0.start) }
         emoji = kind.emoji
+        name = kind.name
         if let saved = Color(hex: kind.colorHex), !kind.colorHex.isEmpty {
             useColor = true
             color = saved
@@ -242,7 +251,10 @@ struct PlannerErrandKindDetail: View {
         guard loaded, kind.deletedAt == nil else { return }
         let newEmoji = emoji.trimmingCharacters(in: .whitespaces)
         let newHex = useColor ? color.hexString : ""
-        guard newEmoji != kind.emoji || newHex != kind.colorHex else { return }
+        let newName = name.trimmingCharacters(in: .whitespaces)
+        let renamed = !newName.isEmpty && newName != kind.name
+        guard renamed || newEmoji != kind.emoji || newHex != kind.colorHex else { return }
+        if renamed { PlannerErrandKindStore.rename(context, kind: kind, to: newName) }
         kind.emoji = newEmoji
         kind.colorHex = newHex
         kind.markChanged()
@@ -259,6 +271,8 @@ struct PlannerMoneyKindDetail: View {
     @Environment(SyncCoordinator.self) private var sync
     @Environment(\.dismiss) private var dismiss
 
+    @State private var name = ""
+    @State private var showEmoji = false
     @State private var emoji = ""
     @State private var confirmDelete = false
     @State private var loaded = false
@@ -267,13 +281,18 @@ struct PlannerMoneyKindDetail: View {
 
     var body: some View {
         Form {
+            Section("Название") {
+                TextField("Название типа", text: $name)
+                    .onSubmit(save)
+            }
             Section("Внешний вид") {
-                HStack {
-                    Text("Эмодзи")
-                    Spacer()
-                    TextField("🙂", text: $emoji)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                Button { showEmoji = true } label: {
+                    HStack {
+                        Text("Эмодзи").foregroundStyle(.primary)
+                        Spacer()
+                        Text(emoji.isEmpty ? "🙂" : emoji).font(.title2)
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             Section("Операции этого типа: \(total)") {
@@ -293,6 +312,8 @@ struct PlannerMoneyKindDetail: View {
         .navigationTitle(kind.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: load)
+        .onDisappear(perform: save)
+        .sheet(isPresented: $showEmoji) { PlannerEmojiPickerSheet(selection: $emoji) }
         .onChange(of: emoji) { _, _ in save() }
         .confirmationDialog("Удалить тип из базы?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
@@ -318,13 +339,17 @@ struct PlannerMoneyKindDetail: View {
         let rows = (try? context.fetch(descriptor)) ?? []
         recent = rows.map { (amount: $0.amount, date: $0.date) }
         emoji = kind.emoji
+        name = kind.name
         loaded = true
     }
 
     private func save() {
         guard loaded, kind.deletedAt == nil else { return }
         let clean = emoji.trimmingCharacters(in: .whitespaces)
-        guard clean != kind.emoji else { return }
+        let newName = name.trimmingCharacters(in: .whitespaces)
+        let renamed = !newName.isEmpty && newName != kind.name
+        guard renamed || clean != kind.emoji else { return }
+        if renamed { PlannerMoneyKindStore.rename(context, kind: kind, to: newName) }
         kind.emoji = clean
         kind.markChanged()
         try? context.save()
