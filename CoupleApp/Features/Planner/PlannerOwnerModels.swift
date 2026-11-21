@@ -346,3 +346,38 @@ enum PlannerLedger {
         return entries.filter { cal.isDate($0.day, inSameDayAs: day) }.reduce(0) { $0 + $1.amount }
     }
 }
+
+// MARK: - Перенос дела
+
+enum PlannerErrandCarry {
+    /// «Перенос»: старый день остаётся белым с пометкой «перенесено», на новом дне появляется
+    /// новая запись. В отличие от «Переместить», это идёт в статистику.
+    @MainActor
+    static func carry(_ event: PlannerEvent, day: Date, to newStart: Date, context: ModelContext) {
+        let cal = PlannerCalendar.calendar
+        let duration = max(0, event.end.timeIntervalSince(event.start))
+        let start = event.isAllDay ? cal.startOfDay(for: newStart) : newStart
+        let copy = PlannerEvent()
+        copy.title = event.title
+        copy.notes = event.notes
+        copy.isAllDay = event.isAllDay
+        copy.start = start
+        copy.end = event.isAllDay ? start : start.addingTimeInterval(duration)
+        copy.scope = event.scope
+        copy.isPrivate = event.isPrivate
+        copy.colorHex = event.colorHex
+        copy.category = event.category
+        copy.repeatRule = PlannerRepeat.none.rawValue
+        copy.reminderMinutes = event.reminderMinutes
+        copy.createdBy = event.createdBy
+        copy.moneyKindRaw = event.moneyKindRaw
+        copy.moneyAmount = event.moneyAmount
+        copy.moneyType = event.moneyType
+        copy.errandType = event.errandType
+        context.insert(copy)
+        copy.markChanged()
+        event.setStatus(.moved(start), on: day)
+        event.markChanged()
+        try? context.save()
+    }
+}

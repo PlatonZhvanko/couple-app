@@ -8,6 +8,8 @@ struct PlannerRecordView: View {
     let day: Date
     let onEdit: () -> Void
     let onMove: () -> Void
+    /// «Перенос» дела: режим выбора нового места в журнале.
+    var onCarry: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDelete = false
@@ -205,13 +207,20 @@ struct PlannerRecordView: View {
         NavigationStack {
             Form {
                 Section {
-                    quickMove("Завтра", days: 1)
-                    quickMove("Послезавтра", days: 2)
-                    quickMove("Через неделю", days: 7)
+                    quickMove("Завтра (то же время)", days: 1)
+                    Button {
+                        showMoveSheet = false
+                        dismiss()
+                        onCarry()
+                    } label: {
+                        Label("Выбрать место в журнале", systemImage: "hand.tap")
+                    }
                 } header: {
-                    Text("Быстро (то же время)")
+                    Text("Быстро")
+                } footer: {
+                    Text("В журнале выбери день и нажми пальцем на нужное время.")
                 }
-                Section("Или выбрать самому") {
+                Section("Или ввести день и время") {
                     DatePicker("Новое время", selection: $moveTarget)
                 }
             }
@@ -235,28 +244,7 @@ struct PlannerRecordView: View {
 
     /// Старый день остаётся белым с пометкой, а на новом дне появляется такая же запись.
     private func performMove() {
-        let duration = max(0, event.end.timeIntervalSince(event.start))
-        let copy = PlannerEvent()
-        copy.title = event.title
-        copy.notes = event.notes
-        copy.isAllDay = event.isAllDay
-        copy.start = event.isAllDay ? cal.startOfDay(for: moveTarget) : moveTarget
-        copy.end = event.isAllDay ? copy.start : moveTarget.addingTimeInterval(duration)
-        copy.scope = event.scope
-        copy.isPrivate = event.isPrivate
-        copy.colorHex = event.colorHex
-        copy.category = event.category
-        copy.repeatRule = PlannerRepeat.none.rawValue
-        copy.reminderMinutes = event.reminderMinutes
-        copy.createdBy = event.createdBy
-        copy.moneyKindRaw = event.moneyKindRaw
-        copy.moneyAmount = event.moneyAmount
-        copy.moneyType = event.moneyType
-        context.insert(copy)
-        copy.markChanged()
-        event.setStatus(.moved(copy.start), on: day)
-        event.markChanged()
-        try? context.save()
+        PlannerErrandCarry.carry(event, day: day, to: moveTarget, context: context)
         sync.requestSync()
         showMoveSheet = false
         dismiss()
