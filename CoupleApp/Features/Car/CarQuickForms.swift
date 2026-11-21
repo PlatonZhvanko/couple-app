@@ -128,6 +128,16 @@ struct CarServiceFormView: View {
         entry.note = place.trimmingCharacters(in: .whitespacesAndNewlines)
         context.insert(entry)
         entry.markChanged()
+        // ТО попадает и в список ремонтов (как оплаченное), и в аналитику через трату.
+        let repair = CarRepair(carID: car.syncID, member: account.current)
+        repair.title = "ТО на \(CarFormat.km(odometer))"
+        repair.price = entry.amount
+        repair.isPaid = true
+        repair.paidAt = date
+        repair.entryID = entry.syncID
+        repair.note = entry.note.isEmpty ? "" : "Где: \(entry.note)"
+        context.insert(repair)
+        repair.markChanged()
         try? context.save()
         sync.requestSync()
         dismiss()
