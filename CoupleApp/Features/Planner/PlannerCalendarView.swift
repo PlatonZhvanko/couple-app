@@ -140,12 +140,14 @@ struct PlannerCalendarView: View {
                     Button { showSale = true } label: {
                         Image(systemName: "dollarsign.circle.fill")
                     }
+                    .disabled(showsPartner)
                     .accessibilityLabel(account.current == .owner ? "Продажа или приход денег" : "Продать абонемент")
                     Button {
                         sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .disabled(showsPartner)
                     .accessibilityLabel(account.current == .partner ? "Новая тренировка" : "Новое событие")
                 }
             }
@@ -241,6 +243,7 @@ struct PlannerCalendarView: View {
     }
 
     private func moveByDrag(_ event: PlannerEvent, from occurrenceStart: Date, to start: Date) {
+        guard !showsPartner else { return }
         PlannerMover.move(event, occurrenceStart: occurrenceStart, to: start, context: context)
         sync.requestSync()
     }
@@ -317,6 +320,8 @@ struct PlannerCalendarView: View {
                     }
                 },
                 onSlotTap: { start in
+                    // Чужой журнал только для просмотра.
+                    if showsPartner { return }
                     if moving != nil {
                         finishMove(to: start)
                     } else {
@@ -325,7 +330,7 @@ struct PlannerCalendarView: View {
                     }
                 },
                 onEventTap: { event, day in
-                    guard moving == nil else { return }
+                    guard moving == nil, !showsPartner else { return }
                     sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
                 },
                 onMove: { event, from, to in moveByDrag(event, from: from, to: to) },
@@ -540,8 +545,10 @@ struct PlannerCalendarView: View {
                 VStack(spacing: 8) {
                     Text("Ничего не запланировано")
                         .foregroundStyle(.secondary)
-                    Button(account.current == .partner ? "Добавить тренировку" : "Добавить событие") {
-                        sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
+                    if !showsPartner {
+                        Button(account.current == .partner ? "Добавить тренировку" : "Добавить событие") {
+                            sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -550,7 +557,9 @@ struct PlannerCalendarView: View {
 
             ForEach(occurrences) { occurrence in
                 Button {
-                    sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: selectedDay)
+                    if !showsPartner {
+                        sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: selectedDay)
+                    }
                 } label: {
                     PlannerEventRow(
                         occurrence: occurrence,

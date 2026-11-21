@@ -34,6 +34,22 @@ struct PlannerEventEditor: View {
     @State private var errandType: String
     @State private var newErrandType = ""
     @State private var newMoneyType = ""
+    private var durationMinutes: Int { max(0, Int(end.timeIntervalSince(start) / 60)) }
+
+    private func setDuration(_ minutes: Int) {
+        end = start.addingTimeInterval(TimeInterval(min(max(minutes, 30), 24 * 60) * 60))
+    }
+
+    private var durationText: String {
+        let hours = durationMinutes / 60
+        let minutes = durationMinutes % 60
+        switch (hours, minutes) {
+        case (0, _): return "\(minutes) мин"
+        case (_, 0): return "\(hours) ч"
+        default: return "\(hours) ч \(minutes) мин"
+        }
+    }
+
     private var trimmedMoneyType: String { newMoneyType.trimmingCharacters(in: .whitespaces) }
     private var moneyTypeExists: Bool {
         moneyKinds.contains { $0.isProfit == (moneyDirection == .profit) && $0.name.lowercased() == trimmedMoneyType.lowercased() }
@@ -245,6 +261,22 @@ struct PlannerEventEditor: View {
                     Toggle("Весь день", isOn: $isAllDay)
                     DatePicker("Начало", selection: $start, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
                     DatePicker("Конец", selection: $end, in: start..., displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                    if !isAllDay {
+                        HStack {
+                            Text("Длительность")
+                            Spacer()
+                            Text(durationText)
+                                .foregroundStyle(.secondary)
+                            Button { setDuration(durationMinutes - 30) } label: {
+                                Image(systemName: "minus.circle.fill").font(.title2)
+                            }
+                            .disabled(durationMinutes <= 30)
+                            Button { setDuration(durationMinutes + 30) } label: {
+                                Image(systemName: "plus.circle.fill").font(.title2)
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                    }
                     PlannerRepeatFields(
                         rule: $repeatRule, interval: $repeatInterval, weekdays: $repeatWeekdays,
                         until: $repeatUntil, start: start
