@@ -136,11 +136,11 @@ struct PlannerEventEditor: View {
     private var trimmedNewType: String { newErrandType.trimmingCharacters(in: .whitespaces) }
 
     private var newTypeExists: Bool {
-        errandKinds.contains { $0.name.caseInsensitiveCompare(trimmedNewType) == .orderedSame }
+        errandKinds.visible(to: account.current).contains { $0.name.caseInsensitiveCompare(trimmedNewType) == .orderedSame }
     }
 
     private var typeSuggestions: [PlannerErrandKind] {
-        let sorted = errandKinds.sorted { $0.updatedAt > $1.updatedAt }
+        let sorted = errandKinds.visible(to: account.current).sorted { $0.updatedAt > $1.updatedAt }
         guard !trimmedNewType.isEmpty else { return Array(sorted.prefix(2)) }
         return Array(sorted.filter { $0.name.localizedCaseInsensitiveContains(trimmedNewType) }.prefix(2))
     }
@@ -148,7 +148,8 @@ struct PlannerEventEditor: View {
     private func addErrandType() {
         let name = newErrandType.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        PlannerErrandKindStore.ensure(context, name: name)
+        PlannerErrandKindStore.ensure(context, name: name, owner: account.current)
+        if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: name) }
         errandType = name
         newErrandType = ""
         sync.requestSync()
@@ -341,7 +342,10 @@ struct PlannerEventEditor: View {
         if account.current == .owner {
             let kind = errandType.trimmingCharacters(in: .whitespaces)
             target.errandType = errandRegular ? (kind.isEmpty ? target.title : kind) : ""
-            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.errandType) }
+            if errandRegular {
+                PlannerErrandKindStore.ensure(context, name: target.errandType, owner: account.current)
+                if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: target.errandType) }
+            }
             target.moneyKindRaw = moneyDirection.rawValue
             target.moneyAmount = moneyDirection == .none ? 0 : max(0, moneyAmount ?? 0)
             target.moneyType = moneyDirection == .none ? "" : moneyType
