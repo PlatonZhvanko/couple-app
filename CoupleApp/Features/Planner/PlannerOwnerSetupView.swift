@@ -290,3 +290,26 @@ struct PlannerShiftSheet: View {
         .environment(\.locale, PlannerCalendar.locale)
     }
 }
+
+/// Кружок смены в календаре: целый или левая (9–15) / правая (15–21) половинка.
+struct PlannerShiftDisc: Shape {
+    let part: Int
+
+    func path(in rect: CGRect) -> Path {
+        let side = min(rect.width, rect.height)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = side / 2
+        var path = Path()
+        switch part {
+        case 1:
+            path.addArc(center: center, radius: radius, startAngle: .degrees(90), endAngle: .degrees(270), clockwise: false)
+            path.closeSubpath()
+        case 2:
+            path.addArc(center: center, radius: radius, startAngle: .degrees(270), endAngle: .degrees(90), clockwise: false)
+            path.closeSubpath()
+        default:
+            path.addEllipse(in: CGRect(x: center.x - radius, y: center.y - radius, width: side, height: side))
+        }
+        return path
+    }
+}
