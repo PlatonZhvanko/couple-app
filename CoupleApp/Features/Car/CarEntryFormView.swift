@@ -117,7 +117,6 @@ struct CarEntryFormView: View {
 
                 if let entry {
                     Section {
-                        LabeledContent("Добавил(а)", value: account.name(of: entry.memberValue))
                         Button("Удалить запись", role: .destructive) { confirmDelete = true }
                     }
                 }
