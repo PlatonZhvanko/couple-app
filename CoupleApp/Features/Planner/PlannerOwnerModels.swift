@@ -383,6 +383,34 @@ struct PlannerLedgerEntry: Identifiable {
 }
 
 enum PlannerLedger {
+    /// Деньги Настеньки за дела: каждое занятие, которое уже прошло и не отменено.
+    static func partnerEntries(events: [PlannerEvent], today: Date = .now) -> [PlannerLedgerEntry] {
+        let cal = PlannerCalendar.calendar
+        let last = cal.startOfDay(for: today)
+        var result: [PlannerLedgerEntry] = []
+        for event in events where event.deletedAt == nil {
+            guard let direction = PlannerMoneyDirection(rawValue: event.partnerMoneyKindRaw), direction != .none,
+                  event.partnerMoneyAmount > 0 else { continue }
+            var day = cal.startOfDay(for: event.start)
+            var steps = 0
+            while day <= last && steps < 800 {
+                if event.startsOn(day), !event.isCancelled(on: day) {
+                    result.append(PlannerLedgerEntry(
+                        id: "pevent.\(event.syncID).\(Int(day.timeIntervalSince1970))", day: day,
+                        title: event.plainTitle, source: .errand,
+                        type: event.partnerMoneyType.isEmpty ? (direction == .profit ? "Прибыль" : "Трата") : event.partnerMoneyType,
+                        amount: direction == .profit ? event.partnerMoneyAmount : -event.partnerMoneyAmount,
+                        errandType: event.errandType
+                    ))
+                }
+                if event.repeatValue == .none { break }
+                day = PlannerCalendar.addDays(1, to: day)
+                steps += 1
+            }
+        }
+        return result
+    }
+
     /// Все деньги Платони: смены, выполненные дела с суммой и разовые операции.
     static func entries(
         events: [PlannerEvent], shifts: [PlannerShift], ops: [PlannerMoneyOp]
