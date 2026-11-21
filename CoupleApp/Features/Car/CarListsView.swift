@@ -190,7 +190,7 @@ struct CarStatsView: View {
         switch period {
         case .month: CarMath.currentMonth()
         case .year: CarMath.currentYear()
-        case .all: DateInterval(start: .distantPast, end: .distantFuture)
+        case .all: DateInterval(start: Date(timeIntervalSince1970: 0), end: Date.now.addingTimeInterval(3650 * 86400))
         }
     }
 
@@ -229,7 +229,7 @@ struct CarStatsView: View {
                                 Spacer()
                                 Text(CarFormat.money(item.sum)).monospacedDigit()
                             }
-                            ProgressView(value: total > 0 ? item.sum / total : 0)
+                            ProgressView(value: total > 0 ? min(1, max(0, item.sum / total)) : 0)
                                 .tint(item.category.color)
                         }
                     }
