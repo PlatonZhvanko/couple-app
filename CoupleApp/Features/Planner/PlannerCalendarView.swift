@@ -57,6 +57,8 @@ struct PlannerCalendarView: View {
     private struct MovingState {
         let event: PlannerEvent
         let occurrenceStart: Date
+        /// `true` — «Перенос» дела (белый след и статистика), `false` — просто «Переместить».
+        var isCarry = false
     }
 
     private var cal: Calendar { PlannerCalendar.calendar }
@@ -178,6 +180,14 @@ struct PlannerCalendarView: View {
                             style = .planner
                             selectedDay = target.day
                         }
+                    },
+                    onCarry: {
+                        afterSheet {
+                            let start = PlannerCalendar.combine(day: target.day, time: event.start)
+                            moving = MovingState(event: event, occurrenceStart: event.isAllDay ? target.day : start, isCarry: true)
+                            style = .planner
+                            selectedDay = target.day
+                        }
                     }
                 )
             }
@@ -201,7 +211,7 @@ struct PlannerCalendarView: View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
             VStack(alignment: .leading, spacing: 1) {
-                Text("Куда перенести?").font(.subheadline.weight(.semibold))
+                Text(moving.isCarry ? "Куда перенести дело?" : "Куда переместить?").font(.subheadline.weight(.semibold))
                 Text("Нажми на любое время или день: «\(moving.event.displayTitle)»")
                     .font(.caption)
                     .lineLimit(1)
@@ -218,7 +228,11 @@ struct PlannerCalendarView: View {
 
     private func finishMove(to start: Date) {
         guard let moving else { return }
-        PlannerMover.move(moving.event, occurrenceStart: moving.occurrenceStart, to: start, context: context)
+        if moving.isCarry {
+            PlannerErrandCarry.carry(moving.event, day: moving.occurrenceStart, to: start, context: context)
+        } else {
+            PlannerMover.move(moving.event, occurrenceStart: moving.occurrenceStart, to: start, context: context)
+        }
         sync.requestSync()
         withAnimation {
             self.moving = nil
