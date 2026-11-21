@@ -280,7 +280,13 @@ struct PlannerTrainingEditor: View {
             .confirmationDialog("Удалить запись?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Удалить", role: .destructive, action: delete)
             }
-            .onAppear(perform: loadDirectory)
+            .onAppear {
+                loadDirectory()
+                if !errandType.isEmpty,
+                   !errandKinds.contains(where: { $0.name.caseInsensitiveCompare(errandType) == .orderedSame }) {
+                    errandType = ""
+                }
+            }
         }
         .environment(\.locale, PlannerCalendar.locale)
     }
@@ -315,8 +321,14 @@ struct PlannerTrainingEditor: View {
                     Text("₽")
                 }
                 if !pType.isEmpty {
-                    Label("Тип: \(pType)", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(Color.accentColor)
+                    HStack {
+                        Label("Тип: \(pType)", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                        Spacer()
+                        Button("Снять") { pType = "" }
+                            .font(.footnote)
+                            .buttonStyle(.borderless)
+                    }
                 }
                 HStack {
                     TextField("Поиск или новый тип", text: $pTypeQuery)
@@ -525,8 +537,14 @@ struct PlannerTrainingEditor: View {
             .pickerStyle(.segmented)
             if errandRegular {
                 if !errandType.isEmpty {
-                    Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(Color.accentColor)
+                    HStack {
+                        Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                        Spacer()
+                        Button("Снять") { errandType = "" }
+                            .font(.footnote)
+                            .buttonStyle(.borderless)
+                    }
                 }
                 HStack {
                     TextField("Поиск или новый тип", text: $newErrandType)

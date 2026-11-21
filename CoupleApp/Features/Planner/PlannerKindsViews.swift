@@ -61,7 +61,7 @@ struct PlannerMoneyKindsView: View {
         .scrollDismissesKeyboard(.interactively)
         .confirmationDialog("Удалить тип из базы?", isPresented: $showConfirm, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
-                pendingDelete?.markDeleted()
+                if let target = pendingDelete { PlannerMoneyKindStore.delete(context, kind: target) }
                 pendingDelete = nil
                 try? context.save()
                 sync.requestSync()
@@ -137,7 +137,7 @@ struct PlannerErrandKindsView: View {
         .scrollDismissesKeyboard(.interactively)
         .confirmationDialog("Удалить тип из базы?", isPresented: $showConfirm, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
-                pendingDelete?.markDeleted()
+                if let target = pendingDelete { PlannerErrandKindStore.delete(context, kind: target) }
                 pendingDelete = nil
                 try? context.save()
                 sync.requestSync()
@@ -221,7 +221,7 @@ struct PlannerErrandKindDetail: View {
         .confirmationDialog("Удалить тип из базы?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
                 loaded = false
-                kind.markDeleted()
+                PlannerErrandKindStore.delete(context, kind: kind)
                 try? context.save()
                 sync.requestSync()
                 dismiss()
@@ -315,7 +315,7 @@ struct PlannerMoneyKindDetail: View {
         .confirmationDialog("Удалить тип из базы?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
                 loaded = false
-                kind.markDeleted()
+                PlannerMoneyKindStore.delete(context, kind: kind)
                 try? context.save()
                 sync.requestSync()
                 dismiss()

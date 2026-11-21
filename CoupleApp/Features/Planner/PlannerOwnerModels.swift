@@ -158,6 +158,22 @@ final class PlannerMoneyKind: SyncableModel {
 }
 
 enum PlannerMoneyKindStore {
+    /// Удалить тип денег: он убирается из операций и дел, где был выбран.
+    @MainActor
+    static func delete(_ context: ModelContext, kind: PlannerMoneyKind) {
+        let old = kind.name
+        let ops = (try? context.fetch(FetchDescriptor<PlannerMoneyOp>(predicate: #Predicate { $0.typeName == old }))) ?? []
+        for op in ops { op.typeName = ""; op.markChanged() }
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.moneyType == old || $0.partnerMoneyType == old }))) ?? []
+        for event in events {
+            if event.moneyType == old { event.moneyType = "" }
+            if event.partnerMoneyType == old { event.partnerMoneyType = "" }
+            event.markChanged()
+        }
+        kind.markDeleted()
+        try? context.save()
+    }
+
     /// Переименовать тип денег: название меняется и в операциях и делах с этим типом.
     @MainActor
     static func rename(_ context: ModelContext, kind: PlannerMoneyKind, to newName: String) {

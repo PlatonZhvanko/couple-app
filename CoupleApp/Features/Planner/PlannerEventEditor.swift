@@ -124,8 +124,14 @@ struct PlannerEventEditor: View {
             .pickerStyle(.segmented)
             if errandRegular {
                 if !errandType.isEmpty {
-                    Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(Color.accentColor)
+                    HStack {
+                        Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                        Spacer()
+                        Button("Снять") { errandType = ""; moneyDirection = .none }
+                            .font(.footnote)
+                            .buttonStyle(.borderless)
+                    }
                 }
                 HStack {
                     TextField("Поиск или новый тип", text: $newErrandType)
@@ -284,8 +290,14 @@ struct PlannerEventEditor: View {
                                 Text("₽")
                             }
                             if !moneyType.isEmpty {
-                                Label("Тип: \(moneyType)", systemImage: "checkmark.circle.fill")
-                                    .foregroundStyle(Color.accentColor)
+                                HStack {
+                                    Label("Тип: \(moneyType)", systemImage: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                    Spacer()
+                                    Button("Снять") { moneyType = "" }
+                                        .font(.footnote)
+                                        .buttonStyle(.borderless)
+                                }
                             }
                             HStack {
                                 TextField("Поиск или новый тип", text: $newMoneyType)
@@ -415,6 +427,13 @@ struct PlannerEventEditor: View {
                 // Двигаем конец вместе с началом, сохраняя длительность.
                 let duration = max(0, end.timeIntervalSince(oldValue))
                 end = newValue.addingTimeInterval(duration)
+            }
+            .onAppear {
+                // Тип, которого уже нет в базе, не оставляем «призраком».
+                if !errandType.isEmpty,
+                   !errandKinds.contains(where: { $0.name.caseInsensitiveCompare(errandType) == .orderedSame }) {
+                    errandType = ""
+                }
             }
             .onChange(of: moneyDirection) { _, _ in moneyType = "" }
             .onChange(of: isAllDay) { _, allDay in
