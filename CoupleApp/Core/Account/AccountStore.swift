@@ -33,10 +33,11 @@ final class AccountStore {
     /// Вызывается при входе и выходе (синхронизация начинает заново).
     @ObservationIgnored var onAccountChange: (() -> Void)? = nil
 
-    /// Телефон Платони: только с него можно переключаться между профилями (в режиме «без сервера»).
-    /// У Настеньки только её профиль. При синхронизации с сервером профиль задаёт сам аккаунт.
+    /// Телефон Платони: только с него можно переключаться между профилями (и с сервером, и без).
+    /// У Настеньки только её профиль. При переключении вход на сервере остаётся от Платони,
+    /// синхронизация идёт той же парой, меняется только то, чьи вкладки и записи видны.
     private(set) var isOwnerDevice: Bool = UserDefaults.standard.bool(forKey: "account.ownerDevice")
-    var canSwitchProfiles: Bool { mode == .local && isOwnerDevice }
+    var canSwitchProfiles: Bool { isOwnerDevice }
 
     var isSignedIn: Bool { me != nil }
     var isServerMode: Bool { mode == .server }
@@ -218,7 +219,9 @@ final class AccountStore {
         for row in rows {
             if let role = row.role, let name = row.display_name { newNames[role] = name }
         }
-        me = role
+        // Телефон Платони помнит выбранный профиль (переключатель в Настройках).
+        setOwnerDevice(role == .owner)
+        if !(isOwnerDevice && me != nil) { me = role }
         names = newNames
         save()
     }
