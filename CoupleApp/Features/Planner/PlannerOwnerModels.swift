@@ -244,6 +244,8 @@ final class PlannerShift: SyncableModel {
     struct Payload: Codable {
         var day: Date
         var amount: Double
+        /// 0 — вся смена, 1 — первая половина (9–15), 2 — вторая (15–21). Нет в старых записях.
+        var part: Int?
     }
 
     static let recordKind = "planner.shift"
@@ -255,6 +257,8 @@ final class PlannerShift: SyncableModel {
     var syncID: UUID = UUID()
     var day: Date = Date.now
     var amount: Double = 4000
+    /// 0 — вся смена, 1 — первая половина (9–15), 2 — вторая (15–21).
+    var part: Int = 0
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -271,12 +275,32 @@ final class PlannerShift: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(day: day, amount: amount) }
+    var payload: Payload { Payload(day: day, amount: amount, part: part) }
 
     func apply(_ payload: Payload) {
         day = payload.day
         amount = payload.amount
+        part = payload.part ?? 0
     }
+
+    /// Часы смены: вся 9–21, первая половина 9–15, вторая 15–21.
+    static func hours(part: Int) -> (start: Int, end: Int) {
+        switch part {
+        case 1: (startHour, 15)
+        case 2: (15, endHour)
+        default: (startHour, endHour)
+        }
+    }
+
+    static func partTitle(_ part: Int) -> String {
+        switch part {
+        case 1: "Первая половина 9–15"
+        case 2: "Вторая половина 15–21"
+        default: "Вся смена 9–21"
+        }
+    }
+
+    var title: String { part == 0 ? "Смена" : "Половина смены" }
 
     static func makeID(day: Date) -> UUID {
         PlannerDeterministicID.make("shift|\(Int(PlannerCalendar.calendar.startOfDay(for: day).timeIntervalSince1970))")
@@ -284,6 +308,38 @@ final class PlannerShift: SyncableModel {
 }
 
 enum PlannerShiftStore {
+    /// Поставить смену (целую или половину) с суммой или изменить уже стоящую.
+    @MainActor
+    static func set(_ context: ModelContext, day: Date, part: Int, amount: Double) {
+        let start = PlannerCalendar.calendar.startOfDay(for: day)
+        let id = PlannerShift.makeID(day: start)
+        let found = try? context.fetch(FetchDescriptor<PlannerShift>(predicate: #Predicate { $0.syncID == id }))
+        if let existing = found?.first {
+            existing.deletedAt = nil
+            existing.part = part
+            existing.amount = amount
+            existing.markChanged()
+        } else {
+            let shift = PlannerShift(day: start, amount: amount)
+            shift.part = part
+            context.insert(shift)
+            shift.markChanged()
+        }
+        try? context.save()
+    }
+
+    /// Снять смену с дня.
+    @MainActor
+    static func remove(_ context: ModelContext, day: Date) {
+        let start = PlannerCalendar.calendar.startOfDay(for: day)
+        let id = PlannerShift.makeID(day: start)
+        let found = try? context.fetch(FetchDescriptor<PlannerShift>(predicate: #Predicate { $0.syncID == id }))
+        if let existing = found?.first, existing.deletedAt == nil {
+            existing.markDeleted()
+            try? context.save()
+        }
+    }
+
     /// Поставить или снять смену на день.
     @MainActor
     static func toggle(_ context: ModelContext, day: Date, amount: Double) {
@@ -296,6 +352,7 @@ enum PlannerShiftStore {
             } else {
                 existing.deletedAt = nil
                 existing.amount = amount
+                existing.part = 0
                 existing.markChanged()
             }
         } else {
@@ -333,7 +390,7 @@ enum PlannerLedger {
         var result: [PlannerLedgerEntry] = []
         for shift in shifts where shift.deletedAt == nil {
             result.append(PlannerLedgerEntry(
-                id: "shift.\(shift.syncID)", day: shift.day, title: "Смена",
+                id: "shift.\(shift.syncID)", day: shift.day, title: shift.title,
                 source: .shift, type: "Смена", amount: shift.amount
             ))
         }

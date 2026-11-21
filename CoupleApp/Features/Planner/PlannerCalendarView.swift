@@ -29,6 +29,12 @@ struct PlannerCalendarView: View {
     @AppStorage("planner.shiftAmount") private var shiftAmount: Double = PlannerShift.defaultAmount
     /// Режим «Смены»: нажатие на день ставит или снимает смену.
     @State private var shiftMode = false
+    @State private var shiftEdit: ShiftEditTarget?
+
+    private struct ShiftEditTarget: Identifiable {
+        let day: Date
+        var id: Date { day }
+    }
     @Query(filter: #Predicate<PlannerColorRule> { $0.deletedAt == nil })
     private var colorRules: [PlannerColorRule]
     @Query(filter: #Predicate<PlannerSubscription> { $0.deletedAt == nil })
@@ -154,6 +160,9 @@ struct PlannerCalendarView: View {
         }
         .sheet(item: $sheetTarget) { target in
             sheetContent(target)
+        }
+        .sheet(item: $shiftEdit) { target in
+            PlannerShiftSheet(day: target.day, defaultAmount: shiftAmount)
         }
         .sheet(isPresented: $showSale) {
             if account.current == .owner {
@@ -309,6 +318,10 @@ struct PlannerCalendarView: View {
                 colorFor: { event, day in blockColor(event, day) },
                 externalItems: { items(on: $0) },
                 shiftDays: shiftDays,
+                shiftParts: shiftParts,
+                onShiftHold: { day in
+                    if isOwner && !showsPartner { shiftEdit = ShiftEditTarget(day: day) }
+                },
                 dayMark: { moodMark($0) },
                 badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
@@ -357,6 +370,13 @@ struct PlannerCalendarView: View {
         let viewingOwner = (account.current == .owner) != showsPartner
         guard viewingOwner else { return [] }
         return Set(shifts.map { cal.startOfDay(for: $0.day) })
+    }
+
+    /// Часть смены по дням: 0 — вся, 1 — первая половина, 2 — вторая.
+    private var shiftParts: [Date: Int] {
+        var result: [Date: Int] = [:]
+        for shift in shifts { result[cal.startOfDay(for: shift.day)] = shift.part }
+        return result
     }
 
     /// Смайлики настроения за день: свой и партнёра (виден обоим).
@@ -481,10 +501,12 @@ struct PlannerCalendarView: View {
         let dayEvents = events.occurrences(on: day)
         let colors = Array(dayEvents.map(\.event.categoryValue.color).prefix(3))
         let isBusy = !items(on: day).isEmpty
-        let isShift = shiftDays.contains(cal.startOfDay(for: day))
+        let shiftPart = shiftParts[cal.startOfDay(for: day)]
+        let isShift = shiftPart != nil && shiftDays.contains(cal.startOfDay(for: day))
+        let isFullShift = isShift && shiftPart == 0
         let mood = moodMark(day)
 
-        return Button {
+        let tapAction: () -> Void = {
             if shiftMode && isOwner && !showsPartner {
                 PlannerShiftStore.toggle(context, day: day, amount: shiftAmount)
                 sync.requestSync()
@@ -495,40 +517,56 @@ struct PlannerCalendarView: View {
             } else {
                 withAnimation(.snappy) { selectedDay = day }
             }
-        } label: {
-            VStack(spacing: 3) {
-                Text("\(cal.component(.day, from: day))")
-                    .font(.callout.weight(isToday || isSelected ? .bold : .regular))
-                    .frame(width: 34, height: 34)
-                    .background {
-                        if isSelected {
-                            Circle().fill(isToday ? Color.plannerToday : Color.primary)
-                        } else if isToday {
-                            Circle().stroke(Color.plannerToday, lineWidth: 1.5)
-                        }
-                    }
-                    .foregroundStyle(isSelected ? Color(.systemBackground) : (inMonth ? Color.primary : Color.secondary.opacity(0.5)))
-                HStack(spacing: 3) {
-                    ForEach(Array(colors.enumerated()), id: \.offset) { _, color in
-                        Circle().fill(color).frame(width: 5, height: 5)
-                    }
-                    if isBusy {
-                        Circle().fill(Color.gray).frame(width: 5, height: 5)
+        }
+
+        return VStack(spacing: 3) {
+            Text("\(cal.component(.day, from: day))")
+                .font(.callout.weight(isToday || isSelected ? .bold : .regular))
+                .frame(width: 34, height: 34)
+                .background {
+                    if isSelected {
+                        Circle().fill(isToday ? Color.plannerToday : Color.primary)
+                    } else if isToday {
+                        Circle().stroke(Color.plannerToday, lineWidth: 1.5)
                     }
                 }
-                .frame(height: 5)
-                Text(mood).font(.system(size: 10)).frame(height: 12)
+                .background {
+                    // Половина смены: горит только половинка кружка (первая слева, вторая справа).
+                    if isShift, let part = shiftPart, part != 0 {
+                        Circle()
+                            .fill(Color.red.opacity(0.4))
+                            .mask(
+                                HStack(spacing: 0) {
+                                    Rectangle().opacity(part == 1 ? 1 : 0)
+                                    Rectangle().opacity(part == 2 ? 1 : 0)
+                                }
+                            )
+                    }
+                }
+                .foregroundStyle(isSelected ? Color(.systemBackground) : (inMonth ? Color.primary : Color.secondary.opacity(0.5)))
+            HStack(spacing: 3) {
+                ForEach(Array(colors.enumerated()), id: \.offset) { _, color in
+                    Circle().fill(color).frame(width: 5, height: 5)
+                }
+                if isBusy {
+                    Circle().fill(Color.gray).frame(width: 5, height: 5)
+                }
             }
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 8).fill(
-                    isToday ? Color.plannerToday.opacity(0.18) : (isShift ? Color.red.opacity(0.18) : Color.clear)
-                )
-            )
-            .contentShape(Rectangle())
+            .frame(height: 5)
+            Text(mood).font(.system(size: 10)).frame(height: 12)
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 8).fill(
+                isToday ? Color.plannerToday.opacity(0.18) : (isFullShift ? Color.red.opacity(0.18) : Color.clear)
+            )
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(perform: tapAction)
+        .onLongPressGesture(minimumDuration: 0.6) {
+            if isOwner && !showsPartner { shiftEdit = ShiftEditTarget(day: day) }
+        }
     }
 
     // MARK: - Список на день

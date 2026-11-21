@@ -205,3 +205,88 @@ struct PlannerMoneyOpSheet: View {
         dismiss()
     }
 }
+
+/// Правка смены на конкретный день: вся или половина, сумма за этот день.
+struct PlannerShiftSheet: View {
+    let day: Date
+    let defaultAmount: Double
+
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+    @Query(filter: #Predicate<PlannerShift> { $0.deletedAt == nil })
+    private var shifts: [PlannerShift]
+
+    @State private var part = 0
+    @State private var amount: Double?
+    @State private var loaded = false
+
+    private var current: PlannerShift? {
+        let start = PlannerCalendar.calendar.startOfDay(for: day)
+        return shifts.first { PlannerCalendar.calendar.startOfDay(for: $0.day) == start }
+    }
+
+    private func suggested(_ part: Int) -> Double {
+        part == 0 ? defaultAmount : (defaultAmount / 2).rounded()
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Смена", selection: $part) {
+                        Text("Вся 9–21").tag(0)
+                        Text("9–15").tag(1)
+                        Text("15–21").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                    HStack {
+                        Text("Оплата за этот день")
+                        Spacer()
+                        TextField("0", value: $amount, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                        Text("₽")
+                    }
+                } header: {
+                    Text(PlannerCalendar.dayTitle(day))
+                } footer: {
+                    Text("Сумма идёт в статистику. Для половины смены по умолчанию берётся половина обычной.")
+                }
+                if current != nil {
+                    Section {
+                        Button("Снять смену с этого дня", role: .destructive) {
+                            PlannerShiftStore.remove(context, day: day)
+                            sync.requestSync()
+                            dismiss()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Смена")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Сохранить") {
+                        PlannerShiftStore.set(context, day: day, part: part, amount: amount ?? suggested(part))
+                        sync.requestSync()
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                guard !loaded else { return }
+                loaded = true
+                part = current?.part ?? 0
+                amount = current?.amount ?? suggested(part)
+            }
+            .onChange(of: part) { _, newValue in
+                // Меняя половину, подставляем обычную сумму для неё, если ещё не правили вручную.
+                if let current, current.part == newValue { amount = current.amount } else { amount = suggested(newValue) }
+            }
+        }
+        .presentationDetents([.medium])
+        .environment(\.locale, PlannerCalendar.locale)
+    }
+}
