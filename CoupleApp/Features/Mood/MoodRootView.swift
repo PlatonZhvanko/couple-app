@@ -20,8 +20,7 @@ struct MoodRootView: View {
     @State private var showCheckIn = false
     @State private var showAllSupport = false
     @State private var showSleep = false
-    @State private var newWishEmoji = ""
-    @State private var newWishText = ""
+    @State private var showCustomWish = false
     @AppStorage("mood.support.custom") private var customSupportRaw = ""
     @State private var insight: (item: MoodInsight, text: String)?
     @State private var editor: EditorTarget?
@@ -93,6 +92,10 @@ struct MoodRootView: View {
                     }
                 }
 
+                Section("⚖️ Вес") {
+                    MoodWeightCard()
+                }
+
                 Section("Мои отметки за сегодня") {
                     let mine = today(of: me)
                     if mine.isEmpty {
@@ -118,18 +121,23 @@ struct MoodRootView: View {
                         Label("Сон: записи и график", systemImage: "bed.double")
                     }
                     NavigationLink {
+                        MoodReportView()
+                    } label: {
+                        Label("Сводка: день, неделя, месяц", systemImage: "doc.text.magnifyingglass")
+                    }
+                    NavigationLink {
                         MoodInsightsView()
                     } label: {
                         Label("Мироня заметил", systemImage: "sparkles")
                     }
                     NavigationLink {
-                        MoodReminderSettingsView()
+                        RemindersView()
                     } label: {
-                        Label("Напоминание", systemImage: "bell")
+                        Label("Напоминания", systemImage: "bell")
                     }
                 }
             }
-            .navigationTitle("Настроение")
+            .navigationTitle("Здоровье")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { editor = .new(.okay) } label: { Label("Быстрая отметка", systemImage: "plus") }
@@ -138,6 +146,10 @@ struct MoodRootView: View {
             .catVisit(.miron, topic: Calendar.current.component(.hour, from: .now) >= 20 ? .goodNight : .mood, section: "mood")
             .refreshable { await sync.syncNow() }
             .onAppear(perform: onAppear)
+            .sheet(isPresented: $showCustomWish) {
+                MoodCustomWishSheet { emoji, text in sendCustom(emoji: emoji, text: text) }
+                    .presentationDetents([.medium])
+            }
             .sheet(isPresented: $showSleep) {
                 SleepRootView()
             }
@@ -158,6 +170,7 @@ struct MoodRootView: View {
     private func onAppear() {
         MoodReminder.refreshIfEnabled()
         MoodSleepReminder.refreshIfEnabled()
+        ReminderScheduler.refresh()
         let days = MoodInsights.collect(context: context, member: me)
         let list = MoodInsights.insights(from: days)
         let good = (days.last?.mood ?? 0) >= 4
@@ -271,25 +284,7 @@ struct MoodRootView: View {
                     ForEach(Array(customWishes.enumerated()), id: \.offset) { _, wish in
                         supportButton(wish.emoji, title: wish.text) { send(wish.emoji, comment: wish.text) }
                     }
-                }
-            }
-            if showAllSupport {
-                VStack(spacing: 8) {
-                    Text("Своё пожелание")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack {
-                        TextField("😊", text: $newWishEmoji)
-                            .frame(width: 56)
-                            .multilineTextAlignment(.center)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Например: приготовлю ужин", text: $newWishText)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    Button("Отправить и сохранить", action: sendCustom)
-                        .buttonStyle(.bordered)
-                        .disabled(newWishText.trimmingCharacters(in: .whitespaces).isEmpty)
+                    supportButton("➕", title: "Своё пожелание") { showCustomWish = true }
                 }
             }
             Button(showAllSupport ? "Свернуть" : "Показать все и добавить своё") {
@@ -300,15 +295,9 @@ struct MoodRootView: View {
         .sensoryFeedback(.success, trigger: sentEmoji)
     }
 
-    private func sendCustom() {
-        let text = newWishText.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Берём первый символ-эмодзи; если не ввели, ставим сердечко.
-        let emoji = newWishEmoji.trimmingCharacters(in: .whitespaces).first.map(String.init) ?? "💌"
-        guard !text.isEmpty else { return }
+    private func sendCustom(emoji: String, text: String) {
         customSupportRaw += "\(emoji)|\(text.replacingOccurrences(of: "\n", with: " "))\n"
         send(emoji, comment: text)
-        newWishText = ""
-        newWishEmoji = ""
     }
 
     private func send(_ emoji: String, comment custom: String? = nil) {
@@ -413,5 +402,43 @@ struct MoodEntryRow: View {
         }
         .contentShape(Rectangle())
         .padding(.vertical, 2)
+    }
+}
+
+/// Своё пожелание: свой эмодзи и текст. Сохраняется в списке и сразу отправляется.
+struct MoodCustomWishSheet: View {
+    let onSend: (_ emoji: String, _ text: String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var emoji = ""
+    @State private var text = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Эмодзи") {
+                    TextField("😊", text: $emoji)
+                        .font(.largeTitle)
+                        .multilineTextAlignment(.center)
+                }
+                Section("Что пожелать") {
+                    TextField("Например: приготовлю ужин", text: $text, axis: .vertical)
+                        .lineLimit(1...3)
+                }
+            }
+            .navigationTitle("Своё пожелание")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Отправить") {
+                        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let symbol = emoji.trimmingCharacters(in: .whitespaces).first.map(String.init) ?? "💌"
+                        onSend(symbol, trimmed)
+                        dismiss()
+                    }
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
     }
 }

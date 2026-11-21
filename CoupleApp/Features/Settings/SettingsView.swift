@@ -57,6 +57,16 @@ struct SettingsView: View {
                     Text("🎨 Оформление")
                 }
 
+                Section {
+                    NavigationLink {
+                        RemindersView()
+                    } label: {
+                        Label("Напоминания", systemImage: "bell")
+                    }
+                } header: {
+                    Text("🔔 Уведомления")
+                }
+
                 Section("🔄 Синхронизация") {
                     NavigationLink {
                         SyncSettingsView()

@@ -202,6 +202,7 @@ struct MoodCheckInView: View {
     @State private var wakeTime = MoodCheckInView.defaultWake()
     @State private var sleepQuality = 3
     @State private var sleepEntry: SleepEntry?
+    @State private var weightText = ""
 
     /// По умолчанию: лёг вчера в 23:00, встал сегодня в 07:00.
     private static func defaultWake() -> Date {
@@ -273,6 +274,15 @@ struct MoodCheckInView: View {
                     Text("Сон прошлой ночью")
                 }
 
+                Section {
+                    TextField("Вес сегодня, кг", text: $weightText)
+                        .keyboardType(.decimalPad)
+                } header: {
+                    Text("Вес (необязательно)")
+                } footer: {
+                    Text("Можно пропустить или записать в любой день в разделе «Здоровье».")
+                }
+
                 Section("Пара слов (необязательно)") {
                     TextField("Что запомнилось за день", text: $note, axis: .vertical)
                         .lineLimit(1...4)
@@ -283,7 +293,7 @@ struct MoodCheckInView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Позже") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Сохранить", action: save).disabled(logSleep && sleepProblem)
+                    Button("Сохранить", action: save).disabled((logSleep && sleepProblem) || (!weightText.isEmpty && MoodWeightStore.parse(weightText) == nil))
                 }
             }
             .onAppear(perform: load)
@@ -294,6 +304,11 @@ struct MoodCheckInView: View {
         // Сон, который уже записан на сегодня (проснулись сегодня).
         let today = Calendar.current.startOfDay(for: .now)
         let who = account.current.rawValue
+        let todayKey = MoodDayKey.key(for: .now)
+        if let weight = ((try? context.fetch(FetchDescriptor<MoodWeightEntry>())) ?? [])
+            .first(where: { $0.deletedAt == nil && $0.member == who && $0.dayKey == todayKey }) {
+            weightText = MoodWeightStore.format(weight.kg)
+        }
         let rows = ((try? context.fetch(FetchDescriptor<SleepEntry>())) ?? [])
             .filter { $0.deletedAt == nil && $0.member == who && $0.nightDay == today }
         if let main = rows.max(by: { $0.duration < $1.duration }) {
@@ -352,6 +367,9 @@ struct MoodCheckInView: View {
         }
         try? context.save()
         sync.requestSync()
+        if let kg = MoodWeightStore.parse(weightText) {
+            MoodWeightStore.save(kg: kg, member: account.current, context: context, sync: sync)
+        }
         MoodReminder.skipToday()
         dismiss()
     }
