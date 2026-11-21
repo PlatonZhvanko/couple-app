@@ -33,6 +33,11 @@ struct PlannerEventEditor: View {
     @State private var errandRegular: Bool
     @State private var errandType: String
     @State private var newErrandType = ""
+    @State private var newMoneyType = ""
+    private var trimmedMoneyType: String { newMoneyType.trimmingCharacters(in: .whitespaces) }
+    private var moneyTypeExists: Bool {
+        moneyKinds.contains { $0.isProfit == (moneyDirection == .profit) && $0.name.lowercased() == trimmedMoneyType.lowercased() }
+    }
     @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil }, sort: \PlannerErrandKind.name)
     private var errandKinds: [PlannerErrandKind]
     @Query(filter: #Predicate<PlannerMoneyKind> { $0.deletedAt == nil }, sort: \PlannerMoneyKind.name)
@@ -141,7 +146,7 @@ struct PlannerEventEditor: View {
 
     private var typeSuggestions: [PlannerErrandKind] {
         let sorted = errandKinds.visible(to: account.current).sorted { $0.updatedAt > $1.updatedAt }
-        guard !trimmedNewType.isEmpty else { return Array(sorted.prefix(2)) }
+        guard !trimmedNewType.isEmpty else { return [] }
         return Array(sorted.filter { $0.name.localizedCaseInsensitiveContains(trimmedNewType) }.prefix(2))
     }
 
@@ -193,10 +198,28 @@ struct PlannerEventEditor: View {
                                     .multilineTextAlignment(.trailing)
                                 Text("₽")
                             }
-                            Picker("Тип", selection: $moneyType) {
-                                Text("Без типа").tag("")
-                                ForEach(moneyKinds.filter { $0.isProfit == (moneyDirection == .profit) }) {
-                                    Text($0.title).tag($0.name)
+                            if !moneyType.isEmpty {
+                                Label("Тип: \(moneyType)", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                            HStack {
+                                TextField("Поиск или новый тип", text: $newMoneyType)
+                                if !trimmedMoneyType.isEmpty && !moneyTypeExists {
+                                    Button {
+                                        if let kind = PlannerMoneyKindStore.ensure(context, name: trimmedMoneyType, isProfit: moneyDirection == .profit) {
+                                            moneyType = kind.name
+                                        }
+                                        newMoneyType = ""
+                                    } label: { Image(systemName: "plus.circle.fill").font(.title3) }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+                            if !trimmedMoneyType.isEmpty {
+                                ForEach(moneyKinds.filter { $0.isProfit == (moneyDirection == .profit) && $0.name.localizedCaseInsensitiveContains(trimmedMoneyType) }.prefix(3)) { kind in
+                                    Button { moneyType = kind.name; newMoneyType = "" } label: {
+                                        Label(kind.title, systemImage: kind.name == moneyType ? "checkmark" : "tag")
+                                    }
+                                    .foregroundStyle(.primary)
                                 }
                             }
                         }
@@ -204,8 +227,8 @@ struct PlannerEventEditor: View {
                         Text("💰 Деньги")
                     } footer: {
                         Text(moneyDirection == .none
-                             ? "Если дело что-то приносит или стоит денег, выбери «Прибыль» или «Трата»."
-                             : "Деньги идут в статистику, когда в записи отмечено «Сделано». Типы создаются в «Настройки дел».")
+                             ? "Если дело что-то приносит или стоит денег, выбери «Прибыль/Приход» или «Трата»."
+                             : "Деньги идут в статистику, когда в записи отмечено «Сделано». Тип ищи по названию или создай через «+».")
                     }
                 }
 
