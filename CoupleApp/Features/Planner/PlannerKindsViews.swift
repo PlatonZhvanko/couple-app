@@ -163,6 +163,7 @@ struct PlannerErrandKindDetail: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
+    @State private var money: PlannerMoneyDirection = .none
     @State private var emoji = ""
     @State private var useColor = false
     @State private var color: Color = .blue
@@ -176,6 +177,16 @@ struct PlannerErrandKindDetail: View {
             Section("Название") {
                 TextField("Название типа", text: $name)
                     .onSubmit(save)
+            }
+            Section {
+                Picker("Деньги", selection: $money) {
+                    ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Деньги типа")
+            } footer: {
+                Text("Прибыль или трата: тип сам появится в типах прибыли или трат, второй тип создавать не нужно.")
             }
             Section("Внешний вид") {
                 PlannerEmojiStrip(selection: $emoji)
@@ -205,6 +216,7 @@ struct PlannerErrandKindDetail: View {
         .onAppear(perform: load)
         .onChange(of: emoji) { _, _ in save() }
         .onChange(of: useColor) { _, _ in save() }
+        .onChange(of: money) { _, _ in save() }
         .onDisappear(perform: save)
         .confirmationDialog("Удалить тип из базы?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
@@ -231,6 +243,7 @@ struct PlannerErrandKindDetail: View {
         recent = rows.map { (title: $0.title, start: $0.start) }
         emoji = kind.emoji
         name = kind.name
+        money = kind.moneyDirection
         if let saved = Color(hex: kind.colorHex), !kind.colorHex.isEmpty {
             useColor = true
             color = saved
@@ -244,8 +257,10 @@ struct PlannerErrandKindDetail: View {
         let newHex = useColor ? color.hexString : ""
         let newName = name.trimmingCharacters(in: .whitespaces)
         let renamed = !newName.isEmpty && newName != kind.name
-        guard renamed || newEmoji != kind.emoji || newHex != kind.colorHex else { return }
+        let moneyChanged = money != kind.moneyDirection
+        guard renamed || moneyChanged || newEmoji != kind.emoji || newHex != kind.colorHex else { return }
         if renamed { PlannerErrandKindStore.rename(context, kind: kind, to: newName) }
+        if moneyChanged { PlannerErrandKindStore.setMoney(context, kind: kind, direction: money) }
         kind.emoji = newEmoji
         kind.colorHex = newHex
         kind.markChanged()
