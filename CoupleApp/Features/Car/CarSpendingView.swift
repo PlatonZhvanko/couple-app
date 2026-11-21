@@ -50,8 +50,8 @@ struct CarSpendingView: View {
     }
 
     var body: some View {
-        let groups = groups
-        let total = groups.reduce(0) { $0 + $1.sum }
+        let buckets = groups
+        let total = buckets.reduce(0) { $0 + $1.sum }
         List {
             Section {
                 Picker("Период", selection: $period) {
@@ -67,11 +67,11 @@ struct CarSpendingView: View {
                 }
             }
 
-            if groups.isEmpty {
+            if buckets.isEmpty {
                 Section { Text("За этот период трат нет.").foregroundStyle(.secondary) }
             } else {
                 Section("По категориям") {
-                    ForEach(groups) { group in
+                    ForEach(buckets) { group in
                         DisclosureGroup {
                             ForEach(group.entries) { entry in
                                 Button {
