@@ -356,6 +356,7 @@ struct PlannerRecordView: View {
                     isGroup: event.categoryValue != .personal,
                     hasSubscription: subscriptions.contains {
                         $0.clientID == client.id && $0.covers(day)
+                            && PlannerSubscriptionTypeStore.applies($0, to: event, context: context)
                     },
                     onSelect: { select($0, for: client) },
                     onSubscription: { subscriptionClient = client },

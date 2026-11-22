@@ -276,6 +276,10 @@ struct PlannerSubscriptionTypeEditor: View {
     @State private var validDays: String
     @State private var charge: String
     @State private var deleted = false
+    @State private var groups: [String]
+    @State private var groupQuery = ""
+    @Query(filter: #Predicate<PlannerGroupKind> { $0.deletedAt == nil }, sort: \PlannerGroupKind.name)
+    private var groupKinds: [PlannerGroupKind]
 
     init(type: PlannerSubscriptionType) {
         self.type = type
@@ -283,6 +287,7 @@ struct PlannerSubscriptionTypeEditor: View {
         _price = State(initialValue: "\(Int(type.price.rounded()))")
         _validDays = State(initialValue: "\(type.validDays)")
         _charge = State(initialValue: "\(Int(type.charge.rounded()))")
+        _groups = State(initialValue: type.groupNames)
     }
 
     var body: some View {
@@ -318,6 +323,27 @@ struct PlannerSubscriptionTypeEditor: View {
                 }
             }
             Section {
+                ForEach(groups, id: \.self) { name in
+                    Button { groups.removeAll { $0 == name } } label: {
+                        Label(name, systemImage: "checkmark.circle.fill")
+                    }
+                }
+                TextField("Поиск группы", text: $groupQuery)
+                let query = groupQuery.trimmingCharacters(in: .whitespaces)
+                if !query.isEmpty {
+                    ForEach(groupKinds.filter { $0.name.localizedCaseInsensitiveContains(query) && !groups.contains($0.name) }.prefix(4)) { kind in
+                        Button { groups.append(kind.name); groupQuery = "" } label: {
+                            Label(kind.name, systemImage: "plus.circle")
+                        }
+                        .foregroundStyle(.primary)
+                    }
+                }
+            } header: {
+                Text("На какие группы действует")
+            } footer: {
+                Text(groups.isEmpty ? "Ничего не выбрано: абонемент действует на все группы. Нажми на выбранную группу, чтобы убрать." : "Абонемент спишется только на занятиях этих групп.")
+            }
+            Section {
                 Button("Удалить вид", role: .destructive) {
                     deleted = true
                     PlannerSubscriptionTypeStore.delete(context, type: type)
@@ -337,6 +363,7 @@ struct PlannerSubscriptionTypeEditor: View {
             if let value = Double(price) { type.price = value }
             if let days = Int(validDays), days > 0 { type.validDays = days }
             if let value = Double(charge) { type.charge = max(0, value) }
+            type.groupNames = groups
             type.markChanged()
             try? context.save()
             sync.requestSync()
