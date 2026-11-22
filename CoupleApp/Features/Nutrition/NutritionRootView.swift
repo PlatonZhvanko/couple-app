@@ -103,7 +103,7 @@ struct NutritionDayView: View {
                 mealSection(meal)
             }
 
-            NutritionPartnerCard(member: member.other)
+            NutritionPartnerCard(member: member.other, dayKey: dayKey, dayTitle: dayTitle)
         }
         .refreshable { await sync.syncNow() }
         .sheet(item: $sheet) { item in
@@ -263,7 +263,7 @@ struct NutritionEntryRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name.isEmpty ? "Без названия" : entry.name)
                 Text(entry.grams > 0
-                     ? "\(entry.grams.nutritionText) г · Б \(entry.protein.nutritionText) · Ж \(entry.fat.nutritionText) · У \(entry.carbs.nutritionText)"
+                     ? "\(entry.grams.nutritionText) \(NutritionLiquid.isLiquid(entry.name) ? "мл" : "г") · Б \(entry.protein.nutritionText) · Ж \(entry.fat.nutritionText) · У \(entry.carbs.nutritionText)"
                      : "Б \(entry.protein.nutritionText) · Ж \(entry.fat.nutritionText) · У \(entry.carbs.nutritionText)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -334,17 +334,21 @@ struct NutritionSummaryCard: View {
 /// Компактный блок о партнёре: сколько съел сегодня и его норма. Без деталей: что и когда.
 struct NutritionPartnerCard: View {
     let member: CoupleMember
+    let dayKey: String
+    let dayTitle: String
 
     @Environment(AccountStore.self) private var account
+    @Environment(SyncCoordinator.self) private var sync
     @Query private var entries: [NutritionEntry]
     @Query private var goals: [NutritionGoal]
 
-    init(member: CoupleMember) {
+    init(member: CoupleMember, dayKey: String, dayTitle: String) {
         self.member = member
+        self.dayKey = dayKey
+        self.dayTitle = dayTitle
         let memberID = member.rawValue
-        let today = NutritionDay.key(for: .now)
         _entries = Query(filter: #Predicate<NutritionEntry> {
-            $0.deletedAt == nil && $0.member == memberID && $0.dayKey == today
+            $0.deletedAt == nil && $0.member == memberID && $0.dayKey == dayKey
         })
         _goals = Query(filter: #Predicate<NutritionGoal> { $0.deletedAt == nil && $0.member == memberID })
     }
@@ -373,7 +377,13 @@ struct NutritionPartnerCard: View {
             }
             .padding(.vertical, 2)
         } header: {
-            Text("\(account.partnerName) сегодня")
+            Text("\(account.partnerName): \(dayTitle.lowercased())")
+        } footer: {
+            if sync.status == .localOnly {
+                Text("Вход без сервера: данные партнёра не приходят. Войдите по почте, чтобы видеть общее.")
+            } else if entries.isEmpty {
+                Text("За этот день у партнёра ничего не записано (или ещё не пришло: потяните список вниз).")
+            }
         }
     }
 
