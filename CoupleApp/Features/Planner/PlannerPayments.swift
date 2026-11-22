@@ -683,6 +683,7 @@ final class PlannerSubscriptionType: SyncableModel {
         name = payload.name
         price = payload.price
         validDays = payload.validDays ?? 30
+        groupsRaw = (payload.groups ?? []).joined(separator: "\n")
         charge = payload.charge ?? PlannerPricing.subscriptionCharge
     }
 
