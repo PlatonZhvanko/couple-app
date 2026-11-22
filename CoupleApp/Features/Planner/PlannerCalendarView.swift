@@ -48,6 +48,7 @@ struct PlannerCalendarView: View {
     @AppStorage("planner.dayFocus") private var dayFocus = false
     @State private var selectedDay = PlannerCalendar.calendar.startOfDay(for: .now)
     @State private var sheetTarget: SheetTarget?
+    @State private var externalDetail: CalendarItem?
     /// Запись, которую сейчас переносят: нужно выбрать новое время.
     @State private var moving: MovingState?
     /// Элементы из других разделов (например, записи клиентов).
@@ -84,12 +85,20 @@ struct PlannerCalendarView: View {
         return visible.filter { $0.scopeValue == .shared || $0.scopeValue == scope }
     }
 
+    /// Чьи записи из других разделов показаны: свои или (в режиме наблюдателя) партнёра.
+    private var viewedMember: CoupleMember { showsPartner ? account.current.other : account.current }
+
+    /// Двигать и править запись другого раздела может только её владелец.
+    private func canEditExternal(_ item: CalendarItem) -> Bool {
+        !showsPartner && (item.member == account.current || item.sharedWith.contains(account.current))
+    }
+
     /// Свои записи из других разделов.
     private func items(on day: Date) -> [CalendarItem] {
         let dayStart = cal.startOfDay(for: day)
         let dayEnd = PlannerCalendar.addDays(1, to: dayStart)
         return externalItems
-            .filter { ($0.member == nil || $0.member == account.current) && $0.start < dayEnd && $0.end > dayStart }
+            .filter { ($0.member == nil || $0.member == viewedMember || $0.sharedWith.contains(viewedMember)) && $0.start < dayEnd && $0.end > dayStart }
             .sorted { $0.start < $1.start }
     }
 
@@ -163,6 +172,11 @@ struct PlannerCalendarView: View {
         .sheet(item: $sheetTarget) { target in
             sheetContent(target)
         }
+        .sheet(item: $externalDetail, onDismiss: { refresh() }) { item in
+            Group {
+                if let detail = item.detail { detail() } else { EmptyView() }
+            }
+        }
         .sheet(item: $shiftEdit) { target in
             PlannerShiftSheet(day: target.day, defaultAmount: shiftAmount)
         }
@@ -201,7 +215,8 @@ struct PlannerCalendarView: View {
                             style = .planner
                             selectedDay = target.day
                         }
-                    }
+                    },
+                    readOnly: showsPartner
                 )
             }
         case .edit:
@@ -319,6 +334,13 @@ struct PlannerCalendarView: View {
                 events: events,
                 colorFor: { event, day in blockColor(event, day) },
                 externalItems: { items(on: $0) },
+                onExternalTap: { externalDetail = $0 },
+                canMoveExternal: { item in canEditExternal(item) && item.move != nil },
+                onExternalMove: { item, newStart in
+                    item.move?(newStart)
+                    sync.requestSync()
+                    refresh()
+                },
                 shiftDays: shiftDays,
                 shiftParts: shiftParts,
                 errandEmojis: errandEmojis,
@@ -346,7 +368,7 @@ struct PlannerCalendarView: View {
                     }
                 },
                 onEventTap: { event, day in
-                    guard moving == nil, !showsPartner else { return }
+                    guard moving == nil else { return }
                     sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
                 },
                 onMove: { event, from, to in moveByDrag(event, from: from, to: to) },
@@ -412,7 +434,8 @@ struct PlannerCalendarView: View {
            let hex = errandColors[event.errandType.lowercased()], let typeColor = Color(hex: hex) {
             base = typeColor
         }
-        guard isOwner, let status = event.status(on: day) else { return base }
+        guard isOwner || event.categoryValue == .errand,
+              let status = event.status(on: day, for: account.current) else { return base }
         switch status {
         case .done: return Color.green.opacity(0.75)
         case .notDone: return Color.red.opacity(0.65)
@@ -421,8 +444,10 @@ struct PlannerCalendarView: View {
     }
 
     private func blockBadge(_ event: PlannerEvent, _ day: Date) -> PlannerPayBadge {
-        guard isOwner else { return PlannerPaymentStore.badge(for: event, day: day, payments: payments) }
-        switch event.status(on: day) {
+        guard isOwner || event.categoryValue == .errand else {
+            return PlannerPaymentStore.badge(for: event, day: day, payments: payments)
+        }
+        switch event.status(on: day, for: account.current) {
         case .done: return .errandDone
         case .notDone: return .errandNotDone
         case .moved: return .errandMoved
@@ -611,9 +636,7 @@ struct PlannerCalendarView: View {
 
             ForEach(occurrences) { occurrence in
                 Button {
-                    if !showsPartner {
-                        sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: selectedDay)
-                    }
+                    sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: selectedDay)
                 } label: {
                     PlannerEventRow(
                         occurrence: occurrence,
@@ -625,7 +648,12 @@ struct PlannerCalendarView: View {
             }
 
             ForEach(dayItems) { item in
-                PlannerExternalItemRow(item: item)
+                if item.detail != nil {
+                    Button { externalDetail = item } label: { PlannerExternalItemRow(item: item) }
+                        .buttonStyle(.plain)
+                } else {
+                    PlannerExternalItemRow(item: item)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

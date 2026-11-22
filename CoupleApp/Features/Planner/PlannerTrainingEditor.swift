@@ -44,6 +44,10 @@ struct PlannerTrainingEditor: View {
     @State private var confirmDelete = false
     @State private var newKindName = ""
     @State private var errandRegular = false
+    @State private var errandType = ""
+    @State private var newErrandType = ""
+    @State private var newErrandEmoji = ""
+    @State private var creatingType = false
     @State private var pMoney: PlannerMoneyDirection = .none
     @State private var pAmount: Double?
     @State private var pType = ""
@@ -71,7 +75,8 @@ struct PlannerTrainingEditor: View {
             _mode = State(initialValue: category == .errand ? .errand : (category == .personal ? .client : .group))
             _groupCategory = State(initialValue: category == .school ? .school : .group)
             _title = State(initialValue: event.title)
-            _errandRegular = State(initialValue: category == .errand && event.repeatRule != PlannerRepeat.none.rawValue)
+            _errandRegular = State(initialValue: category == .errand && !event.errandType.isEmpty)
+            _errandType = State(initialValue: event.errandType)
             _pMoney = State(initialValue: PlannerMoneyDirection(rawValue: event.partnerMoneyKindRaw) ?? .none)
             _pAmount = State(initialValue: event.partnerMoneyAmount > 0 ? event.partnerMoneyAmount : nil)
             _pType = State(initialValue: event.partnerMoneyType)
@@ -127,6 +132,7 @@ struct PlannerTrainingEditor: View {
         case .client: !participants.isEmpty || !trimmedQuery.isEmpty
         case .group: true
         case .errand: !title.trimmingCharacters(in: .whitespaces).isEmpty
+            && (!errandRegular || !errandType.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }
 
@@ -194,37 +200,11 @@ struct PlannerTrainingEditor: View {
                     }
                 case .errand:
                     Section {
-                        Picker("Вид дела", selection: $errandRegular.animation()) {
-                            Text("Разовое").tag(false)
-                            Text("Регулярное").tag(true)
-                        }
-                        .pickerStyle(.segmented)
-                        if errandRegular {
-                            HStack {
-                                TextField("Поиск или новый тип", text: $title)
-                                    .textInputAutocapitalization(.sentences)
-                                if !trimmedTitle.isEmpty && !errandKindExists {
-                                    Button {
-                                        PlannerErrandKindStore.ensure(context, name: trimmedTitle, owner: account.current)
-                                        sync.requestSync()
-                                    } label: {
-                                        Image(systemName: "plus.circle.fill").font(.title3)
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .accessibilityLabel("Добавить тип дела")
-                                }
-                            }
-                            ForEach(errandMatches) { kind in
-                                Button { title = kind.name } label: {
-                                    Label(kind.name, systemImage: kind.name == trimmedTitle ? "checkmark" : "tag")
-                                }
-                            }
-                        } else {
-                            TextField("Что нужно сделать (например, купить кастрюли)", text: $title)
-                        }
+                        TextField("Что нужно сделать (например, купить кастрюли)", text: $title)
                     } header: {
                         Text("🧳 Дело")
                     }
+                    errandTypeSection
                     partnerMoneySection
                 }
 
@@ -301,7 +281,13 @@ struct PlannerTrainingEditor: View {
             .confirmationDialog("Удалить запись?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Удалить", role: .destructive, action: delete)
             }
-            .onAppear(perform: loadDirectory)
+            .onAppear {
+                loadDirectory()
+                if !errandType.isEmpty,
+                   !errandKinds.contains(where: { $0.name.caseInsensitiveCompare(errandType) == .orderedSame }) {
+                    errandType = ""
+                }
+            }
         }
         .environment(\.locale, PlannerCalendar.locale)
     }
@@ -336,8 +322,10 @@ struct PlannerTrainingEditor: View {
                     Text("₽")
                 }
                 if !pType.isEmpty {
-                    Label("Тип: \(pType)", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(Color.accentColor)
+                    Button { pType = "" } label: {
+                        Label("Тип: \(pType)", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                    }
                 }
                 HStack {
                     TextField("Поиск или новый тип", text: $pTypeQuery)
@@ -513,16 +501,92 @@ struct PlannerTrainingEditor: View {
         query = ""
     }
 
-    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespaces) }
+    private var trimmedNewType: String { newErrandType.trimmingCharacters(in: .whitespaces) }
 
-    private var errandKindExists: Bool {
-        errandKinds.visible(to: account.current).contains { $0.name.caseInsensitiveCompare(trimmedTitle) == .orderedSame }
+    private var newTypeExists: Bool {
+        errandKinds.visible(to: account.current).contains { $0.name.caseInsensitiveCompare(trimmedNewType) == .orderedSame }
     }
 
     private var errandMatches: [PlannerErrandKind] {
-        let mine = errandKinds.visible(to: account.current)
-        guard !trimmedTitle.isEmpty else { return [] }
-        return Array(mine.filter { $0.name.localizedCaseInsensitiveContains(trimmedTitle) }.prefix(5))
+        guard !trimmedNewType.isEmpty else { return [] }
+        return Array(errandKinds.visible(to: account.current)
+            .filter { $0.name.localizedCaseInsensitiveContains(trimmedNewType) }.prefix(2))
+    }
+
+    private func addErrandType() {
+        guard !trimmedNewType.isEmpty else { return }
+        let emoji = newErrandEmoji.trimmingCharacters(in: .whitespaces)
+        PlannerErrandKindStore.ensure(context, name: trimmedNewType, owner: account.current, emoji: emoji)
+        if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: trimmedNewType, emoji: emoji) }
+        errandType = trimmedNewType
+        newErrandType = ""
+        newErrandEmoji = ""
+        creatingType = false
+        sync.requestSync()
+    }
+
+    /// Вид дела и тип: так же, как у Платони. Регулярное дело без типа создать нельзя.
+    private var errandTypeSection: some View {
+        Section {
+            Picker("Вид дела", selection: $errandRegular.animation()) {
+                Text("Разовое").tag(false)
+                Text("Регулярное").tag(true)
+            }
+            .pickerStyle(.segmented)
+            if errandRegular {
+                if !errandType.isEmpty {
+                    Button { errandType = "" } label: {
+                        Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+                HStack {
+                    TextField("Поиск или новый тип", text: $newErrandType)
+                        .textInputAutocapitalization(.sentences)
+                        .onSubmit { if !trimmedNewType.isEmpty && !newTypeExists { creatingType = true } }
+                    if !trimmedNewType.isEmpty && !newTypeExists {
+                        Button { creatingType = true } label: {
+                            Image(systemName: "plus.circle.fill").font(.title3)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Добавить тип дела")
+                    }
+                }
+                if creatingType, !trimmedNewType.isEmpty, !newTypeExists {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Новый тип «\(trimmedNewType)»").font(.subheadline.weight(.semibold))
+                        PlannerEmojiStrip(selection: $newErrandEmoji)
+                        HStack {
+                            Button("Создать тип", action: addErrandType)
+                                .buttonStyle(.borderedProminent)
+                            Button("Отмена") { creatingType = false }
+                                .buttonStyle(.borderless)
+                        }
+                    }
+                }
+                if errandType.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Без типа регулярное дело создать нельзя. Выбери или создай тип (кнопка +).", systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                        Button("Сделать разовым делом") { errandRegular = false }
+                            .font(.footnote.weight(.semibold))
+                    }
+                }
+                ForEach(errandMatches) { kind in
+                    Button { errandType = kind.name; newErrandType = "" } label: {
+                        Label("\(kind.displayEmoji) \(kind.name)", systemImage: kind.name == errandType ? "checkmark" : "tag")
+                    }
+                    .foregroundStyle(.primary)
+                }
+            }
+        } header: {
+            Text("🏷 Тип дела")
+        } footer: {
+            Text(errandRegular
+                 ? "Тип берётся из базы и считается в статистике. Новые типы можно создать здесь."
+                 : "Разовое дело без типа: попадает в «Разовые».")
+        }
     }
 
     /// Если такой клиент уже есть, выбираем его, иначе заводим нового в общей базе.
@@ -573,9 +637,11 @@ struct PlannerTrainingEditor: View {
         case .errand:
             target.title = title.trimmingCharacters(in: .whitespaces)
             target.participantIDs = []
-            if errandRegular { PlannerErrandKindStore.ensure(context, name: target.title, owner: account.current)
-                if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: target.title) } }
-            target.errandType = errandRegular ? target.title : ""
+            target.errandType = errandRegular ? errandType.trimmingCharacters(in: .whitespaces) : ""
+            if errandRegular, !target.errandType.isEmpty {
+                PlannerErrandKindStore.ensure(context, name: target.errandType, owner: account.current)
+                if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: target.errandType) }
+            }
         }
         target.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         target.isAllDay = false

@@ -171,10 +171,11 @@ struct CarAlert: Identifiable {
 
 enum CarAttention {
     /// Предупреждения висят, пока ТО или ремонт не сделаны.
-    static func alerts(car: CarVehicle, entries: [CarEntry], repairs: [CarRepair], reminders: [CarReminder]) -> [CarAlert] {
+    static func alerts(car: CarVehicle, entries: [CarEntry], repairs: [CarRepair], reminders: [CarReminder], viewer: String) -> [CarAlert] {
         var result: [CarAlert] = []
         let odometer = CarMath.currentOdometer(car: car, entries: entries)
-        let soon = Date.now.addingTimeInterval(14 * 86400)
+        // Восклицательный знак только за пару дней до срока (или когда срок прошёл).
+        let soon = Date.now.addingTimeInterval(2 * 86400)
 
         // ТО по пробегу
         if let last = entries.filter({ $0.category == .service && $0.odometer > 0 }).map(\.odometer).max() {
@@ -187,7 +188,7 @@ enum CarAttention {
         }
 
         // Ремонты: по дате или по пробегу
-        for repair in repairs where !repair.isPaid {
+        for repair in repairs where !repair.isPaid && (repair.member == viewer || CarCalendar.owner(of: repair.carID)?.rawValue == viewer) {
             let name = repair.title.isEmpty ? "Ремонт" : repair.title
             if let due = repair.desiredDate, due < soon {
                 let overdue = due < .now

@@ -103,14 +103,35 @@ final class SyncCoordinator {
 
     private func performSync(backend: some SyncBackend) async throws {
         let context = container.mainContext
+        var problems: [String] = []
 
-        // 1. Отправляем свои изменения.
-        let pending = try adapters.values.flatMap { try $0.collectPending(context) }
-        if !pending.isEmpty {
-            try await backend.push(pending.map(\.record))
-            pending.forEach { $0.markSynced() }
-            try context.save()
+        // 1. Отправляем свои изменения. Если пачку сервер не принял, пробуем по одной записи,
+        // чтобы одна «плохая» запись не мешала остальным и приёму чужих изменений.
+        var pending: [PendingRecord] = []
+        for adapter in adapters.values {
+            do { pending += try adapter.collectPending(context) }
+            catch { problems.append("\(adapter.kind): \(error.localizedDescription)") }
         }
+        let chunkSize = 100
+        var index = 0
+        while index < pending.count {
+            let chunk = Array(pending[index ..< min(index + chunkSize, pending.count)])
+            index += chunkSize
+            do {
+                try await backend.push(chunk.map(\.record))
+                chunk.forEach { $0.markSynced() }
+            } catch {
+                for item in chunk {
+                    do {
+                        try await backend.push([item.record])
+                        item.markSynced()
+                    } catch {
+                        problems.append("\(item.record.kind): \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+        try context.save()
 
         // 2. Забираем изменения со второго телефона.
         let cursor = UserDefaults.standard.object(forKey: Keys.cursor) as? Date
@@ -118,11 +139,20 @@ final class SyncCoordinator {
         let grouped = Dictionary(grouping: result.records, by: \.kind)
         for (kind, records) in grouped {
             // Записи неизвестного типа (из более новой версии приложения) пропускаем.
-            try adapters[kind]?.applyRemote(records, context)
+            do { try adapters[kind]?.applyRemote(records, context) }
+            catch { problems.append("\(kind): \(error.localizedDescription)") }
         }
         try context.save()
         if let newCursor = result.cursor {
             UserDefaults.standard.set(newCursor, forKey: Keys.cursor)
         }
+        if let first = problems.first {
+            throw SyncIssue(message: "Часть записей не прошла (\(problems.count)): \(first)")
+        }
     }
+}
+
+private struct SyncIssue: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
 }

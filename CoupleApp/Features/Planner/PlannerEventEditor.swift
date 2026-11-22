@@ -34,6 +34,8 @@ struct PlannerEventEditor: View {
     @State private var errandType: String
     @State private var newErrandType = ""
     @State private var newErrandEmoji = ""
+    @State private var newErrandMoney: PlannerMoneyDirection = .none
+    @State private var creatingType = false
     @State private var newMoneyType = ""
     private var durationMinutes: Int { max(0, Int(end.timeIntervalSince(start) / 60)) }
 
@@ -123,18 +125,18 @@ struct PlannerEventEditor: View {
             .pickerStyle(.segmented)
             if errandRegular {
                 if !errandType.isEmpty {
-                    Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(Color.accentColor)
+                    // Нажатие на выбранный тип снимает выбор.
+                    Button { errandType = ""; moneyDirection = .none } label: {
+                        Label("Выбрано: \(errandType)", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                    }
                 }
                 HStack {
-                    TextField("💼", text: $newErrandEmoji)
-                        .frame(width: 36)
-                        .multilineTextAlignment(.center)
                     TextField("Поиск или новый тип", text: $newErrandType)
                         .textInputAutocapitalization(.sentences)
-                        .onSubmit(addErrandType)
+                        .onSubmit { if !trimmedNewType.isEmpty && !newTypeExists { creatingType = true } }
                     if !trimmedNewType.isEmpty && !newTypeExists {
-                        Button(action: addErrandType) {
+                        Button { creatingType = true } label: {
                             Image(systemName: "plus.circle.fill").font(.title3)
                         }
                         .buttonStyle(.borderless)
@@ -150,10 +152,26 @@ struct PlannerEventEditor: View {
                             .font(.footnote.weight(.semibold))
                     }
                 }
+                if creatingType, !trimmedNewType.isEmpty, !newTypeExists {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Новый тип «\(trimmedNewType)»").font(.subheadline.weight(.semibold))
+                        PlannerEmojiStrip(selection: $newErrandEmoji)
+                        Picker("Деньги типа", selection: $newErrandMoney) {
+                            ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        HStack {
+                            Button("Создать тип", action: addErrandType)
+                                .buttonStyle(.borderedProminent)
+                            Button("Отмена") { creatingType = false }
+                                .buttonStyle(.borderless)
+                        }
+                    }
+                }
                 // Предлагаем не больше двух типов: последние или подходящие под поиск.
                 ForEach(typeSuggestions) { kind in
-                    Button { errandType = kind.name; newErrandType = "" } label: {
-                        Label(kind.name, systemImage: kind.name == errandType ? "checkmark" : "tag")
+                    Button { selectKind(kind) } label: {
+                        Label("\(kind.displayEmoji) \(kind.name)", systemImage: kind.name == errandType ? "checkmark" : "tag")
                     }
                     .foregroundStyle(.primary)
                 }
@@ -164,6 +182,50 @@ struct PlannerEventEditor: View {
             Text(errandRegular
                  ? "Тип берётся из базы и считается в статистике. Новые типы можно создать здесь."
                  : "Разовое дело без типа: попадает в «Разовые».")
+        }
+    }
+
+    private func selectKind(_ kind: PlannerErrandKind) {
+        errandType = kind.name
+        newErrandType = ""
+        moneyDirection = kind.moneyDirection
+    }
+
+    private var currentKind: PlannerErrandKind? {
+        errandKinds.visible(to: account.current).first { $0.name.caseInsensitiveCompare(errandType) == .orderedSame }
+    }
+
+    /// Деньги регулярного дела задаются типом дела, второй тип выбирать не нужно.
+    private var regularMoneySection: some View {
+        Section {
+            if errandType.isEmpty {
+                Text("Сначала выбери или создай тип дела.").foregroundStyle(.secondary)
+            } else {
+                Picker("Деньги типа «\(errandType)»", selection: Binding(
+                    get: { moneyDirection },
+                    set: { value in
+                        moneyDirection = value
+                        if let kind = currentKind { PlannerErrandKindStore.setMoney(context, kind: kind, direction: value) }
+                    }
+                )) {
+                    ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                if moneyDirection != .none {
+                    HStack {
+                        Text("Сумма")
+                        Spacer()
+                        TextField("0", value: $moneyAmount, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                        Text("₽")
+                    }
+                }
+            }
+        } header: {
+            Text("💰 Деньги")
+        } footer: {
+            Text("Деньги задаются в самом типе дела и сразу попадают в его статистику. Второй тип выбирать не нужно.")
         }
     }
 
@@ -183,11 +245,17 @@ struct PlannerEventEditor: View {
         let name = newErrandType.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         let emoji = newErrandEmoji.trimmingCharacters(in: .whitespaces)
-        PlannerErrandKindStore.ensure(context, name: name, owner: account.current, emoji: emoji)
+        PlannerErrandKindStore.ensure(context, name: name, owner: account.current, emoji: emoji, money: newErrandMoney)
         if isTogether { PlannerErrandKindStore.ensureForBoth(context, name: name, emoji: emoji) }
+        if newErrandMoney != .none {
+            PlannerMoneyKindStore.ensure(context, name: name, isProfit: newErrandMoney == .profit, emoji: emoji)
+        }
         errandType = name
+        moneyDirection = newErrandMoney
         newErrandType = ""
         newErrandEmoji = ""
+        newErrandMoney = .none
+        creatingType = false
         sync.requestSync()
     }
 
@@ -216,6 +284,7 @@ struct PlannerEventEditor: View {
                         TextField("Название", text: $title)
                     }
                     errandTypeSection
+                    if errandRegular { regularMoneySection } else {
                     Section {
                         Picker("Деньги", selection: $moneyDirection) {
                             ForEach(PlannerMoneyDirection.allCases) { Text($0.title).tag($0) }
@@ -231,8 +300,10 @@ struct PlannerEventEditor: View {
                                 Text("₽")
                             }
                             if !moneyType.isEmpty {
-                                Label("Тип: \(moneyType)", systemImage: "checkmark.circle.fill")
-                                    .foregroundStyle(Color.accentColor)
+                                Button { moneyType = "" } label: {
+                                    Label("Тип: \(moneyType)", systemImage: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                }
                             }
                             HStack {
                                 TextField("Поиск или новый тип", text: $newMoneyType)
@@ -261,6 +332,7 @@ struct PlannerEventEditor: View {
                         Text(moneyDirection == .none
                              ? "Если дело что-то приносит или стоит денег, выбери «Прибыль/Приход» или «Трата»."
                              : "Деньги идут в статистику, когда в записи отмечено «Сделано». Тип ищи по названию или создай через «+».")
+                    }
                     }
                 }
 
@@ -362,6 +434,13 @@ struct PlannerEventEditor: View {
                 let duration = max(0, end.timeIntervalSince(oldValue))
                 end = newValue.addingTimeInterval(duration)
             }
+            .onAppear {
+                // Тип, которого уже нет в базе, не оставляем «призраком».
+                if !errandType.isEmpty,
+                   !errandKinds.contains(where: { $0.name.caseInsensitiveCompare(errandType) == .orderedSame }) {
+                    errandType = ""
+                }
+            }
             .onChange(of: moneyDirection) { _, _ in moneyType = "" }
             .onChange(of: isAllDay) { _, allDay in
                 if !PlannerReminderOption.options(allDay: allDay).contains(where: { $0.minutes == reminder }) {
@@ -419,7 +498,7 @@ struct PlannerEventEditor: View {
             }
             target.moneyKindRaw = moneyDirection.rawValue
             target.moneyAmount = moneyDirection == .none ? 0 : max(0, moneyAmount ?? 0)
-            target.moneyType = moneyDirection == .none ? "" : moneyType
+            target.moneyType = moneyDirection == .none ? "" : (errandRegular ? errandType.trimmingCharacters(in: .whitespaces) : moneyType)
         }
         target.markChanged()
         try? context.save()

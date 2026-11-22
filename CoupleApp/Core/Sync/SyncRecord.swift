@@ -30,11 +30,13 @@ struct SyncAdapter {
             kind: Model.recordKind,
             collectPending: { context in
                 let items = try context.fetch(FetchDescriptor<Model>()).filter { $0.needsSync }
-                return try items.map { item in
+                // Запись, которую не удалось закодировать, пропускаем, а не ломаем отправку остальных.
+                return items.compactMap { item -> PendingRecord? in
+                    guard let encoded = try? JSONEncoder.sync.encode(item.payload) else { return nil }
                     let record = SyncRecord(
                         id: item.syncID,
                         kind: Model.recordKind,
-                        payload: try JSONEncoder.sync.encode(item.payload),
+                        payload: encoded,
                         updatedAt: item.updatedAt,
                         deletedAt: item.deletedAt
                     )
@@ -79,6 +81,9 @@ extension JSONEncoder {
     static let sync: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
+        // Бесконечность и «не число» (например, при делении на 0) не должны ломать отправку.
+        encoder.nonConformingFloatEncodingStrategy = .convertToString(
+            positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
         return encoder
     }()
 }
@@ -87,6 +92,8 @@ extension JSONDecoder {
     static let sync: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
+        decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+            positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
         return decoder
     }()
 }

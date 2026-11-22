@@ -79,6 +79,42 @@ extension PlannerEvent {
         statusRaw = parts.joined(separator: ",")
     }
 
+    /// Статус за день у конкретного человека. «Перенесено» общее для обоих, «сделано» и
+    /// «не сделано» у каждого свои.
+    func status(on day: Date, for member: CoupleMember) -> PlannerErrandStatus? {
+        let own = status(on: day)
+        if case .moved = own { return own }
+        if member == .owner { return own }
+        let key = Self.statusKey(day)
+        guard let part = partnerStatusRaw.split(separator: ",").first(where: { $0.hasPrefix(key + "=") }) else { return nil }
+        if part.hasSuffix("=done") { return .done }
+        if part.hasSuffix("=notDone") { return .notDone }
+        return nil
+    }
+
+    /// Поставить статус за день от имени человека.
+    func setStatus(_ status: PlannerErrandStatus?, on day: Date, for member: CoupleMember) {
+        if member == .owner {
+            setStatus(status, on: day)
+            return
+        }
+        // Перенос применяется у всех сразу.
+        if case .moved = status {
+            setStatus(status, on: day)
+            return
+        }
+        // Новая отметка или её снятие отменяет общий перенос этого дня.
+        if case .moved = self.status(on: day) { setStatus(nil, on: day) }
+        let key = Self.statusKey(day)
+        var parts = partnerStatusRaw.split(separator: ",").map(String.init).filter { !$0.hasPrefix(key + "=") }
+        switch status {
+        case .done: parts.append("\(key)=done")
+        case .notDone: parts.append("\(key)=notDone")
+        default: break
+        }
+        partnerStatusRaw = parts.joined(separator: ",")
+    }
+
     /// Запись, созданная переносом в новый день (если день перенесён).
     func movedCopyID(on day: Date) -> UUID? {
         let key = Self.statusKey(day)
@@ -158,6 +194,46 @@ final class PlannerMoneyKind: SyncableModel {
 }
 
 enum PlannerMoneyKindStore {
+    /// Удалить тип денег: он убирается из операций и дел, где был выбран.
+    @MainActor
+    static func delete(_ context: ModelContext, kind: PlannerMoneyKind) {
+        let old = kind.name
+        let ops = (try? context.fetch(FetchDescriptor<PlannerMoneyOp>(predicate: #Predicate { $0.typeName == old }))) ?? []
+        for op in ops { op.typeName = ""; op.markChanged() }
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.moneyType == old || $0.partnerMoneyType == old }))) ?? []
+        for event in events {
+            if event.moneyType == old { event.moneyType = "" }
+            if event.partnerMoneyType == old { event.partnerMoneyType = "" }
+            event.markChanged()
+        }
+        kind.markDeleted()
+        try? context.save()
+    }
+
+    /// Переименовать тип денег: название меняется и в операциях и делах с этим типом.
+    @MainActor
+    static func rename(_ context: ModelContext, kind: PlannerMoneyKind, to newName: String) {
+        let clean = newName.trimmingCharacters(in: .whitespaces)
+        let old = kind.name
+        guard !clean.isEmpty, clean != old else { return }
+        let clash = ((try? context.fetch(FetchDescriptor<PlannerMoneyKind>())) ?? []).contains {
+            $0.deletedAt == nil && $0.isProfit == kind.isProfit && $0.syncID != kind.syncID
+                && $0.name.caseInsensitiveCompare(clean) == .orderedSame
+        }
+        guard !clash else { return }
+        let ops = (try? context.fetch(FetchDescriptor<PlannerMoneyOp>(predicate: #Predicate { $0.typeName == old }))) ?? []
+        for op in ops { op.typeName = clean; op.markChanged() }
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.moneyType == old || $0.partnerMoneyType == old }))) ?? []
+        for event in events {
+            if event.moneyType == old { event.moneyType = clean }
+            if event.partnerMoneyType == old { event.partnerMoneyType = clean }
+            event.markChanged()
+        }
+        kind.name = clean
+        kind.markChanged()
+        try? context.save()
+    }
+
     /// Находит тип по названию или заводит новый (оживляет удалённый).
     @MainActor
     @discardableResult
@@ -166,7 +242,9 @@ enum PlannerMoneyKindStore {
         guard !clean.isEmpty else { return nil }
         let id = PlannerMoneyKind.makeID(name: clean, isProfit: isProfit)
         let found = try? context.fetch(FetchDescriptor<PlannerMoneyKind>(predicate: #Predicate { $0.syncID == id }))
-        if let existing = found?.first {
+        let sameName = ((try? context.fetch(FetchDescriptor<PlannerMoneyKind>())) ?? [])
+            .first { $0.isProfit == isProfit && $0.name.caseInsensitiveCompare(clean) == .orderedSame }
+        if let existing = found?.first ?? sameName {
             if existing.deletedAt != nil {
                 existing.deletedAt = nil
                 existing.emoji = emoji
@@ -394,7 +472,7 @@ enum PlannerLedger {
             var day = cal.startOfDay(for: event.start)
             var steps = 0
             while day <= last && steps < 800 {
-                if event.startsOn(day), !event.isCancelled(on: day) {
+                if event.startsOn(day), !event.isCancelled(on: day), event.status(on: day, for: .partner) == .done {
                     result.append(PlannerLedgerEntry(
                         id: "pevent.\(event.syncID).\(Int(day.timeIntervalSince1970))", day: day,
                         title: event.plainTitle, source: .errand,

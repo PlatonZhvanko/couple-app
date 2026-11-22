@@ -15,6 +15,8 @@ final class PlannerErrandKind: SyncableModel {
         var emoji: String?
         /// Цвет типа (hex), нет в старых записях.
         var color: String?
+        /// Деньги типа: «profit» / «expense», нет — ничего.
+        var money: String?
     }
 
     static let recordKind = "planner.errandKind"
@@ -27,6 +29,8 @@ final class PlannerErrandKind: SyncableModel {
     var emoji: String = ""
     /// Свой цвет типа (hex); пусто — обычный цвет дела.
     var colorHex: String = ""
+    /// Деньги типа по умолчанию: пусто — ничего, «profit» или «expense».
+    var moneyKindRaw: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -42,16 +46,19 @@ final class PlannerErrandKind: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(name: name, owner: ownerRaw.isEmpty ? nil : ownerRaw, emoji: emoji.isEmpty ? nil : emoji, color: colorHex.isEmpty ? nil : colorHex) }
+    var payload: Payload { Payload(name: name, owner: ownerRaw.isEmpty ? nil : ownerRaw, emoji: emoji.isEmpty ? nil : emoji, color: colorHex.isEmpty ? nil : colorHex, money: moneyKindRaw.isEmpty ? nil : moneyKindRaw) }
 
     func apply(_ payload: Payload) {
         name = payload.name
         ownerRaw = payload.owner ?? ""
         emoji = payload.emoji ?? ""
         colorHex = payload.color ?? ""
+        moneyKindRaw = payload.money ?? ""
     }
 
     /// Чей это тип. Старые типы без хозяина считаем Настенькиными.
+    var moneyDirection: PlannerMoneyDirection { PlannerMoneyDirection(rawValue: moneyKindRaw) ?? .none }
+
     var displayEmoji: String { emoji.isEmpty ? "💼" : emoji }
 
     var member: CoupleMember { CoupleMember(rawValue: ownerRaw) ?? .partner }
@@ -71,21 +78,88 @@ extension Sequence where Element == PlannerErrandKind {
 }
 
 enum PlannerErrandKindStore {
+    /// Переименовать тип: название меняется и в самих делах этого типа.
+    @MainActor
+    static func rename(_ context: ModelContext, kind: PlannerErrandKind, to newName: String) {
+        let clean = newName.trimmingCharacters(in: .whitespaces)
+        let old = kind.name
+        guard !clean.isEmpty, clean != old else { return }
+        let clash = ((try? context.fetch(FetchDescriptor<PlannerErrandKind>())) ?? []).contains {
+            $0.deletedAt == nil && $0.member == kind.member && $0.syncID != kind.syncID
+                && $0.name.caseInsensitiveCompare(clean) == .orderedSame
+        }
+        guard !clash else { return }
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.errandType == old }))) ?? []
+        for event in events {
+            event.errandType = clean
+            event.markChanged()
+        }
+        // Тип денег с тем же названием (создан вместе с типом дела) переименовываем следом.
+        if kind.moneyDirection != .none {
+            let isProfit = kind.moneyDirection == .profit
+            let twin = ((try? context.fetch(FetchDescriptor<PlannerMoneyKind>())) ?? []).first {
+                $0.deletedAt == nil && $0.isProfit == isProfit && $0.name == old
+            }
+            if let twin { PlannerMoneyKindStore.rename(context, kind: twin, to: clean) }
+        }
+        kind.name = clean
+        kind.markChanged()
+        try? context.save()
+    }
+
+    /// Удалить тип: он убирается из всех дел (регулярному делу придётся назначить тип заново).
+    @MainActor
+    static func delete(_ context: ModelContext, kind: PlannerErrandKind) {
+        let old = kind.name
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.errandType == old }))) ?? []
+        for event in events {
+            event.errandType = ""
+            if event.moneyType == old { event.moneyType = "" }
+            event.markChanged()
+        }
+        // Парный тип денег, созданный вместе с типом дела, удаляется вместе с ним.
+        if kind.moneyDirection != .none {
+            let isProfit = kind.moneyDirection == .profit
+            let twins = ((try? context.fetch(FetchDescriptor<PlannerMoneyKind>())) ?? []).filter {
+                $0.deletedAt == nil && $0.isProfit == isProfit && $0.name == old
+            }
+            for twin in twins { PlannerMoneyKindStore.delete(context, kind: twin) }
+        }
+        kind.markDeleted()
+        try? context.save()
+    }
+
+    /// Деньги типа дела: прибыль или трата. Тип сам появляется в типах прибыли/трат.
+    @MainActor
+    static func setMoney(_ context: ModelContext, kind: PlannerErrandKind, direction: PlannerMoneyDirection) {
+        kind.moneyKindRaw = direction.rawValue
+        kind.markChanged()
+        if direction != .none {
+            PlannerMoneyKindStore.ensure(context, name: kind.name, isProfit: direction == .profit, emoji: kind.emoji)
+        }
+        try? context.save()
+    }
+
     /// Находит тип по названию у этого человека или заводит новый (оживляет удалённый).
     @MainActor
-    static func ensure(_ context: ModelContext, name: String, owner: CoupleMember, emoji: String = "") {
+    static func ensure(_ context: ModelContext, name: String, owner: CoupleMember, emoji: String = "", money: PlannerMoneyDirection? = nil) {
         let clean = name.trimmingCharacters(in: .whitespaces)
         guard !clean.isEmpty else { return }
         let id = PlannerErrandKind.makeID(name: clean, owner: owner)
         let found = try? context.fetch(FetchDescriptor<PlannerErrandKind>(predicate: #Predicate { $0.syncID == id }))
-        if let existing = found?.first {
+        // Тип могли переименовать: id остался старый, ищем ещё и по названию.
+        let sameName = ((try? context.fetch(FetchDescriptor<PlannerErrandKind>())) ?? [])
+            .first { $0.member == owner && $0.name.caseInsensitiveCompare(clean) == .orderedSame }
+        if let existing = found?.first ?? sameName {
             guard existing.deletedAt != nil else { return }
             existing.deletedAt = nil
             if !emoji.isEmpty { existing.emoji = emoji }
+            if let money { existing.moneyKindRaw = money.rawValue }
             existing.markChanged()
         } else {
             let item = PlannerErrandKind(name: clean, owner: owner)
             item.emoji = emoji
+            if let money { item.moneyKindRaw = money.rawValue }
             context.insert(item)
             item.markChanged()
         }

@@ -18,7 +18,7 @@ enum CarNotifications {
 
     /// Пересоздать все уведомления раздела по текущим напоминаниям.
     @MainActor
-    static func reschedule(reminders: [CarReminder], cars: [CarVehicle], repairs: [CarRepair] = [], lastMileage: Date? = nil) {
+    static func reschedule(reminders: [CarReminder], cars: [CarVehicle], repairs: [CarRepair] = [], viewer: String? = nil, lastMileage: Date? = nil) {
         let names = Dictionary(cars.map { ($0.syncID, $0.displayName) }, uniquingKeysWith: { first, _ in first })
         let calendar = Calendar.current
         let now = Date.now
@@ -42,12 +42,12 @@ enum CarNotifications {
         }
         // Желаемые даты ремонтов: напоминают коты-механики, за неделю, за день и в сам день.
         let mechanics = ["Мироня", "Гоша", "Хлоя"]
-        for repair in repairs where repair.deletedAt == nil && !repair.isPaid {
+        for repair in repairs where repair.deletedAt == nil && !repair.isPaid && (viewer == nil || repair.member == viewer || CarCalendar.owner(of: repair.carID)?.rawValue == viewer) {
             guard let due = repair.desiredDate else { continue }
             let carName = names[repair.carID] ?? "Машина"
             for days in [7, 1, 0] {
                 guard let day = calendar.date(byAdding: .day, value: -days, to: calendar.startOfDay(for: due)),
-                      let fire = calendar.date(bySettingHour: 11, minute: 0, second: 0, of: day),
+                      let fire = days == 0 ? due : calendar.date(bySettingHour: 11, minute: 0, second: 0, of: day),
                       fire > now else { continue }
                 let cat = mechanics[abs(repair.syncID.hashValue &+ days) % mechanics.count]
                 let when = days == 0 ? "сегодня" : (days == 1 ? "завтра" : "через неделю")
