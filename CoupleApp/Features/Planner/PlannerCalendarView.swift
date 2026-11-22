@@ -41,6 +41,8 @@ struct PlannerCalendarView: View {
         let day: Date
         var id: Date { day }
     }
+    @Query(filter: #Predicate<PlannerStatusStyle> { $0.deletedAt == nil })
+    private var statusStyles: [PlannerStatusStyle]
     @Query(filter: #Predicate<PlannerColorRule> { $0.deletedAt == nil })
     private var colorRules: [PlannerColorRule]
     @Query(filter: #Predicate<PlannerSubscription> { $0.deletedAt == nil })
@@ -359,6 +361,7 @@ struct PlannerCalendarView: View {
                 onShiftHold: { day in
                     if isOwner && !showsPartner { shiftEdit = ShiftEditTarget(day: day) }
                 },
+                badgeEmoji: { event, day in styledEmoji(event, day) },
                 dayMark: { moodMark($0) },
                 badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
@@ -460,13 +463,24 @@ struct PlannerCalendarView: View {
            let hex = errandColors[event.errandType.lowercased()], let typeColor = Color(hex: hex) {
             base = typeColor
         }
-        guard isOwner || event.categoryValue == .errand,
-              let status = event.status(on: day, for: account.current) else { return base }
+        guard isOwner || event.categoryValue == .errand else { return base }
+        let current = event.status(on: day, for: account.current)
+        let hex = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType, status: current).colorHex
+        if !hex.isEmpty, let custom = Color(hex: hex) { return custom }
+        guard let status = current else { return base }
         switch status {
         case .done: return Color.green.opacity(0.75)
         case .notDone: return Color.red.opacity(0.65)
         case .moved: return Color.white
         }
+    }
+
+    private func styledEmoji(_ event: PlannerEvent, _ day: Date) -> String? {
+        guard isOwner || event.categoryValue == .errand else { return nil }
+        let r = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType,
+                                                status: event.status(on: day, for: account.current))
+        if r.hideEmoji { return "" }
+        return r.emoji.isEmpty ? nil : r.emoji
     }
 
     private func blockBadge(_ event: PlannerEvent, _ day: Date) -> PlannerPayBadge {

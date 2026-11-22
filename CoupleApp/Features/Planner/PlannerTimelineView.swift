@@ -25,6 +25,8 @@ struct PlannerTimelineView: View {
     var errandEmojis: [String: String] = [:]
     /// Долгое нажатие на красный промежуток смены.
     var onShiftHold: (Date) -> Void = { _ in }
+    /// Своё эмодзи статуса записи: `nil` — обычное, пустая строка — без эмодзи.
+    var badgeEmoji: (PlannerEvent, Date) -> String? = { _, _ in nil }
     /// Смайлик настроения дня (для обоих), пустая строка — нет.
     var dayMark: (Date) -> String = { _ in "" }
     /// Значок оплаты записи за этот день.
@@ -395,7 +397,8 @@ struct PlannerTimelineView: View {
         // Размер шрифта: самый крупный, при котором самое длинное слово целиком влезает
         // в ширину колонки (слова не рвутся посередине) и строки влезают в высоту.
         let narrow = block.columns > 1
-        let hasMark = block.badge.symbol != nil || block.together || !block.emoji.isEmpty || !block.corner.isEmpty
+        let badgeSymbol: String? = block.badgeOverride.map { $0.isEmpty ? nil : $0 } ?? block.badge.symbol
+        let hasMark = badgeSymbol != nil || block.together || !block.emoji.isEmpty || !block.corner.isEmpty
         let topRow = hasMark && height >= 30
         let topInset: CGFloat = topRow ? 11 : 1
         let trailingInset: CGFloat = (hasMark && !topRow) ? 15 : 1
@@ -438,7 +441,7 @@ struct PlannerTimelineView: View {
             HStack(spacing: 0) {
                 if !block.corner.isEmpty { Text(block.corner).font(.system(size: 10)) }
                 if block.together { Text("💞").font(.system(size: 10)) }
-                if let symbol = block.badge.symbol {
+                if let symbol = badgeSymbol {
                     Text(symbol).font(.system(size: 11))
                 }
             }
@@ -554,7 +557,8 @@ struct PlannerTimelineView: View {
                 emoji: (occurrence.event.errandType.isEmpty || occurrence.event.scopeValue == .shared)
                     ? ""
                     : (errandEmojis[occurrence.event.errandType.lowercased()] ?? "💼"),
-                together: occurrence.event.scopeValue == .shared
+                together: occurrence.event.scopeValue == .shared,
+                badgeOverride: badgeEmoji(occurrence.event, day)
             ))
         }
         for item in externalItems(day) {
@@ -617,5 +621,7 @@ struct PlannerTimelineBlock: Identifiable {
     /// Эмодзи в правом верхнем углу (записи других разделов).
     var corner = ""
     var together = false
+    /// Настроенное эмодзи статуса: `nil` — обычное, пустое — не показывать.
+    var badgeOverride: String? = nil
     var columns = 1
 }
