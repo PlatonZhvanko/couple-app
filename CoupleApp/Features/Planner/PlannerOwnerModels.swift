@@ -520,6 +520,12 @@ enum PlannerLedger {
         return result
     }
 
+    /// Только приход за день (минусы не считаем).
+    static func income(on day: Date, entries: [PlannerLedgerEntry]) -> Double {
+        let cal = PlannerCalendar.calendar
+        return entries.filter { cal.isDate($0.day, inSameDayAs: day) && $0.amount > 0 }.reduce(0) { $0 + $1.amount }
+    }
+
     /// Итог за один день.
     static func net(on day: Date, entries: [PlannerLedgerEntry]) -> Double {
         let cal = PlannerCalendar.calendar

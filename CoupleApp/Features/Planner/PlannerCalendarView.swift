@@ -32,6 +32,10 @@ struct PlannerCalendarView: View {
     @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil })
     private var errandKinds: [PlannerErrandKind]
     @State private var shiftEdit: ShiftEditTarget?
+    /// Несколько записей в одном времени: меню снизу, чтобы выбрать нужную.
+    @State private var pickItems: [PlannerOccurrence] = []
+    @State private var pickDay = Date.now
+    @State private var showPick = false
 
     private struct ShiftEditTarget: Identifiable {
         let day: Date
@@ -177,6 +181,14 @@ struct PlannerCalendarView: View {
                 if let detail = item.detail { detail() } else { EmptyView() }
             }
         }
+        .confirmationDialog("Что открыть?", isPresented: $showPick, titleVisibility: .visible) {
+            ForEach(pickItems) { occurrence in
+                Button("\(PlannerCalendar.time(occurrence.start)) \(occurrence.event.plainTitle)") {
+                    sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: pickDay)
+                }
+            }
+            Button("Отмена", role: .cancel) {}
+        }
         .sheet(item: $shiftEdit) { target in
             PlannerShiftSheet(day: target.day, defaultAmount: shiftAmount)
         }
@@ -286,7 +298,7 @@ struct PlannerCalendarView: View {
     private var todayEarned: Double {
         if isOwner {
             let entries = PlannerLedger.entries(events: allEvents, shifts: shifts, ops: moneyOps)
-            return PlannerLedger.net(on: .now, entries: entries)
+            return PlannerLedger.income(on: .now, entries: entries)
         }
         let map = PlannerPaymentStore.eventMap(allEvents)
         let cash = payments
@@ -369,7 +381,14 @@ struct PlannerCalendarView: View {
                 },
                 onEventTap: { event, day in
                     guard moving == nil else { return }
-                    sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
+                    let overlapping = overlappingOccurrences(of: event, at: day)
+                    if overlapping.count > 1 {
+                        pickItems = overlapping
+                        pickDay = day
+                        showPick = true
+                    } else {
+                        sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
+                    }
                 },
                 onMove: { event, from, to in moveByDrag(event, from: from, to: to) },
                 onSwipe: { movePlanner($0) }
@@ -411,6 +430,13 @@ struct PlannerCalendarView: View {
         var result: [String: String] = [:]
         for kind in errandKinds where kind.member == account.current { result[kind.name.lowercased()] = kind.displayEmoji }
         return result
+    }
+
+    /// Записи, которые идут одновременно с нажатой (для выбора, если в одном месте их несколько).
+    private func overlappingOccurrences(of event: PlannerEvent, at time: Date) -> [PlannerOccurrence] {
+        let occurrences = events.occurrences(on: cal.startOfDay(for: time)).filter { !$0.event.isAllDay }
+        guard let tapped = occurrences.first(where: { $0.event === event }) else { return [] }
+        return occurrences.filter { $0.start < tapped.end && $0.end > tapped.start }
     }
 
     /// Часть смены по дням: 0 — вся, 1 — первая половина, 2 — вторая.
