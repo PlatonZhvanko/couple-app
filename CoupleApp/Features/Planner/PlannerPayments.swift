@@ -247,7 +247,6 @@ final class PlannerSubscription: SyncableModel {
         soldAt = payload.soldAt ?? Date.now
         expiresAt = payload.expiresAt ?? Self.endOfMonth(payload.month)
         charge = payload.charge ?? PlannerPricing.subscriptionCharge
-        groupsRaw = (payload.groups ?? []).joined(separator: "\n")
     }
 
     static func endOfMonth(_ month: Date) -> Date {
