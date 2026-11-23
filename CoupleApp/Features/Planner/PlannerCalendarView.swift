@@ -587,7 +587,7 @@ struct PlannerCalendarView: View {
            let hex = errandColors[event.errandType.lowercased()], let typeColor = Color(hex: hex) {
             base = typeColor
         }
-        guard isOwner || event.categoryValue == .errand else { return base }
+        guard viewedMember == .owner || event.categoryValue == .errand else { return base }
         let current = event.status(on: day, for: viewedMember)
         let hex = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType, status: current,
                                                          sharedMember: event.scopeValue == .shared ? viewedMember.rawValue : nil).colorHex
@@ -612,7 +612,7 @@ struct PlannerCalendarView: View {
     }
 
     private func styledEmoji(_ event: PlannerEvent, _ day: Date) -> String? {
-        guard isOwner || event.categoryValue == .errand else { return nil }
+        guard viewedMember == .owner || event.categoryValue == .errand else { return nil }
         let r = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType,
                                                 status: event.status(on: day, for: viewedMember),
                                                 sharedMember: event.scopeValue == .shared ? viewedMember.rawValue : nil)
@@ -621,7 +621,7 @@ struct PlannerCalendarView: View {
     }
 
     private func blockBadge(_ event: PlannerEvent, _ day: Date) -> PlannerPayBadge {
-        guard isOwner || event.categoryValue == .errand else {
+        guard viewedMember == .owner || event.categoryValue == .errand else {
             return PlannerPaymentStore.badge(for: event, day: day, payments: paymentIndex.byEvent[event.syncID] ?? [])
         }
         switch event.status(on: day, for: viewedMember) {
