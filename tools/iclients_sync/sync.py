@@ -215,12 +215,14 @@ def main() -> None:
         client = rec.get("client") or {}
         client_uuid = client_ids.get(client.get("id"))
         services = ", ".join(s.get("title", "") for s in rec.get("services") or [] if s.get("title"))
+        # Вместо названия услуги показываем корт: в YClients он записан как «сотрудник» записи.
+        court = ((rec.get("staff") or {}).get("name") or "").strip() or services
         old = existing.get(rid)
         before: dict = {}
         if old is None:
             payload = {
                 "title": client.get("display_name") or client.get("name") or "Запись YClients",
-                "notes": services, "start": iso(begin), "end": iso(finish), "isAllDay": False,
+                "notes": court, "start": iso(begin), "end": iso(finish), "isAllDay": False,
                 "scope": MEMBER, "category": "personal", "repeatRule": "none",
                 "reminderMinutes": 60, "createdBy": MEMBER, "createdAt": now,
                 "participantIDs": [client_uuid.upper()] if client_uuid else [],
@@ -231,6 +233,7 @@ def main() -> None:
             payload = dict(old["payload"] or {})
             before = dict(payload)
             payload["start"], payload["end"] = iso(begin), iso(finish)
+            payload["notes"] = court
             # Версия формата: при её повышении запись обновляется заново, и телефоны, которые
             # успели получить её старой версией приложения, подтягивают её ещё раз.
             payload["v"] = SCHEMA_VERSION
