@@ -52,6 +52,9 @@ final class PlannerStatusStyle: SyncableModel {
         PlannerDeterministicID.make("statusstyle|\(scope.lowercased())|\(status)")
     }
 
+    /// Совместные дела: у каждого свой вид в своём планере.
+    static func sharedScope(_ member: String) -> String { "shared:\(member)" }
+
     static func typeScope(_ name: String) -> String { "type:\(name.lowercased())" }
 
     static func statusKey(_ status: PlannerErrandStatus?) -> String {
@@ -75,14 +78,17 @@ struct PlannerResolvedStatusStyle {
 
 enum PlannerStatusStyleStore {
     /// Сначала настройки типа дела, потом общие для всех дел; пустое поле берётся из общих.
-    static func resolve(_ styles: [PlannerStatusStyle], errandType: String, status: PlannerErrandStatus?) -> PlannerResolvedStatusStyle {
+    static func resolve(_ styles: [PlannerStatusStyle], errandType: String, status: PlannerErrandStatus?, sharedMember: String? = nil) -> PlannerResolvedStatusStyle {
         let key = PlannerStatusStyle.statusKey(status)
         let general = styles.first { $0.scope == "all" && $0.status == key }
         let typed = errandType.isEmpty ? nil : styles.first {
             $0.scope == PlannerStatusStyle.typeScope(errandType) && $0.status == key
         }
+        let shared = sharedMember.flatMap { member in
+            styles.first { $0.scope == PlannerStatusStyle.sharedScope(member) && $0.status == key }
+        }
         var result = PlannerResolvedStatusStyle()
-        for style in [general, typed].compactMap({ $0 }) {
+        for style in [general, typed, shared].compactMap({ $0 }) {
             if !style.colorHex.isEmpty { result.colorHex = style.colorHex }
             if !style.emoji.isEmpty { result.emoji = style.emoji; result.hideEmoji = false }
             if style.hideEmoji { result.hideEmoji = true; result.emoji = "" }
@@ -120,6 +126,17 @@ struct PlannerStatusSettingsView: View {
                     }
                 } footer: {
                     Text("Общие настройки: цвет и эмодзи записи, когда у неё нет отметки, «Сделано», «Не сделано» или «Перенесено». Если ничего не менять, остаются привычные.")
+                }
+                Section {
+                    NavigationLink {
+                        PlannerStatusScopeView(scope: PlannerStatusStyle.sharedScope(account.current.rawValue), title: "Совместные дела")
+                    } label: {
+                        Label("Совместные дела 💞", systemImage: "heart")
+                    }
+                } header: {
+                    Text("Совместные")
+                } footer: {
+                    Text("Это только для вашего планера: совместные дела будут светиться так, как вам нравится. У второго человека свои настройки.")
                 }
                 Section("По типам дел") {
                     let mine = kinds.visible(to: account.current)

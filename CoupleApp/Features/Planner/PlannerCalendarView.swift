@@ -33,8 +33,7 @@ struct PlannerCalendarView: View {
     private var errandKinds: [PlannerErrandKind]
     @State private var shiftEdit: ShiftEditTarget?
     /// Несколько записей в одном времени: меню снизу, чтобы выбрать нужную.
-    @State private var pickItems: [PlannerOccurrence] = []
-    @State private var pickDay = Date.now
+    @State private var pickChoices: [PlannerPickChoice] = []
     @State private var showPick = false
 
     private struct ShiftEditTarget: Identifiable {
@@ -183,13 +182,14 @@ struct PlannerCalendarView: View {
                 if let detail = item.detail { detail() } else { EmptyView() }
             }
         }
-        .confirmationDialog("Что открыть?", isPresented: $showPick, titleVisibility: .visible) {
-            ForEach(pickItems) { occurrence in
-                Button("\(PlannerCalendar.time(occurrence.start)) \(occurrence.event.plainTitle)") {
-                    sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: pickDay)
-                }
+        .sheet(isPresented: $showPick) {
+            PlannerPickSheet(choices: pickChoices) { choice in
+                showPick = false
+                DispatchQueue.main.async { choice.open() }
             }
-            Button("Отмена", role: .cancel) {}
+            .presentationDetents([.height(CGFloat(120 + min(pickChoices.count, 6) * 64)), .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(28)
         }
         .sheet(item: $shiftEdit) { target in
             PlannerShiftSheet(day: target.day, defaultAmount: shiftAmount)
@@ -348,7 +348,15 @@ struct PlannerCalendarView: View {
                 events: events,
                 colorFor: { event, day in blockColor(event, day) },
                 externalItems: { items(on: $0) },
-                onExternalTap: { externalDetail = $0 },
+                onExternalTap: { item in
+                    let choices = choicesAt(start: item.start, end: item.end, day: item.start)
+                    if choices.count > 1 {
+                        pickChoices = choices
+                        showPick = true
+                    } else {
+                        externalDetail = item
+                    }
+                },
                 canMoveExternal: { item in canEditExternal(item) && item.move != nil },
                 onExternalMove: { item, newStart in
                     item.move?(newStart)
@@ -384,10 +392,13 @@ struct PlannerCalendarView: View {
                 },
                 onEventTap: { event, day in
                     guard moving == nil else { return }
-                    let overlapping = overlappingOccurrences(of: event, at: day)
-                    if overlapping.count > 1 {
-                        pickItems = overlapping
-                        pickDay = day
+                    guard let tapped = events.occurrences(on: cal.startOfDay(for: day)).first(where: { $0.event === event }) else {
+                        sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
+                        return
+                    }
+                    let choices = choicesAt(start: tapped.start, end: tapped.end, day: day)
+                    if choices.count > 1 {
+                        pickChoices = choices
                         showPick = true
                     } else {
                         sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
@@ -435,6 +446,26 @@ struct PlannerCalendarView: View {
         return result
     }
 
+    /// Все записи (и дела, и ремонты и т. п.), которые идут в этом промежутке времени.
+    private func choicesAt(start: Date, end: Date, day: Date) -> [PlannerPickChoice] {
+        var result: [PlannerPickChoice] = []
+        let dayStart = cal.startOfDay(for: day)
+        for occurrence in events.occurrences(on: dayStart)
+            where !occurrence.event.isAllDay && occurrence.start < end && occurrence.end > start {
+            result.append(PlannerPickChoice(
+                id: occurrence.id, title: occurrence.event.plainTitle,
+                start: occurrence.start, end: occurrence.end,
+                color: blockColor(occurrence.event, day), symbol: "calendar",
+                open: { sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: day) }))
+        }
+        for item in items(on: day) where item.detail != nil && item.start < end && item.end > start {
+            result.append(PlannerPickChoice(
+                id: item.id, title: item.title, start: item.start, end: item.end,
+                color: item.color, symbol: item.systemImage, open: { externalDetail = item }))
+        }
+        return result.sorted { $0.start < $1.start }
+    }
+
     /// Записи, которые идут одновременно с нажатой (для выбора, если в одном месте их несколько).
     private func overlappingOccurrences(of event: PlannerEvent, at time: Date) -> [PlannerOccurrence] {
         let occurrences = events.occurrences(on: cal.startOfDay(for: time)).filter { !$0.event.isAllDay }
@@ -465,7 +496,8 @@ struct PlannerCalendarView: View {
         }
         guard isOwner || event.categoryValue == .errand else { return base }
         let current = event.status(on: day, for: account.current)
-        let hex = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType, status: current).colorHex
+        let hex = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType, status: current,
+                                                         sharedMember: event.scopeValue == .shared ? account.current.rawValue : nil).colorHex
         if !hex.isEmpty, let custom = Color(hex: hex) { return custom }
         guard let status = current else { return base }
         switch status {
@@ -478,7 +510,8 @@ struct PlannerCalendarView: View {
     private func styledEmoji(_ event: PlannerEvent, _ day: Date) -> String? {
         guard isOwner || event.categoryValue == .errand else { return nil }
         let r = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType,
-                                                status: event.status(on: day, for: account.current))
+                                                status: event.status(on: day, for: account.current),
+                                                sharedMember: event.scopeValue == .shared ? account.current.rawValue : nil)
         if r.hideEmoji { return "" }
         return r.emoji.isEmpty ? nil : r.emoji
     }
@@ -781,5 +814,65 @@ struct PlannerExternalItemRow: View {
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+    }
+}
+
+
+struct PlannerPickChoice: Identifiable {
+    let id: String
+    let title: String
+    let start: Date
+    let end: Date
+    let color: Color
+    let symbol: String
+    let open: () -> Void
+}
+
+/// Красивое меню снизу: что открыть, если в одном времени несколько записей.
+struct PlannerPickSheet: View {
+    let choices: [PlannerPickChoice]
+    let onPick: (PlannerPickChoice) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Что открыть?")
+                .font(.title3.weight(.bold))
+                .padding(.top, 24)
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach(choices) { choice in
+                        Button { onPick(choice) } label: {
+                            HStack(spacing: 12) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(choice.color)
+                                    .frame(width: 6, height: 40)
+                                Image(systemName: choice.symbol)
+                                    .foregroundStyle(choice.color)
+                                    .frame(width: 22)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(choice.title)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(Color.primary)
+                                        .lineLimit(1)
+                                    Text("\(PlannerCalendar.time(choice.start))–\(PlannerCalendar.time(choice.end))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
     }
 }
