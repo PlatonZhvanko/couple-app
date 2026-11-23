@@ -405,7 +405,9 @@ struct PlannerTimelineView: View {
         // Размер шрифта: самый крупный, при котором самое длинное слово целиком влезает
         // в ширину колонки (слова не рвутся посередине) и строки влезают в высоту.
         let narrow = block.columns > 1
-        let badgeSymbol: String? = block.badgeOverride.map { $0.isEmpty ? nil : $0 } ?? block.badge.symbol
+        let isCancelled = [PlannerPayBadge.cancelled, .fineUnpaid, .finePaid].contains(block.badge)
+        // У отменённого остаётся только большой знак запрета, маленький справа вверху не нужен.
+        let badgeSymbol: String? = isCancelled ? nil : (block.badgeOverride.map { $0.isEmpty ? nil : $0 } ?? block.badge.symbol)
         let leadingView: AnyView? = Self.leadingView(for: block)
         let hasMark = badgeSymbol != nil || block.together || !block.emoji.isEmpty || !block.corner.isEmpty || leadingView != nil
         let topRow = hasMark && height >= 30
@@ -421,14 +423,14 @@ struct PlannerTimelineView: View {
         let content = VStack(alignment: .leading, spacing: 0) {
             // Одним текстом, чтобы при нехватке места обе строки уменьшались вместе.
             Text(fit.text)
-                .font(.system(size: fontSize, weight: .bold))
+                .font(.system(size: fontSize, weight: isCancelled ? .black : .bold))
                 .lineLimit(fit.lines)
                 .minimumScaleFactor(0.85)
                 .allowsTightening(true)
                 .multilineTextAlignment(.leading)
             if showTime {
                 Text("\(PlannerCalendar.time(block.start))–\(PlannerCalendar.time(block.end))")
-                    .font(.system(size: isDayMode ? 12 : 10, weight: .medium))
+                    .font(.system(size: isDayMode ? 12 : 10, weight: isCancelled ? .bold : .medium))
                     .opacity(0.75)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
