@@ -26,21 +26,13 @@ struct PlannerSubscriptionSaleSheet: View {
     @State private var untilMode = false
     @State private var untilDate = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
     @State private var chargeText = "500"
-    @State private var query = ""
     @State private var typeQuery = ""
     @State private var groupQuery = ""
     @State private var client: PlannerClientDirectory.Entry?
-    @State private var directory: [PlannerClientDirectory.Entry] = []
 
-    private var trimmedQuery: String { query.trimmingCharacters(in: .whitespaces) }
     private var trimmedTypeQuery: String { typeQuery.trimmingCharacters(in: .whitespaces) }
     private var trimmedGroupQuery: String { groupQuery.trimmingCharacters(in: .whitespaces) }
     private var amount: Double? { Double(amountText.replacingOccurrences(of: ",", with: ".")) }
-
-    private var matches: [PlannerClientDirectory.Entry] {
-        guard !trimmedQuery.isEmpty else { return Array(directory.prefix(2)) }
-        return Array(directory.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(5))
-    }
 
     /// Без запроса показываем только два готовых абонемента, с запросом настоящий поиск по подстроке.
     private var typeMatches: [PlannerSubscriptionType] {
@@ -72,7 +64,7 @@ struct PlannerSubscriptionSaleSheet: View {
                 typeSection
                 if let type = selectedType { groupsSection(type) }
                 termSection
-                clientSection
+                PlannerSaleClientSection(client: $client)
                 Section {
                     EmptyView()
                 } footer: {
@@ -87,9 +79,9 @@ struct PlannerSubscriptionSaleSheet: View {
                     Button("Продать", action: save).disabled(client == nil || amount == nil)
                 }
             }
-            .onAppear {
-                directory = PlannerClientDirectory.all(context)
-                PlannerSubscriptionTypeStore.ensureDefault(context)
+            .onDisappear {
+                try? context.save()
+                sync.requestSync()
             }
         }
         .presentationDetents([.large])
@@ -229,8 +221,6 @@ struct PlannerSubscriptionSaleSheet: View {
                 map[name.lowercased()] = max(0, value)
                 type.groupCharges = map
                 type.markChanged()
-                try? context.save()
-                sync.requestSync()
             }
         )
     }
@@ -297,9 +287,35 @@ struct PlannerSubscriptionSaleSheet: View {
         }
     }
 
-    // MARK: Клиент
+    private func save() {
+        guard let client, let amount else { return }
+        PlannerPaymentStore.saveSubscription(
+            context, clientID: client.id, month: month, amount: max(0, amount),
+            kindName: selectedType?.name, validDays: untilMode ? nil : (Int(validText) ?? 30),
+            expiresOn: untilMode ? untilDate : nil,
+            charge: Double(chargeText)
+        )
+        sync.requestSync()
+        dismiss()
+    }
+}
 
-    private var clientSection: some View {
+/// Выбор клиента: свой экран со своим поиском, чтобы набор текста в других полях не пересчитывал список.
+private struct PlannerSaleClientSection: View {
+    @Binding var client: PlannerClientDirectory.Entry?
+    @Environment(\.modelContext) private var context
+
+    @State private var query = ""
+    @State private var rows: [(entry: PlannerClientDirectory.Entry, lower: String)] = []
+    @State private var loaded = false
+
+    private var matches: [PlannerClientDirectory.Entry] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return rows.prefix(2).map(\.entry) }
+        return Array(rows.lazy.filter { $0.lower.contains(q) }.prefix(5).map(\.entry))
+    }
+
+    var body: some View {
         Section("🙋 Клиент") {
             if let client {
                 HStack {
@@ -322,18 +338,13 @@ struct PlannerSubscriptionSaleSheet: View {
                 }
             }
         }
-    }
-
-    private func save() {
-        guard let client, let amount else { return }
-        PlannerPaymentStore.saveSubscription(
-            context, clientID: client.id, month: month, amount: max(0, amount),
-            kindName: selectedType?.name, validDays: untilMode ? nil : (Int(validText) ?? 30),
-            expiresOn: untilMode ? untilDate : nil,
-            charge: Double(chargeText)
-        )
-        sync.requestSync()
-        dismiss()
+        .task {
+            guard !loaded else { return }
+            // Список клиентов читаем после показа окна, а не при открытии.
+            await Task.yield()
+            rows = PlannerClientDirectory.all(context).map { ($0, $0.name.lowercased()) }
+            loaded = true
+        }
     }
 }
 
