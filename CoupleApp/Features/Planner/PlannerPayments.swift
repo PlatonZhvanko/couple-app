@@ -630,6 +630,33 @@ enum PlannerGroupKindStore {
         return item
     }
 
+    /// Добавляет клиентов шаблона группы во все ещё не прошедшие записи этой группы.
+    /// Прошедшие по дате разовые записи не трогаем; уже добавленных не дублируем.
+    @MainActor
+    @discardableResult
+    static func propagate(_ context: ModelContext, kind: PlannerGroupKind, ids: [UUID]) -> Bool {
+        guard !ids.isEmpty else { return false }
+        let now = Date.now
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        var changed = false
+        for event in events where [PlannerCategory.group, .school].contains(event.categoryValue)
+            && event.title.caseInsensitiveCompare(kind.name) == .orderedSame {
+            let isSeries = event.repeatValue != .none
+            if isSeries {
+                if let until = event.repeatUntil, until < now { continue }
+            } else if event.end < now {
+                continue
+            }
+            let missing = ids.filter { !event.participantIDs.contains($0) }
+            guard !missing.isEmpty else { continue }
+            event.participantIDs.append(contentsOf: missing)
+            event.markChanged()
+            changed = true
+        }
+        if changed { try? context.save() }
+        return changed
+    }
+
     /// Чинит записи, где вместо выбранной группы осталось набранное в поиске («Сш»):
     /// если по смыслу подходит ровно одна группа (название содержит набранное), записи
     /// переносятся на неё, а лишняя пустая группа убирается. Если вариантов несколько, не трогаем.

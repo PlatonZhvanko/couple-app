@@ -219,10 +219,12 @@ struct PlannerGroupEditor: View {
         let clean = name.trimmingCharacters(in: .whitespaces)
         if !clean.isEmpty { kind.name = clean }
         kind.category = category.rawValue
+        let added = memberIDs.filter { !kind.memberIDs.contains($0) }
         kind.memberIDs = memberIDs
         if let value = Double(priceText) { kind.price = max(0, value) }
         kind.markChanged()
         try? context.save()
+        PlannerGroupKindStore.propagate(context, kind: kind, ids: added)
         sync.requestSync()
     }
 }
