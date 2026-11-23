@@ -85,6 +85,7 @@ struct PlannerRecordView: View {
                     if showsPayments {
                         if isCancelled { finesSection } else { paymentsSection }
                     }
+                    if event.isFromYClients { yclientsSection }
                     actionsSection
                 }
             }
@@ -146,6 +147,43 @@ struct PlannerRecordView: View {
                 }
             }
             .padding(.vertical, 4)
+        }
+    }
+
+    /// Только для записей, пришедших из YClients: источник и связь с клиентом.
+    private var yclientsSection: some View {
+        let phone = participants.first.map { PlannerClientDirectory.phone(of: $0.id, context: context) } ?? ""
+        let digits = ClientsContact.internationalDigits(phone)
+        return Section {
+            LabeledContent("Источник") {
+                HStack(spacing: 6) {
+                    ClientsYClientsBadge(size: 18)
+                    Text("YClients")
+                }
+            }
+            if !digits.isEmpty {
+                HStack(spacing: 10) {
+                    contactLink("Позвонить", "phone.fill", ClientsContact.call(phone))
+                    contactLink("WhatsApp", "message.fill", ClientsContact.whatsApp(phone))
+                    contactLink("Telegram", "paperplane.fill", URL(string: "https://t.me/+\(digits)"))
+                }
+            }
+        } header: {
+            Text("Связаться с клиентом")
+        } footer: {
+            if digits.isEmpty { Text("У клиента не указан телефон.") }
+        }
+    }
+
+    @ViewBuilder
+    private func contactLink(_ title: String, _ systemImage: String, _ url: URL?) -> some View {
+        if let url {
+            Link(destination: url) {
+                Label(title, systemImage: systemImage)
+                    .font(.footnote.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
         }
     }
 

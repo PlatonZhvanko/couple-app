@@ -486,6 +486,18 @@ struct PlannerTimelineView: View {
                         }
                     }
                 )
+                .overlay {
+                    // Отменённое занятие или группа: бледный блок с большим знаком запрета.
+                    if cancelled {
+                        GeometryReader { geo in
+                            Text("🚫")
+                                .font(.system(size: max(10, min(geo.size.width, geo.size.height) * 0.9)))
+                                .opacity(0.75)
+                                .frame(width: geo.size.width, height: geo.size.height)
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
                 .contentShape(Rectangle())
                 .onTapGesture { onEventTap(event, block.start) }
             if canMove(event) && !event.isAllDay {

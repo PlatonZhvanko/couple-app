@@ -19,6 +19,13 @@ enum PlannerClientDirectory {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    /// Телефон клиента (пусто, если не указан).
+    @MainActor
+    static func phone(of id: UUID, context: ModelContext) -> String {
+        let descriptor = FetchDescriptor<ClientsClient>(predicate: #Predicate { $0.syncID == id })
+        return (try? context.fetch(descriptor))?.first?.phone ?? ""
+    }
+
     /// Добавить нового клиента в общую базу.
     @MainActor
     static func add(name: String, member: CoupleMember, context: ModelContext) -> Entry {
