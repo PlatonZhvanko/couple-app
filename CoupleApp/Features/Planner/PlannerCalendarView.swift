@@ -147,6 +147,14 @@ struct PlannerCalendarView: View {
         .task(id: refreshKey) { refresh() }
         .task {
             PlannerGroupKindStore.repairTypedDuplicates(context)
+            // Один раз: клиентов из шаблонов групп добавляем в уже созданные будущие записи.
+            if !UserDefaults.standard.bool(forKey: "planner.groupMembersBackfill.v1") {
+                let kinds = (try? context.fetch(FetchDescriptor<PlannerGroupKind>())) ?? []
+                for kind in kinds where kind.deletedAt == nil {
+                    PlannerGroupKindStore.propagate(context, kind: kind, ids: kind.memberIDs)
+                }
+                UserDefaults.standard.set(true, forKey: "planner.groupMembersBackfill.v1")
+            }
             sync.requestSync()
         }
         .toolbar {
