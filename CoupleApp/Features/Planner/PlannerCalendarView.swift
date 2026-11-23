@@ -750,7 +750,7 @@ struct PlannerEventRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     if event.isFromYClients { ClientsYClientsBadge(size: 14) }
-                    Text(event.displayTitle)
+                    Text(event.isFromYClients ? event.plainTitle : event.displayTitle)
                         .font(.body.weight(.medium))
                 }
                 HStack(spacing: 6) {

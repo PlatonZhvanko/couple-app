@@ -1,3 +1,4 @@
+import UIKit
 import SwiftData
 import SwiftUI
 
@@ -16,6 +17,7 @@ struct PlannerRecordView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDelete = false
     @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
     @Environment(SyncCoordinator.self) private var sync
     @Environment(AccountStore.self) private var account
 
@@ -127,8 +129,15 @@ struct PlannerRecordView: View {
         Section {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(headerTitle)
-                        .font(.title2.bold())
+                    if event.isFromYClients {
+                        HStack(spacing: 8) {
+                            ClientsYClientsBadge(size: 24)
+                            Text(event.plainTitle).font(.title2.bold())
+                        }
+                    } else {
+                        Text(headerTitle)
+                            .font(.title2.bold())
+                    }
                     Spacer()
                     if !readOnly, let symbol = badge.symbol {
                         Text(symbol).font(.title2)
@@ -162,16 +171,32 @@ struct PlannerRecordView: View {
                 }
             }
             if !digits.isEmpty {
-                HStack(spacing: 10) {
-                    contactLink("Позвонить", "phone.fill", ClientsContact.call(phone))
+                HStack(spacing: 6) {
+                    contactLink("Звонок", "phone.fill", ClientsContact.call(phone))
                     contactLink("WhatsApp", "message.fill", ClientsContact.whatsApp(phone))
                     contactLink("Telegram", "paperplane.fill", URL(string: "https://t.me/+\(digits)"))
+                    // У Max нет ссылки «написать по номеру»: копируем номер и открываем Max, дальше поиск по номеру.
+                    Button {
+                        UIPasteboard.general.string = "+" + digits
+                        if let url = URL(string: "https://max.ru/") { openURL(url) }
+                    } label: {
+                        Label("Max", systemImage: "bubble.left.fill")
+                            .font(.caption2.weight(.semibold))
+                            .labelStyle(.titleOnly)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
         } header: {
             Text("Связаться с клиентом")
         } footer: {
-            if digits.isEmpty { Text("У клиента не указан телефон.") }
+            if digits.isEmpty {
+                Text("У клиента не указан телефон.")
+            } else {
+                Text("Max: номер копируется, вставьте его в поиск Max.")
+            }
         }
     }
 
@@ -180,10 +205,12 @@ struct PlannerRecordView: View {
         if let url {
             Link(destination: url) {
                 Label(title, systemImage: systemImage)
-                    .font(.footnote.weight(.semibold))
+                    .font(.caption2.weight(.semibold))
+                    .labelStyle(.titleOnly)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .controlSize(.small)
         }
     }
 
