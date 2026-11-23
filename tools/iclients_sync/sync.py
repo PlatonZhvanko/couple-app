@@ -131,6 +131,29 @@ def digits(phone: str) -> str:
     return d[-10:] if len(d) >= 10 else d
 
 
+def day_key(moment: datetime) -> str:
+    """Ключ дня отмены: начало московского дня в секундах (как в приложении)."""
+    day = moment.astimezone(MOSCOW).replace(hour=0, minute=0, second=0, microsecond=0)
+    return str(int(day.timestamp()))
+
+
+def apply_no_show(payload: dict, rec: dict, begin: datetime) -> None:
+    """«Не пришёл» в YClients = отмена в приложении. Если статус сменился обратно,
+    возвращаем запись, но только если отмену поставили мы и Настя ничего не отмечала."""
+    if payload.get("statuses") or payload.get("partnerStatuses"):
+        return
+    key = day_key(begin)
+    keys = [k for k in (payload.get("cancelledDays") or "").split(",") if k]
+    no_show = rec.get("attendance") == -1 or rec.get("visit_attendance") == -1
+    if no_show and key not in keys:
+        payload["cancelledDays"] = ",".join(keys + [key])
+        payload["ycCancelled"] = True
+    elif not no_show and payload.get("ycCancelled") and key in keys:
+        keys.remove(key)
+        payload["cancelledDays"] = ",".join(keys)
+        payload["ycCancelled"] = False
+
+
 def main() -> None:
     if not os.environ.get("SUPABASE_SERVICE_KEY", "").strip():
         print("Секреты ещё не добавлены, пропускаю")
@@ -193,6 +216,7 @@ def main() -> None:
         client_uuid = client_ids.get(client.get("id"))
         services = ", ".join(s.get("title", "") for s in rec.get("services") or [] if s.get("title"))
         old = existing.get(rid)
+        before: dict = {}
         if old is None:
             payload = {
                 "title": client.get("display_name") or client.get("name") or "Запись YClients",
@@ -210,8 +234,9 @@ def main() -> None:
             # Версия формата: при её повышении запись обновляется заново, и телефоны, которые
             # успели получить её старой версией приложения, подтягивают её ещё раз.
             payload["v"] = SCHEMA_VERSION
-            if payload == before and not old["deleted_at"]:
-                continue
+        apply_no_show(payload, rec, begin)
+        if old is not None and payload == before and not old["deleted_at"]:
+            continue
         rows.append({"id": rid, "couple_id": couple_id, "kind": "planner.event",
                      "updated_at": now, "deleted_at": None, "payload": payload})
 
