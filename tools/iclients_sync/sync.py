@@ -25,6 +25,7 @@ PAGE = 100
 RESOURCE_TITLE = "Новик Анастасия"
 MEMBER = "partner"
 MOSCOW = ZoneInfo("Europe/Moscow")
+SCHEMA_VERSION = 2
 NS = uuid.UUID("6f1c2b0e-5a3d-4c57-9a52-1c1e5a7d0001")
 DAYS_BACK = 1
 DAYS_AHEAD = 60
@@ -199,13 +200,16 @@ def main() -> None:
                 "scope": MEMBER, "category": "personal", "repeatRule": "none",
                 "reminderMinutes": 60, "createdBy": MEMBER, "createdAt": now,
                 "participantIDs": [client_uuid.upper()] if client_uuid else [],
-                "isPrivate": False, "repeatInterval": 1, "source": "yclients",
+                "isPrivate": False, "repeatInterval": 1, "source": "yclients", "v": SCHEMA_VERSION,
             }
         else:
             # Меняем только время: остальное (оплата, статусы, заметки) ведёт Настя.
             payload = dict(old["payload"] or {})
             before = dict(payload)
             payload["start"], payload["end"] = iso(begin), iso(finish)
+            # Версия формата: при её повышении запись обновляется заново, и телефоны, которые
+            # успели получить её старой версией приложения, подтягивают её ещё раз.
+            payload["v"] = SCHEMA_VERSION
             if payload == before and not old["deleted_at"]:
                 continue
         rows.append({"id": rid, "couple_id": couple_id, "kind": "planner.event",
