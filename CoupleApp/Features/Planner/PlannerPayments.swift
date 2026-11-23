@@ -629,6 +629,38 @@ enum PlannerGroupKindStore {
         try? context.save()
         return item
     }
+
+    /// Чинит записи, где вместо выбранной группы осталось набранное в поиске («Сш»):
+    /// если по смыслу подходит ровно одна группа (название содержит набранное), записи
+    /// переносятся на неё, а лишняя пустая группа убирается. Если вариантов несколько, не трогаем.
+    @MainActor
+    static func repairTypedDuplicates(_ context: ModelContext) {
+        let kinds = ((try? context.fetch(FetchDescriptor<PlannerGroupKind>())) ?? []).filter { $0.deletedAt == nil }
+        guard kinds.count > 1 else { return }
+        let events = ((try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.deletedAt == nil }))) ?? [])
+            .filter { [PlannerCategory.group, .school].contains($0.categoryValue) }
+        var changed = false
+        for short in kinds {
+            let key = short.name.trimmingCharacters(in: .whitespaces)
+            guard key.count <= 4, short.memberIDs.isEmpty else { continue }
+            let longer = kinds.filter {
+                $0.syncID != short.syncID && $0.name.count > key.count
+                    && $0.name.localizedCaseInsensitiveContains(key)
+            }
+            guard longer.count == 1, let target = longer.first else { continue }
+            let mine = events.filter { $0.title.caseInsensitiveCompare(key) == .orderedSame }
+            for event in mine {
+                event.title = target.name
+                event.markChanged()
+                changed = true
+            }
+            if !mine.isEmpty {
+                short.markDeleted()
+                changed = true
+            }
+        }
+        if changed { try? context.save() }
+    }
 }
 
 
