@@ -145,6 +145,10 @@ struct PlannerCalendarView: View {
             }
         }
         .task(id: refreshKey) { refresh() }
+        .task {
+            PlannerGroupKindStore.repairTypedDuplicates(context)
+            sync.requestSync()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Сегодня") {

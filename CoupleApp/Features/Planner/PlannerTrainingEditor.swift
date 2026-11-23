@@ -177,7 +177,7 @@ struct PlannerTrainingEditor: View {
                         .pickerStyle(.segmented)
                         groupKindChips
                         HStack {
-                            TextField("Новая группа", text: $newKindName)
+                            TextField("Поиск группы или школы", text: $newKindName)
                                 .textInputAutocapitalization(.sentences)
                                 .onSubmit(addGroupKind)
                             if !trimmedKindName.isEmpty && !kindExists {
@@ -389,13 +389,17 @@ struct PlannerTrainingEditor: View {
     private var groupKindChips: some View {
         Group {
             if trimmedKindName.isEmpty {
-                Text("Впиши название для поиска или нового вида и нажми +.")
+                Text("Найди группу или школу по названию. Новую можно создать кнопкой +.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if !groupKinds.contains(where: { $0.name.localizedCaseInsensitiveContains(trimmedKindName) }) {
+                Text("Такой группы нет. Нажми +, чтобы создать.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(groupKinds.filter { $0.name.localizedCaseInsensitiveContains(trimmedKindName) }.prefix(3)) { kind in
+                        ForEach(groupKinds.filter { $0.name.localizedCaseInsensitiveContains(trimmedKindName) }.prefix(6)) { kind in
                             let selected = title == kind.name
                             Button {
                                 selectGroupKind(kind)
@@ -627,8 +631,18 @@ struct PlannerTrainingEditor: View {
             target.title = participants.first?.name ?? ""
             target.participantIDs = participants.prefix(1).map(\.id)
         case .group:
+            // Выбранная из поиска группа важнее набранного текста: название берём у неё.
             var custom = title.trimmingCharacters(in: .whitespaces)
-            if !trimmedKindName.isEmpty { custom = trimmedKindName }
+            if custom.isEmpty, !trimmedKindName.isEmpty {
+                let found = groupKinds.filter { $0.name.localizedCaseInsensitiveContains(trimmedKindName) }
+                if let exact = found.first(where: { $0.name.caseInsensitiveCompare(trimmedKindName) == .orderedSame }) {
+                    custom = exact.name
+                } else if found.count == 1, let only = found.first {
+                    custom = only.name
+                } else {
+                    custom = trimmedKindName
+                }
+            }
             if !custom.isEmpty {
                 PlannerGroupKindStore.ensure(context, name: custom, category: groupCategory)
             }
