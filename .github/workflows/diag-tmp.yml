@@ -1,5 +1,8 @@
 name: diag-tmp
-on: workflow_dispatch
+on:
+  push:
+    branches: [claude/project-thread-u8j7yx]
+    paths: ['tools/iclients_sync/diag.py', '.github/workflows/diag-tmp.yml']
 jobs:
   d:
     runs-on: ubuntu-latest
