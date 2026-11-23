@@ -373,7 +373,7 @@ struct PlannerTimelineView: View {
             return min(maxFont, height / (CGFloat(lines.count) * 1.18), width / widest)
         }
         let words = title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-        guard words.count >= 2 else { return (title, 1, max(6, fit([title]))) }
+        guard words.count >= 2 else { return (title, 1, max(4.5, fit([title]))) }
 
         // Все слова остаются в блоке: пробуем разбить на 1…5 строк (самое узкое разбиение
         // для каждого числа строк) и берём вариант с самым крупным шрифтом.
@@ -383,7 +383,7 @@ struct PlannerTimelineView: View {
             let size = fit(lines)
             if size > best.font { best = (lines, size) }
         }
-        return (best.lines.joined(separator: "\n"), best.lines.count, max(6, best.font))
+        return (best.lines.joined(separator: "\n"), best.lines.count, max(4.5, best.font))
     }
 
     /// Делит слова на `count` строк так, чтобы самая широкая строка была как можно уже.
@@ -448,7 +448,7 @@ struct PlannerTimelineView: View {
             Text(fit.text)
                 .font(.system(size: fontSize, weight: isCancelled ? .black : .bold))
                 .lineLimit(fit.lines)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.5)
                 .allowsTightening(true)
                 .multilineTextAlignment(.leading)
             if showTime {
