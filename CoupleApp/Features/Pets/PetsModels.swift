@@ -63,7 +63,7 @@ final class PetsPet: SyncableModel {
     var displayName: String { name.trimmingCharacters(in: .whitespaces).isEmpty ? "Питомец" : name }
 }
 
-/// Наши три кота. id фиксированные, чтобы на втором телефоне не было дублей.
+/// Наши четыре кота. id фиксированные, чтобы на втором телефоне не было дублей.
 enum PetsSeed {
     static let flagKey = "pets.seeded.v1"
 
@@ -71,15 +71,20 @@ enum PetsSeed {
         ("6A0F3C10-0000-4000-8000-00000000A001", "Мироня", .tuxedo, "Большой чёрно-белый кот."),
         ("6A0F3C10-0000-4000-8000-00000000A002", "Гоша", .slim, "Чёрный худенький кот."),
         ("6A0F3C10-0000-4000-8000-00000000A003", "Хлоя", .grey, "Маленькая серая кошечка."),
+        ("6A0F3C10-0000-4000-8000-00000000A004", "Миса", .cream, "Кремовая кошечка, порода атлантика."),
     ]
 
     @MainActor
     static func seedIfNeeded(context: ModelContext) {
-        guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
-        UserDefaults.standard.set(true, forKey: flagKey)
+        // Первый запуск: все коты. Позже появилась Миса: добавляем только её, один раз.
+        let defaults = UserDefaults.standard
+        let hadFirst = defaults.bool(forKey: flagKey)
+        guard !defaults.bool(forKey: "pets.seeded.v2") else { return }
+        defaults.set(true, forKey: flagKey)
+        defaults.set(true, forKey: "pets.seeded.v2")
         let existing = (try? context.fetch(FetchDescriptor<PetsPet>())) ?? []
         let known = Set(existing.map(\.syncID))
-        for cat in cats {
+        for cat in cats where !hadFirst || cat.id.hasSuffix("A004") {
             guard let id = UUID(uuidString: cat.id), !known.contains(id) else { continue }
             let pet = PetsPet(name: cat.name)
             pet.syncID = id
