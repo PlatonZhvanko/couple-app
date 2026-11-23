@@ -146,6 +146,12 @@ struct PlannerGroupEditor: View {
                         .buttonStyle(.borderless)
                     }
                 }
+                .onMove { source, destination in
+                    var ordered = members.map(\.id)
+                    ordered.move(fromOffsets: source, toOffset: destination)
+                    let unknown = memberIDs.filter { id in !ordered.contains(id) }
+                    memberIDs = ordered + unknown
+                }
                 HStack {
                     TextField("Добавить клиента", text: $query)
                         .textInputAutocapitalization(.words)
@@ -188,6 +194,7 @@ struct PlannerGroupEditor: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { directory = PlannerClientDirectory.all(context) }
         .onDisappear(perform: save)
+        .environment(\.editMode, .constant(.active))
         .confirmationDialog("Удалить группу?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
                 deleted = true
@@ -220,11 +227,13 @@ struct PlannerGroupEditor: View {
         if !clean.isEmpty { kind.name = clean }
         kind.category = category.rawValue
         let added = memberIDs.filter { !kind.memberIDs.contains($0) }
+        let reordered = memberIDs != kind.memberIDs
         kind.memberIDs = memberIDs
         if let value = Double(priceText) { kind.price = max(0, value) }
         kind.markChanged()
         try? context.save()
         PlannerGroupKindStore.propagate(context, kind: kind, ids: added)
+        if reordered { PlannerGroupKindStore.applyOrder(context, kind: kind) }
         sync.requestSync()
     }
 }

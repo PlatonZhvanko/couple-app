@@ -438,7 +438,7 @@ enum PlannerPaymentStore {
     }
 
     /// Оформить (или изменить) абонемент клиента на месяц и сразу списать им тренировки месяца.
-    static func saveSubscription(_ context: ModelContext, clientID: UUID, month: Date, amount: Double, kindName: String? = nil, validDays: Int? = nil, charge: Double? = nil) {
+    static func saveSubscription(_ context: ModelContext, clientID: UUID, month: Date, amount: Double, kindName: String? = nil, validDays: Int? = nil, expiresOn: Date? = nil, charge: Double? = nil) {
         let monthStart = PlannerCalendar.startOfMonth(month)
         let id = PlannerSubscription.makeID(clientID: clientID, month: monthStart)
         let found = try? context.fetch(FetchDescriptor<PlannerSubscription>(predicate: #Predicate { $0.syncID == id }))
@@ -457,6 +457,10 @@ enum PlannerPaymentStore {
         if let validDays {
             item.soldAt = .now
             item.expiresAt = cal.startOfDay(for: .now).addingTimeInterval(Double(max(1, validDays)) * 86400 - 1)
+        }
+        if let expiresOn {
+            item.soldAt = .now
+            item.expiresAt = cal.startOfDay(for: expiresOn).addingTimeInterval(86400 - 1)
         }
         item.markChanged()
         try? context.save()
@@ -655,6 +659,33 @@ enum PlannerGroupKindStore {
         }
         if changed { try? context.save() }
         return changed
+    }
+
+    /// Порядок клиентов шаблона переносится в будущие записи группы (прошедшие не трогаем).
+    @MainActor
+    static func applyOrder(_ context: ModelContext, kind: PlannerGroupKind) {
+        let order = kind.memberIDs
+        guard order.count > 1 else { return }
+        let now = Date.now
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        var changed = false
+        for event in events where [PlannerCategory.group, .school].contains(event.categoryValue)
+            && event.title.caseInsensitiveCompare(kind.name) == .orderedSame {
+            if event.repeatValue != .none {
+                if let until = event.repeatUntil, until < now { continue }
+            } else if event.end < now {
+                continue
+            }
+            let inTemplate = order.filter { event.participantIDs.contains($0) }
+            let others = event.participantIDs.filter { !order.contains($0) }
+            let result = inTemplate + others
+            if result != event.participantIDs {
+                event.participantIDs = result
+                event.markChanged()
+                changed = true
+            }
+        }
+        if changed { try? context.save() }
     }
 
     /// Чинит записи, где вместо выбранной группы осталось набранное в поиске («Сш»):
