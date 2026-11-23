@@ -373,7 +373,7 @@ struct PlannerCalendarView: View {
                 dayMark: { moodMark($0) },
                 badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
-                canMove: { $0.scopeValue.canEdit(by: account.current) },
+                canMove: { $0.scopeValue.canEdit(by: account.current) && !$0.isFromYClients },
                 onHeaderTap: { day in
                     withAnimation(.snappy) {
                         selectedDay = day

@@ -432,17 +432,20 @@ struct PlannerRecordView: View {
     private var actionsSection: some View {
         Section {
             if canEdit {
-                Button {
-                    dismiss()
-                    onMove()
-                } label: {
-                    Label("Переместить", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
-                }
-                Button {
-                    dismiss()
-                    onEdit()
-                } label: {
-                    Label("Изменить", systemImage: "pencil")
+                // Время записи YClients приходит из журнала, поэтому её нельзя двигать и менять.
+                if !event.isFromYClients {
+                    Button {
+                        dismiss()
+                        onMove()
+                    } label: {
+                        Label("Переместить", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
+                    }
+                    Button {
+                        dismiss()
+                        onEdit()
+                    } label: {
+                        Label("Изменить", systemImage: "pencil")
+                    }
                 }
                 if showsPayments {
                     if isCancelled {

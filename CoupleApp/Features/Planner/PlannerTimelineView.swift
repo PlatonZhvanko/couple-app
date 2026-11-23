@@ -360,8 +360,10 @@ struct PlannerTimelineView: View {
     /// ближе по ширине. Только если совсем мелко, остаётся одно первое слово целиком.
     /// Значок записи другого раздела в левом верхнем углу (рисуется кодом).
     static func leadingView(for block: PlannerTimelineBlock) -> AnyView? {
-        if case .external(let item) = block.source { return item.leadingView }
-        return nil
+        switch block.source {
+        case .external(let item): return item.leadingView
+        case .event(let event): return event.isFromYClients ? AnyView(ClientsYClientsBadge(size: 10.5)) : nil
+        }
     }
 
     static func titleLayout(_ title: String, width: CGFloat, height: CGFloat, maxFont: CGFloat)
@@ -440,10 +442,10 @@ struct PlannerTimelineView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .topLeading) {
             // Эмодзи типа дела стоит в верхней строке, название записи ниже него.
-            if topRow, !block.emoji.isEmpty {
-                Text(block.emoji).font(.system(size: 10)).padding(1)
-            } else if topRow, let leadingView {
+            if topRow, let leadingView {
                 leadingView.padding(1)
+            } else if topRow, !block.emoji.isEmpty {
+                Text(block.emoji).font(.system(size: 10)).padding(1)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -469,10 +471,21 @@ struct PlannerTimelineView: View {
         switch block.source {
         case .event(let event):
             let cancelled = [.cancelled, .fineUnpaid, .finePaid].contains(block.badge)
+            let fromYClients = event.isFromYClients
             let base = content
                 .opacity(cancelled ? 0.55 : 1)
-                .foregroundStyle(Color.black)
-                .background(RoundedRectangle(cornerRadius: 6).fill(block.color))
+                .foregroundStyle(fromYClients ? Color.primary : Color.black)
+                .background(
+                    Group {
+                        if fromYClients {
+                            // Записи YClients: прозрачный жёлтый фон с обводкой, как ремонты авто.
+                            RoundedRectangle(cornerRadius: 6).fill(Color.yellow.opacity(0.35))
+                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.yellow))
+                        } else {
+                            RoundedRectangle(cornerRadius: 6).fill(block.color)
+                        }
+                    }
+                )
                 .contentShape(Rectangle())
                 .onTapGesture { onEventTap(event, block.start) }
             if canMove(event) && !event.isAllDay {
