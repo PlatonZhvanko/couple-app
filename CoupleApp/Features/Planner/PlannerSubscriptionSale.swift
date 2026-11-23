@@ -31,11 +31,9 @@ struct PlannerSubscriptionSaleSheet: View {
     @State private var untilMode = false
     @State private var untilDate = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
     @State private var chargeText = "500"
-    @State private var typeQuery = ""
     @State private var groupQuery = ""
     @State private var client: PlannerClientDirectory.Entry?
 
-    private var trimmedTypeQuery: String { typeQuery.trimmingCharacters(in: .whitespaces) }
     private var trimmedGroupQuery: String { groupQuery.trimmingCharacters(in: .whitespaces) }
     private var selectedType: PlannerSubscriptionType? {
         guard let selectedTypeID else { return nil }
@@ -43,17 +41,6 @@ struct PlannerSubscriptionSaleSheet: View {
     }
 
     private var amount: Double? { Double(amountText.replacingOccurrences(of: ",", with: ".")) }
-
-    /// Без запроса показываем только два готовых абонемента, с запросом настоящий поиск по подстроке.
-    private var typeMatches: [PlannerSubscriptionType] {
-        guard !trimmedTypeQuery.isEmpty else { return Array(types.prefix(2)) }
-        return Array(types.filter { $0.name.localizedCaseInsensitiveContains(trimmedTypeQuery) }.prefix(6))
-    }
-
-    private var canCreateType: Bool {
-        !trimmedTypeQuery.isEmpty
-            && !types.contains { $0.name.caseInsensitiveCompare(trimmedTypeQuery) == .orderedSame }
-    }
 
     private var groupMatches: [PlannerGroupKind] {
         guard let type = selectedType else { return [] }
@@ -146,59 +133,25 @@ struct PlannerSubscriptionSaleSheet: View {
                     .buttonStyle(.borderless)
                 }
             } else {
-                TextField("Найти абонемент", text: $typeQuery)
-                    .autocorrectionDisabled()
-                if canCreateType {
-                    Button(action: createType) {
-                        Label("Создать «\(trimmedTypeQuery)»", systemImage: "plus.circle.fill")
-                    }
-                    .buttonStyle(.borderless)
-                }
-                ForEach(typeMatches) { type in
-                    Button { choose(type) } label: {
-                        HStack {
-                            Text(type.name).foregroundStyle(Color.primary)
-                            Spacer()
-                            Text(PlannerPricing.format(type.price)).foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.borderless)
-                }
-                if !trimmedTypeQuery.isEmpty && typeMatches.isEmpty {
-                    Text("Такого абонемента нет. Нажми +, чтобы создать.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                // Поиск на отдельном экране: тут только кнопка, без поля ввода и пересчётов.
+                NavigationLink {
+                    PlannerSubscriptionPickScreen(startAmount: amount) { id in choose(id) }
+                } label: {
+                    Label("Найти абонемент", systemImage: "magnifyingglass")
                 }
             }
         }
     }
 
-    private func choose(_ type: PlannerSubscriptionType) {
+    private func choose(_ id: UUID) {
+        let found = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(predicate: #Predicate { $0.syncID == id })))?.first
+        guard let type = found else { return }
         selectedTypeID = type.syncID
         forGroups = !type.groupNames.isEmpty
         chargeDrafts = [:]
-        typeQuery = ""
         amountText = "\(Int(type.price.rounded()))"
         validText = "\(type.validDays)"
         chargeText = "\(Int(type.charge.rounded()))"
-    }
-
-    private func createType() {
-        // Вид с таким названием мог быть удалён раньше: возвращаем его, а не заводим второй с тем же номером.
-        let id = PlannerSubscriptionType.makeID(name: trimmedTypeQuery)
-        let existing = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(predicate: #Predicate { $0.syncID == id })))?.first
-        let item: PlannerSubscriptionType
-        if let existing {
-            item = existing
-            item.deletedAt = nil
-        } else {
-            item = PlannerSubscriptionType(name: trimmedTypeQuery, price: amount ?? 0)
-            context.insert(item)
-        }
-        item.markChanged()
-        try? context.save()
-        sync.requestSync()
-        choose(item)
-        if let amount { amountText = "\(Int(amount.rounded()))" }
     }
 
     // MARK: Группы и списание
@@ -348,6 +301,101 @@ struct PlannerSubscriptionSaleSheet: View {
             charge: Double(chargeText)
         )
         sync.requestSync()
+        dismiss()
+    }
+}
+
+/// Поиск и выбор готового абонемента отдельным экраном: обычный список и поле фильтра.
+/// Хранит только простые значения (название, цена), а не живые записи базы.
+struct PlannerSubscriptionPickScreen: View {
+    let startAmount: Double?
+    let onPick: (UUID) -> Void
+
+    private struct Row: Identifiable {
+        let id: UUID
+        let name: String
+        let lower: String
+        let price: Double
+    }
+
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var rows: [Row] = []
+    @State private var query = ""
+
+    private var q: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
+
+    private var shown: [Row] {
+        q.isEmpty ? rows : rows.filter { $0.lower.contains(q) }
+    }
+
+    private var canCreate: Bool {
+        !q.isEmpty && !rows.contains { $0.lower == q }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                TextField("Название абонемента", text: $query)
+                    .autocorrectionDisabled()
+                if canCreate {
+                    Button(action: create) {
+                        Label("Создать «\(query.trimmingCharacters(in: .whitespaces))»", systemImage: "plus.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            Section {
+                if shown.isEmpty {
+                    Text("Ничего не найдено").foregroundStyle(.secondary)
+                }
+                ForEach(shown) { row in
+                    Button {
+                        onPick(row.id)
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Text(row.name).foregroundStyle(Color.primary)
+                            Spacer()
+                            Text(PlannerPricing.format(row.price)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+        }
+        .navigationTitle("Абонемент")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: load)
+    }
+
+    private func load() {
+        let all = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        rows = all
+            .map { Row(id: $0.syncID, name: $0.name, lower: $0.name.lowercased(), price: $0.price) }
+            .sorted { $0.name < $1.name }
+    }
+
+    private func create() {
+        let name = query.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        // Вид с таким названием мог быть удалён раньше: возвращаем его, а не заводим второй с тем же номером.
+        let id = PlannerSubscriptionType.makeID(name: name)
+        let existing = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(predicate: #Predicate { $0.syncID == id })))?.first
+        let item: PlannerSubscriptionType
+        if let existing {
+            item = existing
+            item.deletedAt = nil
+        } else {
+            item = PlannerSubscriptionType(name: name, price: startAmount ?? 0)
+            context.insert(item)
+        }
+        item.markChanged()
+        try? context.save()
+        sync.requestSync()
+        onPick(item.syncID)
         dismiss()
     }
 }
