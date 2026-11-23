@@ -218,6 +218,9 @@ def main() -> None:
         # Вместо названия услуги показываем корт: в YClients он записан как «сотрудник» записи.
         court = ((rec.get("staff") or {}).get("name") or "").strip() or services
         old = existing.get(rid)
+        # Запись удалена в планере (корзина): это «надгробие», обратно её не возвращаем никогда.
+        if old is not None and old["deleted_at"]:
+            continue
         before: dict = {}
         if old is None:
             payload = {
@@ -238,7 +241,7 @@ def main() -> None:
             # успели получить её старой версией приложения, подтягивают её ещё раз.
             payload["v"] = SCHEMA_VERSION
         apply_no_show(payload, rec, begin)
-        if old is not None and payload == before and not old["deleted_at"]:
+        if old is not None and payload == before:
             continue
         rows.append({"id": rid, "couple_id": couple_id, "kind": "planner.event",
                      "updated_at": now, "deleted_at": None, "payload": payload})

@@ -216,6 +216,8 @@ async function sync(): Promise<string> {
     const services = (rec.services ?? []).map((s: Json) => s.title).filter(Boolean).join(", ");
     const court = String(rec.staff?.name ?? "").trim() || services;
     const old = existing.get(rid);
+    // Запись удалена в планере (корзина): это «надгробие», обратно её не возвращаем никогда.
+    if (old?.deleted_at) continue;
     let payload: Json;
     let before: Json = {};
     if (!old) {
@@ -237,7 +239,7 @@ async function sync(): Promise<string> {
       payload.v = SCHEMA_VERSION;
     }
     applyNoShow(payload, rec, begin);
-    if (old && sameJson(payload, before) && !old.deleted_at) continue;
+    if (old && sameJson(payload, before)) continue;
     rows.push({ id: rid, couple_id: coupleId, kind: "planner.event", updated_at: now, deleted_at: null, payload });
   }
 
