@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// Быстрая продажа абонемента: вид, клиент, сумма (можно поправить).
+/// Продажа абонемента одним окном: вид (поиск и «+»), группы со своим списанием, сумма, срок, клиент.
 struct PlannerSubscriptionSaleSheet: View {
     let month: Date
 
@@ -16,6 +16,8 @@ struct PlannerSubscriptionSaleSheet: View {
 
     @Query(filter: #Predicate<PlannerSubscriptionType> { $0.deletedAt == nil }, sort: \PlannerSubscriptionType.name)
     private var types: [PlannerSubscriptionType]
+    @Query(filter: #Predicate<PlannerGroupKind> { $0.deletedAt == nil }, sort: \PlannerGroupKind.name)
+    private var groupKinds: [PlannerGroupKind]
 
     @State private var selectedType: PlannerSubscriptionType?
     @State private var amountText = ""
@@ -26,145 +28,55 @@ struct PlannerSubscriptionSaleSheet: View {
     @State private var chargeText = "500"
     @State private var query = ""
     @State private var typeQuery = ""
+    @State private var groupQuery = ""
     @State private var client: PlannerClientDirectory.Entry?
     @State private var directory: [PlannerClientDirectory.Entry] = []
 
     private var trimmedQuery: String { query.trimmingCharacters(in: .whitespaces) }
+    private var trimmedTypeQuery: String { typeQuery.trimmingCharacters(in: .whitespaces) }
+    private var trimmedGroupQuery: String { groupQuery.trimmingCharacters(in: .whitespaces) }
+    private var amount: Double? { Double(amountText.replacingOccurrences(of: ",", with: ".")) }
 
     private var matches: [PlannerClientDirectory.Entry] {
         guard !trimmedQuery.isEmpty else { return Array(directory.prefix(2)) }
         return Array(directory.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(5))
     }
 
+    /// Без запроса показываем только два готовых абонемента, с запросом настоящий поиск по подстроке.
     private var typeMatches: [PlannerSubscriptionType] {
-        let q = typeQuery.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return [] }
-        return Array(types.filter { $0.name.localizedCaseInsensitiveContains(q) }.prefix(5))
+        guard !trimmedTypeQuery.isEmpty else { return Array(types.prefix(2)) }
+        return Array(types.filter { $0.name.localizedCaseInsensitiveContains(trimmedTypeQuery) }.prefix(6))
     }
-
-    private var trimmedTypeQuery: String { typeQuery.trimmingCharacters(in: .whitespaces) }
 
     private var canCreateType: Bool {
         !trimmedTypeQuery.isEmpty
             && !types.contains { $0.name.caseInsensitiveCompare(trimmedTypeQuery) == .orderedSame }
     }
 
-    private func createType() {
-        let item = PlannerSubscriptionType(name: trimmedTypeQuery, price: amount ?? 0)
-        context.insert(item)
-        item.markChanged()
-        try? context.save()
-        sync.requestSync()
-        selectedType = item
-        typeQuery = ""
+    private var groupMatches: [PlannerGroupKind] {
+        guard let type = selectedType else { return [] }
+        let taken = Set(type.groupNames.map { $0.lowercased() })
+        let pool = groupKinds.filter { !taken.contains($0.name.lowercased()) }
+        guard !trimmedGroupQuery.isEmpty else { return Array(pool.prefix(2)) }
+        return Array(pool.filter { $0.name.localizedCaseInsensitiveContains(trimmedGroupQuery) }.prefix(6))
     }
 
-    private var amount: Double? { Double(amountText.replacingOccurrences(of: ",", with: ".")) }
+    private var canCreateGroup: Bool {
+        !trimmedGroupQuery.isEmpty
+            && !groupKinds.contains { $0.name.caseInsensitiveCompare(trimmedGroupQuery) == .orderedSame }
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("📜 Вид абонемента") {
-                    if let selectedType {
-                        HStack {
-                            Label(selectedType.name, systemImage: "checkmark.circle.fill")
-                            Spacer()
-                            Button { self.selectedType = nil; amountText = "" } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    } else {
-                        HStack {
-                            TextField("Поиск абонемента", text: $typeQuery)
-                                .autocorrectionDisabled()
-                            if canCreateType {
-                                Button(action: createType) {
-                                    Image(systemName: "plus.circle.fill").font(.title3)
-                                }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel("Создать новый абонемент")
-                            }
-                        }
-                        ForEach(typeMatches) { type in
-                            Button {
-                                selectedType = type
-                                typeQuery = ""
-                                amountText = "\(Int(type.price.rounded()))"
-                                validText = "\(type.validDays)"
-                                chargeText = "\(Int(type.charge.rounded()))"
-                            } label: {
-                                HStack {
-                                    Text(type.name).foregroundStyle(Color.primary)
-                                    Spacer()
-                                    Text(PlannerPricing.format(type.price)).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    HStack {
-                        Text("Сумма")
-                        Spacer()
-                        TextField("0", text: $amountText)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 90)
-                        Text("₽").foregroundStyle(.secondary)
-                    }
-                    Picker("Срок действия", selection: $untilMode) {
-                        Text("На N дней").tag(false)
-                        Text("До даты").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    if untilMode {
-                        DatePicker("Включительно по", selection: $untilDate, displayedComponents: [.date])
-                    } else {
-                        HStack {
-                            Text("Дней")
-                            Spacer()
-                            TextField("30", text: $validText)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .frame(width: 60)
-                            Text("дн.").foregroundStyle(.secondary)
-                        }
-                    }
-                    HStack {
-                        Text("Списание за занятие")
-                        Spacer()
-                        TextField("500", text: $chargeText)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 70)
-                        Text("₽").foregroundStyle(.secondary)
-                    }
-                }
-
-                Section("🙋 Клиент") {
-                    if let client {
-                        HStack {
-                            Label(client.name, systemImage: "person.fill")
-                            Spacer()
-                            Button { self.client = nil } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    } else {
-                        TextField("Поиск клиента", text: $query)
-                            .autocorrectionDisabled()
-                        ForEach(matches) { entry in
-                            Button { client = entry; query = "" } label: {
-                                Label(entry.name, systemImage: "person")
-                            }
-                        }
-                    }
-                }
-
+                typeSection
+                if let type = selectedType { groupsSection(type) }
+                termSection
+                clientSection
                 Section {
                     EmptyView()
                 } footer: {
-                    Text("Месяц: \(PlannerCalendar.monthTitle(month)). С абонемента сами списываются групповые тренировки месяца.")
+                    Text("Месяц: \(PlannerCalendar.monthTitle(month)). С абонемента сами списываются групповые тренировки, на которые он действует.")
                 }
             }
             .navigationTitle("Продать абонемент")
@@ -182,6 +94,234 @@ struct PlannerSubscriptionSaleSheet: View {
         }
         .presentationDetents([.large])
         .environment(\.locale, PlannerCalendar.locale)
+    }
+
+    // MARK: Вид абонемента
+
+    private var typeSection: some View {
+        Section("📜 Абонемент") {
+            if let type = selectedType {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(type.name).font(.headline)
+                        Text(PlannerPricing.format(type.price)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        selectedType = nil
+                        amountText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            } else {
+                HStack {
+                    TextField("Найти абонемент", text: $typeQuery)
+                        .autocorrectionDisabled()
+                    if canCreateType {
+                        Button(action: createType) {
+                            Image(systemName: "plus.circle.fill").font(.title3)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Создать новый абонемент")
+                    }
+                }
+                ForEach(typeMatches) { type in
+                    Button { choose(type) } label: {
+                        HStack {
+                            Text(type.name).foregroundStyle(Color.primary)
+                            Spacer()
+                            Text(PlannerPricing.format(type.price)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                }
+                if !trimmedTypeQuery.isEmpty && typeMatches.isEmpty {
+                    Text("Такого абонемента нет. Нажми +, чтобы создать.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func choose(_ type: PlannerSubscriptionType) {
+        selectedType = type
+        typeQuery = ""
+        amountText = "\(Int(type.price.rounded()))"
+        validText = "\(type.validDays)"
+        chargeText = "\(Int(type.charge.rounded()))"
+    }
+
+    private func createType() {
+        let item = PlannerSubscriptionType(name: trimmedTypeQuery, price: amount ?? 0)
+        context.insert(item)
+        item.markChanged()
+        try? context.save()
+        sync.requestSync()
+        choose(item)
+        if let amount { amountText = "\(Int(amount.rounded()))" }
+    }
+
+    // MARK: Группы и списание
+
+    private func groupsSection(_ type: PlannerSubscriptionType) -> some View {
+        Section {
+            ForEach(type.groupNames, id: \.self) { name in
+                HStack {
+                    Text(name)
+                    Spacer()
+                    TextField("500", text: chargeBinding(type, name))
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 70)
+                    Text("₽").foregroundStyle(.secondary)
+                    Button { removeGroup(type, name) } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            if type.groupNames.isEmpty {
+                HStack {
+                    Text("Списание за занятие")
+                    Spacer()
+                    TextField("500", text: $chargeText)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 70)
+                    Text("₽").foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                TextField("Добавить группу или школу", text: $groupQuery)
+                    .autocorrectionDisabled()
+                if canCreateGroup {
+                    Button { createGroup(type) } label: {
+                        Image(systemName: "plus.circle.fill").font(.title3)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Создать новую группу")
+                }
+            }
+            ForEach(groupMatches) { kind in
+                Button { addGroup(type, kind.name) } label: {
+                    Label(kind.name, systemImage: "plus")
+                        .foregroundStyle(Color.primary)
+                }
+                .buttonStyle(.borderless)
+            }
+        } header: {
+            Text("👥 Для каких групп")
+        } footer: {
+            Text(type.groupNames.isEmpty
+                 ? "Группы не выбраны: абонемент действует на все группы и школы. Добавь группу, чтобы задать для неё своё списание за занятие."
+                 : "Справа цена списания за одно занятие этой группы. Меняется сразу для вида абонемента, будущие занятия считаются по ней.")
+        }
+    }
+
+    private func chargeBinding(_ type: PlannerSubscriptionType, _ name: String) -> Binding<String> {
+        Binding(
+            get: { "\(Int(type.charge(forGroup: name).rounded()))" },
+            set: { text in
+                guard let value = Double(text) else { return }
+                var map = type.groupCharges
+                map[name.lowercased()] = max(0, value)
+                type.groupCharges = map
+                type.markChanged()
+                try? context.save()
+                sync.requestSync()
+            }
+        )
+    }
+
+    private func addGroup(_ type: PlannerSubscriptionType, _ name: String) {
+        guard !type.groupNames.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else { return }
+        // Первое добавленное название: новая цена списания по умолчанию как в общем поле.
+        var map = type.groupCharges
+        map[name.lowercased()] = Double(chargeText) ?? type.charge
+        type.groupNames = type.groupNames + [name]
+        type.groupCharges = map
+        type.markChanged()
+        try? context.save()
+        sync.requestSync()
+        groupQuery = ""
+    }
+
+    private func removeGroup(_ type: PlannerSubscriptionType, _ name: String) {
+        type.groupNames = type.groupNames.filter { $0 != name }
+        var map = type.groupCharges
+        map.removeValue(forKey: name.lowercased())
+        type.groupCharges = map
+        type.markChanged()
+        try? context.save()
+        sync.requestSync()
+    }
+
+    private func createGroup(_ type: PlannerSubscriptionType) {
+        let kind = PlannerGroupKindStore.ensure(context, name: trimmedGroupQuery, category: .group)
+        addGroup(type, kind.name)
+    }
+
+    // MARK: Сумма и срок
+
+    private var termSection: some View {
+        Section("💰 Сумма и срок") {
+            HStack {
+                Text("Сумма")
+                Spacer()
+                TextField("0", text: $amountText)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 90)
+                Text("₽").foregroundStyle(.secondary)
+            }
+            Picker("Срок действия", selection: $untilMode) {
+                Text("На N дней").tag(false)
+                Text("До даты").tag(true)
+            }
+            .pickerStyle(.segmented)
+            if untilMode {
+                DatePicker("Включительно по", selection: $untilDate, displayedComponents: [.date])
+            } else {
+                HStack {
+                    Text("Дней")
+                    Spacer()
+                    TextField("30", text: $validText)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 60)
+                    Text("дн.").foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    // MARK: Клиент
+
+    private var clientSection: some View {
+        Section("🙋 Клиент") {
+            if let client {
+                HStack {
+                    Label(client.name, systemImage: "person.fill")
+                    Spacer()
+                    Button { self.client = nil } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            } else {
+                TextField("Поиск клиента", text: $query)
+                    .autocorrectionDisabled()
+                ForEach(matches) { entry in
+                    Button { client = entry; query = "" } label: {
+                        Label(entry.name, systemImage: "person")
+                            .foregroundStyle(Color.primary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+        }
     }
 
     private func save() {
