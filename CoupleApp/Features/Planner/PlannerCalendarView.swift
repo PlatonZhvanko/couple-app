@@ -188,8 +188,7 @@ struct PlannerCalendarView: View {
                     Button { showSale = true } label: {
                         Image(systemName: "dollarsign.circle.fill")
                     }
-                    .disabled(showsPartner)
-                    .accessibilityLabel(account.current == .owner ? "Продажа или приход денег" : "Продать абонемент")
+                    .accessibilityLabel(viewedMember == .owner ? "Продажа или приход денег" : "Продать абонемент")
                     Button {
                         sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
                     } label: {
@@ -239,7 +238,7 @@ struct PlannerCalendarView: View {
             PlannerShiftSheet(day: target.day, defaultAmount: shiftAmount)
         }
         .sheet(isPresented: $showSale) {
-            if account.current == .owner {
+            if viewedMember == .owner {
                 PlannerMoneyOpSheet(day: selectedDay)
             } else {
                 PlannerSubscriptionSaleSheet(month: selectedDay)
