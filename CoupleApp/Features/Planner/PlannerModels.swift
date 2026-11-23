@@ -203,6 +203,8 @@ final class PlannerEvent: SyncableModel {
         var partnerMoneyType: String?
         /// Статусы Настеньки по дням («день=done|notDone»), у каждого свои.
         var partnerStatuses: String?
+        /// Откуда запись: «yclients» — подтянута из журнала YClients автоматически.
+        var source: String?
     }
 
     static let recordKind = "planner.event"
@@ -249,6 +251,8 @@ final class PlannerEvent: SyncableModel {
     var partnerMoneyType: String = ""
     /// Статусы Настеньки по дням: «день=done|notDone».
     var partnerStatusRaw: String = ""
+    /// «yclients» — запись пришла из журнала YClients (время приходит оттуда, переносить нельзя).
+    var source: String? = nil
     /// Статусы по дням (сделано / не сделано / перенесено).
     var statusRaw: String = ""
     /// Тип дела из базы («Тренировка», «Закупка»). Пусто — разовое дело.
@@ -277,7 +281,8 @@ final class PlannerEvent: SyncableModel {
             partnerMoneyKind: partnerMoneyKindRaw.isEmpty ? nil : partnerMoneyKindRaw,
             partnerMoneyAmount: partnerMoneyAmount == 0 ? nil : partnerMoneyAmount,
             partnerMoneyType: partnerMoneyType.isEmpty ? nil : partnerMoneyType,
-            partnerStatuses: partnerStatusRaw.isEmpty ? nil : partnerStatusRaw
+            partnerStatuses: partnerStatusRaw.isEmpty ? nil : partnerStatusRaw,
+            source: source
         )
     }
 
@@ -310,7 +315,10 @@ final class PlannerEvent: SyncableModel {
         partnerMoneyAmount = payload.partnerMoneyAmount ?? 0
         partnerMoneyType = payload.partnerMoneyType ?? ""
         partnerStatusRaw = payload.partnerStatuses ?? ""
+        source = payload.source
     }
+
+    var isFromYClients: Bool { source == "yclients" }
 
     var scopeValue: PlannerScope { PlannerScope(rawValue: scope) ?? .shared }
     var repeatWeekdays: [Int] {

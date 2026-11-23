@@ -3,7 +3,7 @@
 Раз в 10 минут GitHub Actions (`.github/workflows/iclients-sync.yml`) запускает
 `tools/iclients_sync/sync.py`. Он читает журнал YClients, берёт записи с ресурсом
 «Новик Анастасия» (id 261720) и кладёт их в Supabase (`records`) как
-`clients.appointment` и `clients.client` с `member = partner`, `source = iclients`.
+`planner.event` (тренировка с клиентом в планере) и `clients.client` с `member = partner`, `source = yclients` у записи.
 
 Секреты (GitHub → Settings → Secrets and variables → Actions):
 `YCLIENTS_COMPANY_ID`, `YCLIENTS_PARTNER_TOKEN`, `YCLIENTS_USER_TOKEN`,

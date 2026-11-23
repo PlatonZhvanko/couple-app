@@ -17,12 +17,14 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 import requests
+from zoneinfo import ZoneInfo
 
 API_BASE = "https://api.yclients.com/api/v1"
 PAGE = 100
 # Экземпляр ресурса «Новик Анастасия» в YClients.
 RESOURCE_TITLE = "Новик Анастасия"
 MEMBER = "partner"
+MOSCOW = ZoneInfo("Europe/Moscow")
 NS = uuid.UUID("6f1c2b0e-5a3d-4c57-9a52-1c1e5a7d0001")
 DAYS_BACK = 1
 DAYS_AHEAD = 60
@@ -149,7 +151,7 @@ def main() -> None:
     couple_id = members[0]["couple_id"]
 
     existing = {
-        r["id"]: r for r in db.get("records", "select=id,kind,payload,deleted_at&kind=in.(clients.client,clients.appointment)")
+        r["id"]: r for r in db.get("records", "select=id,kind,payload,deleted_at&kind=in.(clients.client,clients.appointment,planner.event)")
     }
     now = iso(datetime.now(timezone.utc))
     rows: list[dict] = []
@@ -179,46 +181,57 @@ def main() -> None:
                             "phone": phone, "note": "", "member": MEMBER, "createdAt": now, "source": "iclients"},
             })
 
-    # --- записи ---
+    # --- записи: появляются в планере Насти как её тренировки с клиентом ---
     seen: set[str] = set()
     for rec in fetched:
-        rid = str(uuid.uuid5(NS, f"record:{rec['id']}"))
+        rid = str(uuid.uuid5(NS, f"event:{rec['id']}"))
         seen.add(rid)
         begin = datetime.fromisoformat(rec["datetime"])
-        services = rec.get("services") or []
-        wanted = {
-            "clientID": client_ids.get((rec.get("client") or {}).get("id")),
-            "service": ", ".join(s.get("title", "") for s in services if s.get("title")),
-            "start": iso(begin),
-            "durationMinutes": max(1, round((rec.get("seance_length") or 3600) / 60)),
-            "price": float(sum((s.get("cost") or s.get("first_cost") or 0) for s in services)),
-            "note": rec.get("comment") or "",
-        }
+        finish = begin + timedelta(seconds=rec.get("seance_length") or 3600)
+        client = rec.get("client") or {}
+        client_uuid = client_ids.get(client.get("id"))
+        services = ", ".join(s.get("title", "") for s in rec.get("services") or [] if s.get("title"))
         old = existing.get(rid)
         if old is None:
-            payload = {**wanted, "status": "planned",
-                       "reminderMinutes": 60, "member": MEMBER, "source": "iclients"}
+            payload = {
+                "title": client.get("display_name") or client.get("name") or "Запись YClients",
+                "notes": services, "start": iso(begin), "end": iso(finish), "isAllDay": False,
+                "scope": MEMBER, "category": "personal", "repeatRule": "none",
+                "reminderMinutes": 60, "createdBy": MEMBER, "createdAt": now,
+                "participantIDs": [client_uuid.upper()] if client_uuid else [],
+                "isPrivate": False, "repeatInterval": 1, "source": "yclients",
+            }
         else:
+            # Меняем только время: остальное (оплата, статусы, заметки) ведёт Настя.
             payload = dict(old["payload"] or {})
             before = dict(payload)
-            for k in ("clientID", "service", "start", "durationMinutes"):
-                if wanted[k] is not None:
-                    payload[k] = wanted[k]
-            if not payload.get("price"):
-                payload["price"] = wanted["price"]
+            payload["start"], payload["end"] = iso(begin), iso(finish)
             if payload == before and not old["deleted_at"]:
                 continue
-        rows.append({"id": rid, "couple_id": couple_id, "kind": "clients.appointment",
+        rows.append({"id": rid, "couple_id": couple_id, "kind": "planner.event",
                      "updated_at": now, "deleted_at": None, "payload": payload})
 
-    # Запись была в приложении, а из журнала пропала -> отмена.
+    # Запись пропала из журнала (удалена): отменяем занятие, если Настя не отметила статус.
+    window_start = iso(datetime.combine(start, datetime.min.time(), timezone.utc))
     for rid, old in existing.items():
         p = old["payload"] or {}
-        if (old["kind"] == "clients.appointment" and p.get("source") == "iclients" and rid not in seen
-                and not old["deleted_at"] and p.get("status") == "planned"
-                and p.get("start", "") >= iso(datetime.combine(start, datetime.min.time(), timezone.utc))):
+        if (old["kind"] == "planner.event" and p.get("source") == "yclients" and rid not in seen
+                and not old["deleted_at"] and not p.get("statuses") and not p.get("partnerStatuses")
+                and p.get("start", "") >= window_start):
+            day = datetime.fromisoformat(p["start"].replace("Z", "+00:00")).astimezone(MOSCOW)
+            key = str(int(day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()))
+            keys = [k for k in (p.get("cancelledDays") or "").split(",") if k]
+            if key in keys:
+                continue
+            rows.append({"id": rid, "couple_id": couple_id, "kind": "planner.event", "updated_at": now,
+                         "deleted_at": None, "payload": {**p, "cancelledDays": ",".join(keys + [key])}})
+
+    # Первые версии клали записи в «Клиенты» (clients.appointment): убираем их, теперь есть записи планера.
+    for rid, old in existing.items():
+        p = old["payload"] or {}
+        if old["kind"] == "clients.appointment" and p.get("source") == "iclients" and not old["deleted_at"]:
             rows.append({"id": rid, "couple_id": couple_id, "kind": "clients.appointment",
-                         "updated_at": now, "deleted_at": None, "payload": {**p, "status": "cancelled"}})
+                         "updated_at": now, "deleted_at": now, "payload": p})
 
     if rows:
         db.upsert(rows)
