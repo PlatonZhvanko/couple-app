@@ -349,9 +349,15 @@ struct PlannerTimelineView: View {
     }
 
     /// Ширина текста на 1 пункт шрифта (жирный системный): считаем по-настоящему, а не на глаз.
+    nonisolated(unsafe) private static var widthCache: [String: CGFloat] = [:]
+    private static let measureFont = UIFont.systemFont(ofSize: 100, weight: .bold)
+
     private static func unitWidth(_ text: String) -> CGFloat {
-        let font = UIFont.systemFont(ofSize: 100, weight: .bold)
-        return (text as NSString).size(withAttributes: [.font: font]).width / 100
+        if let cached = widthCache[text] { return cached }
+        let width = (text as NSString).size(withAttributes: [.font: measureFont]).width / 100
+        if widthCache.count > 2000 { widthCache.removeAll() }
+        widthCache[text] = width
+        return width
     }
 
     /// Как написать название в блоке: строки и размер шрифта.
@@ -380,7 +386,8 @@ struct PlannerTimelineView: View {
         // Все слова остаются в блоке: пробуем разбить на 1…5 строк (самое узкое разбиение
         // для каждого числа строк) и берём вариант с самым крупным шрифтом.
         var best: (lines: [String], font: CGFloat) = ([title], fit([title]))
-        for count in 2...min(5, words.count) {
+        // Слишком много слов: делим только на 2–3 строки, чтобы не считать зря.
+        for count in 2...min(words.count > 12 ? 3 : 5, words.count) {
             let lines = Self.balancedLines(words, count: count)
             let size = fit(lines)
             if size > best.font { best = (lines, size) }
