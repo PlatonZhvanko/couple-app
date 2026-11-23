@@ -133,7 +133,14 @@ struct PlannerCalendarView: View {
         PlannerPaymentStore.autoCharge(context, events: allEvents, days: days)
     }
 
+    /// Оплаты, разложенные по записям: строится один раз за перерисовку, а не для каждого блока.
+    private final class PaymentIndex {
+        var byEvent: [UUID: [PlannerPayment]] = [:]
+    }
+    @State private var paymentIndex = PaymentIndex()
+
     var body: some View {
+        let _ = { paymentIndex.byEvent = Dictionary(grouping: payments, by: \.eventID) }()
         Group {
             if style == .planner {
                 plannerBody
@@ -529,7 +536,10 @@ struct PlannerCalendarView: View {
     private func isHiddenByEye(_ event: PlannerEvent, _ day: Date) -> Bool {
         guard hideCancelled else { return false }
         if [.cancelled, .fineUnpaid, .finePaid, .errandNotDone, .errandMoved].contains(blockBadge(event, day)) { return true }
-        if let status = event.status(on: day, for: account.current), status == .notDone || status == .moved { return true }
+        switch event.status(on: day, for: account.current) {
+        case .notDone?, .moved?: return true
+        default: break
+        }
         return false
     }
 
@@ -544,7 +554,7 @@ struct PlannerCalendarView: View {
 
     private func blockBadge(_ event: PlannerEvent, _ day: Date) -> PlannerPayBadge {
         guard isOwner || event.categoryValue == .errand else {
-            return PlannerPaymentStore.badge(for: event, day: day, payments: payments)
+            return PlannerPaymentStore.badge(for: event, day: day, payments: paymentIndex.byEvent[event.syncID] ?? [])
         }
         switch event.status(on: day, for: account.current) {
         case .done: return .errandDone

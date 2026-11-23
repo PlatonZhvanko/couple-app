@@ -22,10 +22,27 @@ struct PlannerRecordView: View {
     @Environment(SyncCoordinator.self) private var sync
     @Environment(AccountStore.self) private var account
 
-    @Query(filter: #Predicate<PlannerPayment> { $0.deletedAt == nil })
-    private var payments: [PlannerPayment]
+    /// Только оплаты этой записи: не все оплаты за всё время.
+    @Query private var payments: [PlannerPayment]
     @Query(filter: #Predicate<PlannerSubscription> { $0.deletedAt == nil })
     private var subscriptions: [PlannerSubscription]
+
+    /// Посчитано один раз, а не при каждой перерисовке: остаток абонемента, действие абонемента, цена.
+    @State private var balances: [UUID: String] = [:]
+    @State private var covered: Set<UUID> = []
+    @State private var groupPrice: Double = PlannerPricing.group
+
+    init(event: PlannerEvent, day: Date, onEdit: @escaping () -> Void, onMove: @escaping () -> Void,
+         onCarry: @escaping () -> Void = {}, readOnly: Bool = false) {
+        self.event = event
+        self.day = day
+        self.onEdit = onEdit
+        self.onMove = onMove
+        self.onCarry = onCarry
+        self.readOnly = readOnly
+        let id = event.syncID
+        _payments = Query(filter: #Predicate<PlannerPayment> { $0.deletedAt == nil && $0.eventID == id })
+    }
 
     @State private var clients: [PlannerClientDirectory.Entry] = []
     @State private var subscriptionClient: PlannerClientDirectory.Entry?
@@ -115,11 +132,14 @@ struct PlannerRecordView: View {
             }
             .onAppear {
                 clients = PlannerClientDirectory.all(context)
+                refreshDerived()
                 // Телефон читаем один раз, а не при каждой перерисовке экрана.
                 if event.isFromYClients, let id = event.participantIDs.first {
                     clientPhone = PlannerClientDirectory.phone(of: id, context: context)
                 }
             }
+            .onChange(of: paymentsSignature) { _, _ in refreshDerived() }
+            .onChange(of: subscriptions.count) { _, _ in refreshDerived() }
             .sheet(isPresented: $showMoveSheet) { moveSheet }
             .sheet(item: $subscriptionClient) { client in
                 PlannerSubscriptionSaleSheet(month: day, client: client)
@@ -419,27 +439,15 @@ struct PlannerRecordView: View {
                     name: client.name,
                     method: method(of: client),
                     amount: dayPayments.first { $0.clientID == client.id }?.amount
-                        ?? PlannerPaymentStore.price(for: event, context: context),
-                    balanceText: balanceText(for: client),
+                        ?? groupPrice,
+                    balanceText: balances[client.id],
                     canEdit: canEdit,
                     isGroup: event.categoryValue != .personal,
-                    hasSubscription: subscriptions.contains {
-                        $0.clientID == client.id && $0.covers(day)
-                            && PlannerSubscriptionTypeStore.applies($0, to: event, context: context)
-                    },
+                    hasSubscription: covered.contains(client.id),
                     onSelect: { select($0, for: client) },
                     onSubscription: { subscriptionClient = client },
                     onAmount: { setAmount($0, for: client) }
                 )
-            }
-            if canEdit && participants.count > 1 {
-                Menu {
-                    ForEach(bulkMethods) { item in
-                        Button("\(item.emoji) \(item.title)") { markAllPaid(with: item) }
-                    }
-                } label: {
-                    Label("Все оплатили", systemImage: "checkmark.circle.fill")
-                }
             }
         } header: {
             Text("Оплата")
@@ -450,10 +458,41 @@ struct PlannerRecordView: View {
         }
     }
 
-    private func balanceText(for client: PlannerClientDirectory.Entry) -> String? {
-        guard let sub = PlannerPaymentStore.subscription(context, clientID: client.id, month: day) else { return nil }
-        let balance = PlannerPaymentStore.balance(context, of: sub)
-        return "Абонемент: остаток \(PlannerPricing.format(balance))"
+    /// Один раз считаем остатки абонементов, действие абонемента и цену (раньше это делалось
+    /// для каждого ребёнка при каждой перерисовке и подвешивало приложение).
+    private func refreshDerived() {
+        groupPrice = PlannerPaymentStore.price(for: event, context: context)
+        let ids = Set(participants.map(\.id))
+        guard !ids.isEmpty else { balances = [:]; covered = []; return }
+        let monthStart = PlannerCalendar.startOfMonth(day)
+        let monthEnd = cal.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        let subMethod = PlannerPayMethod.subscription.rawValue
+        var spent: [UUID: Double] = [:]
+        let rows = (try? context.fetch(FetchDescriptor<PlannerPayment>(predicate: #Predicate {
+            $0.deletedAt == nil && $0.method == subMethod && $0.day >= monthStart && $0.day < monthEnd
+        }))) ?? []
+        for row in rows where ids.contains(row.clientID) { spent[row.clientID, default: 0] += row.amount }
+        var texts: [UUID: String] = [:]
+        var cover: Set<UUID> = []
+        var applies: [String: Bool] = [:]
+        for sub in subscriptions where ids.contains(sub.clientID) {
+            if cal.isDate(sub.month, equalTo: monthStart, toGranularity: .month) {
+                texts[sub.clientID] = "Абонемент: остаток \(PlannerPricing.format(sub.amount - (spent[sub.clientID] ?? 0)))"
+            }
+            guard sub.covers(day) else { continue }
+            let ok: Bool
+            if let known = applies[sub.kindName] { ok = known } else {
+                ok = PlannerSubscriptionTypeStore.applies(sub, to: event, context: context)
+                applies[sub.kindName] = ok
+            }
+            if ok { cover.insert(sub.clientID) }
+        }
+        balances = texts
+        covered = cover
+    }
+
+    private var paymentsSignature: String {
+        payments.map { "\($0.clientID)\($0.method)\($0.amount)\($0.day.timeIntervalSince1970)" }.joined(separator: "|")
     }
 
     private func select(_ method: PlannerPayMethod, for client: PlannerClientDirectory.Entry) {
@@ -469,16 +508,6 @@ struct PlannerRecordView: View {
     private func setAmount(_ value: Double, for client: PlannerClientDirectory.Entry) {
         guard canEdit else { return }
         PlannerPaymentStore.set(context, event: event, day: day, clientID: client.id, amount: value)
-        sync.requestSync()
-    }
-
-    /// Способы для кнопки «Все оплатили».
-    private var bulkMethods: [PlannerPayMethod] { [.cash, .transfer] }
-
-    private func markAllPaid(with method: PlannerPayMethod) {
-        for client in participants where self.method(of: client) == .none {
-            PlannerPaymentStore.set(context, event: event, day: day, clientID: client.id, method: method)
-        }
         sync.requestSync()
     }
 
