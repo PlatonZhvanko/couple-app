@@ -29,14 +29,29 @@ struct RootView: View {
     @State private var showSplash = true
     @State private var showGreeting = false
     @State private var catCenter = CatPeekCenter()
+    @Environment(\.scenePhase) private var scenePhase
+    /// Меняется при уходе в фон: весь интерфейс пересоздаётся с нуля.
+    @State private var generation = UUID()
+    @State private var showReload = false
 
     var body: some View {
         ZStack {
             if let me = account.me {
                 RootTabView(me: me)
-                    .id(me) // при смене аккаунта экраны пересоздаются
+                    .id("\(me.rawValue)-\(generation.uuidString)") // при смене аккаунта и после фона экраны пересоздаются
             } else {
                 LoginView()
+            }
+            if showReload {
+                ZStack {
+                    Color(.systemBackground).ignoresSafeArea()
+                    VStack(spacing: 14) {
+                        ProgressView().controlSize(.large)
+                        Text("Загрузка…").font(.headline).foregroundStyle(.secondary)
+                    }
+                }
+                .transition(.opacity)
+                .zIndex(2)
             }
             if showSplash {
                 SplashView {
@@ -67,6 +82,26 @@ struct RootView: View {
             .ignoresSafeArea()
         }
         .environment(catCenter)
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background:
+                // Защита от «мёртвого» экрана: при сворачивании сбрасываем весь интерфейс
+                // (окна, навигацию, ввод) и возвращаемся в планер. Сохранённые данные целы.
+                UserDefaults.standard.set("planner", forKey: "root.selectedTab")
+                showGreeting = false
+                showReload = true
+                generation = UUID()
+            case .active:
+                if showReload {
+                    Task {
+                        try? await Task.sleep(for: .seconds(0.7))
+                        withAnimation(.easeOut(duration: 0.3)) { showReload = false }
+                    }
+                }
+            default:
+                break
+            }
+        }
         .scrollDismissesKeyboard(.interactively)
         .task {
             // Окно появляется не сразу, поэтому пробуем несколько раз.
