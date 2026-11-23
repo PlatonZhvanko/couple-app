@@ -2,13 +2,14 @@ import SwiftUI
 
 /// Окрас кота для мультяшной иконки.
 enum PetsCatStyle: String, CaseIterable {
-    case tuxedo, slim, grey
+    case tuxedo, slim, grey, cream
 
     var fur: Color {
         switch self {
         case .tuxedo: Color(red: 0.13, green: 0.12, blue: 0.14)
         case .slim: Color(red: 0.10, green: 0.10, blue: 0.12)
         case .grey: Color(red: 0.62, green: 0.63, blue: 0.68)
+        case .cream: Color(red: 0.86, green: 0.74, blue: 0.58)
         }
     }
 
@@ -18,6 +19,7 @@ enum PetsCatStyle: String, CaseIterable {
         case .tuxedo: .miron
         case .slim: .gosha
         case .grey: .chloe
+        case .cream: .misa
         }
     }
 
@@ -26,6 +28,7 @@ enum PetsCatStyle: String, CaseIterable {
         case .tuxedo: Color(red: 0.98, green: 0.86, blue: 0.88)
         case .slim: Color(red: 0.93, green: 0.88, blue: 0.80)
         case .grey: Color(red: 0.85, green: 0.78, blue: 0.74)
+        case .cream: Color(red: 0.90, green: 0.92, blue: 0.82)
         }
     }
 
@@ -33,7 +36,7 @@ enum PetsCatStyle: String, CaseIterable {
     var hasWhiteMuzzle: Bool { self == .tuxedo }
     /// Худенький кот — мордочка уже.
     var faceWidth: CGFloat { self == .slim ? 0.62 : (self == .grey ? 0.56 : 0.74) }
-    var eye: Color { self == .grey ? Color(red: 0.35, green: 0.62, blue: 0.45) : Color(red: 0.95, green: 0.78, blue: 0.25) }
+    var eye: Color { (self == .grey || self == .cream) ? Color(red: 0.35, green: 0.62, blue: 0.45) : Color(red: 0.95, green: 0.78, blue: 0.25) }
 }
 
 private struct PetsEar: Shape {

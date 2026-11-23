@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Три наших кота. Каждый отвечает за своё: Мироня — за настроение,
-/// Хлоя — за питание, Гоша — за деньги.
+/// Четыре наших кота. Каждый отвечает за своё: Мироня — за настроение,
+/// Хлоя — за питание, Гоша — за деньги, Миса — за планер и общие дела.
 enum Cat: String, CaseIterable, Identifiable {
     case miron
     case gosha
     case chloe
+    case misa
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum Cat: String, CaseIterable, Identifiable {
         case .miron: "Мироня"
         case .gosha: "Гоша"
         case .chloe: "Хлоя"
+        case .misa: "Миса"
         }
     }
 
@@ -23,6 +25,7 @@ enum Cat: String, CaseIterable, Identifiable {
         case .miron: "про настроение"
         case .gosha: "про деньги"
         case .chloe: "про еду"
+        case .misa: "про планер и общие дела"
         }
     }
 
@@ -32,6 +35,7 @@ enum Cat: String, CaseIterable, Identifiable {
         case .miron: 1.0
         case .gosha: 0.9
         case .chloe: 0.78
+        case .misa: 0.82
         }
     }
 
@@ -41,6 +45,7 @@ enum Cat: String, CaseIterable, Identifiable {
         case .miron: 0.94
         case .gosha: 0.74
         case .chloe: 0.84
+        case .misa: 0.9
         }
     }
 
@@ -49,6 +54,7 @@ enum Cat: String, CaseIterable, Identifiable {
         case .miron: Color(red: 0.14, green: 0.13, blue: 0.14)
         case .gosha: Color(red: 0.18, green: 0.17, blue: 0.19)
         case .chloe: Color(red: 0.55, green: 0.57, blue: 0.63)
+        case .misa: Color(red: 0.84, green: 0.72, blue: 0.56)
         }
     }
 
@@ -57,6 +63,7 @@ enum Cat: String, CaseIterable, Identifiable {
         case .miron: Color(red: 0.34, green: 0.32, blue: 0.33)
         case .gosha: Color(red: 0.27, green: 0.26, blue: 0.29)
         case .chloe: Color(red: 0.66, green: 0.68, blue: 0.74)
+        case .misa: Color(red: 0.93, green: 0.84, blue: 0.70)
         }
     }
 
@@ -65,6 +72,7 @@ enum Cat: String, CaseIterable, Identifiable {
         case .miron: Color(red: 0.8, green: 0.6, blue: 0.16)
         case .gosha: Color(red: 0.62, green: 0.78, blue: 0.3)
         case .chloe: Color(red: 0.88, green: 0.55, blue: 0.14)
+        case .misa: Color(red: 0.40, green: 0.56, blue: 0.30)
         }
     }
 
@@ -183,6 +191,17 @@ struct CatAvatar: View {
             Ellipse().fill(Cat.cream)
                 .frame(width: headW * 0.36, height: headH * 0.24)
                 .offset(y: headH * 0.33)
+        case .misa:
+            // кремовая атлантика с мягкими тенями на лбу и светлой мордочкой
+            ForEach([-1.0, 0.0, 1.0], id: \.self) { i in
+                Capsule().fill(Color(red: 0.66, green: 0.52, blue: 0.38).opacity(0.5))
+                    .frame(width: headW * 0.035, height: headH * 0.15)
+                    .rotationEffect(.degrees(i * 12))
+                    .offset(x: CGFloat(i) * headW * 0.1, y: -headH * 0.36)
+            }
+            Ellipse().fill(Cat.cream.opacity(0.85))
+                .frame(width: headW * 0.46, height: headH * 0.3)
+                .offset(y: headH * 0.3)
         case .gosha:
             // чёрный, только маленькое белое пятнышко на подбородке
             Ellipse().fill(Cat.cream.opacity(0.9))
