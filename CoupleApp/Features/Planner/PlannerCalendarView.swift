@@ -58,6 +58,8 @@ struct PlannerCalendarView: View {
     @State private var externalDetail: CalendarItem?
     /// Запись, которую сейчас переносят: нужно выбрать новое время.
     @State private var moving: MovingState?
+    /// Перенос записи другого раздела (например, ремонта авто): тоже касанием по журналу.
+    @State private var movingExternal: CalendarItem?
     /// Элементы из других разделов (например, записи клиентов).
     @State private var externalItems: [CalendarItem] = []
 
@@ -151,6 +153,8 @@ struct PlannerCalendarView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if let moving {
                 movingBanner(moving)
+            } else if let movingExternal {
+                externalMovingBanner(movingExternal)
             }
         }
         .task(id: refreshKey) { refresh() }
@@ -202,6 +206,24 @@ struct PlannerCalendarView: View {
         .sheet(item: $externalDetail, onDismiss: { refresh() }) { item in
             Group {
                 if let detail = item.detail { detail() } else { EmptyView() }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if canEditExternal(item), item.move != nil {
+                    Button {
+                        externalDetail = nil
+                        withAnimation { movingExternal = item }
+                    } label: {
+                        Label("Перенести", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 6)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .sheet(isPresented: $showPick) {
@@ -288,6 +310,36 @@ struct PlannerCalendarView: View {
         .padding(.vertical, 8)
         .background(Color.accentColor.opacity(0.2))
         .foregroundStyle(Color.primary)
+    }
+
+    private func externalMovingBanner(_ item: CalendarItem) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Куда перенести?").font(.subheadline.weight(.semibold))
+                Text("Нажми на любое время или день: «\(item.title)»")
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button("Отмена") { withAnimation { self.movingExternal = nil } }
+                .font(.subheadline.weight(.semibold))
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.accentColor.opacity(0.2))
+        .foregroundStyle(Color.primary)
+    }
+
+    private func finishExternalMove(to start: Date) {
+        guard let item = movingExternal else { return }
+        item.move?(start)
+        sync.requestSync()
+        withAnimation {
+            movingExternal = nil
+            selectedDay = cal.startOfDay(for: start)
+        }
+        refresh()
     }
 
     private func finishMove(to start: Date) {
@@ -410,13 +462,15 @@ struct PlannerCalendarView: View {
                     if showsPartner { return }
                     if moving != nil {
                         finishMove(to: start)
+                    } else if movingExternal != nil {
+                        finishExternalMove(to: start)
                     } else {
                         selectedDay = cal.startOfDay(for: start)
                         sheetTarget = SheetTarget(kind: .edit, event: nil, day: start, time: start)
                     }
                 },
                 onEventTap: { event, day in
-                    guard moving == nil else { return }
+                    guard moving == nil, movingExternal == nil else { return }
                     guard let tapped = events.occurrences(on: cal.startOfDay(for: day)).first(where: { $0.event === event }) else {
                         sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
                         return
@@ -666,6 +720,8 @@ struct PlannerCalendarView: View {
             if shiftMode && isOwner && !showsPartner {
                 PlannerShiftStore.toggle(context, day: day, amount: shiftAmount)
                 sync.requestSync()
+            } else if let item = movingExternal {
+                finishExternalMove(to: PlannerCalendar.combine(day: day, time: item.start))
             } else if let moving {
                 // Перенос на другой день: то же время суток.
                 let time = PlannerCalendar.combine(day: day, time: moving.occurrenceStart)
