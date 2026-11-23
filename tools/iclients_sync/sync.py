@@ -30,6 +30,14 @@ DAYS_AHEAD = 60
 http = requests.Session()
 
 
+def norm(name: str) -> str:
+    return " ".join(name.lower().split())
+
+
+# Клиенты, чьи записи не переносим (имена через запятую, регистр не важен).
+EXCLUDED = {norm(n) for n in os.environ.get("ICLIENTS_EXCLUDE_CLIENTS", "").split(",") if n.strip()}
+
+
 def env(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
@@ -106,6 +114,7 @@ def main() -> None:
         r for r in iclients_records(start, end)
         if not r.get("activity_id")
         and any(i.get("id") == RESOURCE_INSTANCE_ID for i in r.get("resource_instances") or [])
+        and norm((r.get("client") or {}).get("display_name") or (r.get("client") or {}).get("name") or "") not in EXCLUDED
     ]
 
     db = Supabase()
