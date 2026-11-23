@@ -2,7 +2,8 @@ name: Синхронизация YClients
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
+    - cron: "2-57/15 * * * *"
   workflow_dispatch:
 
 permissions:
