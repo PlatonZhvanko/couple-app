@@ -661,9 +661,10 @@ enum PlannerGroupKindStore {
     /// если по смыслу подходит ровно одна группа (название содержит набранное), записи
     /// переносятся на неё, а лишняя пустая группа убирается. Если вариантов несколько, не трогаем.
     @MainActor
-    static func repairTypedDuplicates(_ context: ModelContext) {
+    @discardableResult
+    static func repairTypedDuplicates(_ context: ModelContext) -> Bool {
         let kinds = ((try? context.fetch(FetchDescriptor<PlannerGroupKind>())) ?? []).filter { $0.deletedAt == nil }
-        guard kinds.count > 1 else { return }
+        guard kinds.count > 1 else { return false }
         let events = ((try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.deletedAt == nil }))) ?? [])
             .filter { [PlannerCategory.group, .school].contains($0.categoryValue) }
         var changed = false
@@ -687,6 +688,7 @@ enum PlannerGroupKindStore {
             }
         }
         if changed { try? context.save() }
+        return changed
     }
 }
 

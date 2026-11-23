@@ -146,16 +146,17 @@ struct PlannerCalendarView: View {
         }
         .task(id: refreshKey) { refresh() }
         .task {
-            PlannerGroupKindStore.repairTypedDuplicates(context)
-            // Один раз: клиентов из шаблонов групп добавляем в уже созданные будущие записи.
-            if !UserDefaults.standard.bool(forKey: "planner.groupMembersBackfill.v1") {
-                let kinds = (try? context.fetch(FetchDescriptor<PlannerGroupKind>())) ?? []
-                for kind in kinds where kind.deletedAt == nil {
-                    PlannerGroupKindStore.propagate(context, kind: kind, ids: kind.memberIDs)
-                }
-                UserDefaults.standard.set(true, forKey: "planner.groupMembersBackfill.v1")
+            // Разовые починки данных: не на старте, один раз, с флагом «выполнено».
+            let defaults = UserDefaults.standard
+            guard !defaults.bool(forKey: "planner.dataRepair.v2") else { return }
+            defaults.set(true, forKey: "planner.dataRepair.v2")
+            try? await Task.sleep(for: .seconds(4))
+            var changed = PlannerGroupKindStore.repairTypedDuplicates(context)
+            let kinds = (try? context.fetch(FetchDescriptor<PlannerGroupKind>())) ?? []
+            for kind in kinds where kind.deletedAt == nil && !kind.memberIDs.isEmpty {
+                if PlannerGroupKindStore.propagate(context, kind: kind, ids: kind.memberIDs) { changed = true }
             }
-            sync.requestSync()
+            if changed { sync.requestSync() }
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
