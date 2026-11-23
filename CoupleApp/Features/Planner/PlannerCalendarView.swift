@@ -35,6 +35,8 @@ struct PlannerCalendarView: View {
     /// Несколько записей в одном времени: меню снизу, чтобы выбрать нужную.
     @State private var pickChoices: [PlannerPickChoice] = []
     @State private var showPick = false
+    /// Глазик: скрыть отменённые, перенесённые и «не сделано» (записи не удаляются).
+    @AppStorage("planner.hideCancelled") private var hideCancelled = false
 
     private struct ShiftEditTarget: Identifiable {
         let day: Date
@@ -383,6 +385,9 @@ struct PlannerCalendarView: View {
                     if isOwner && !showsPartner { shiftEdit = ShiftEditTarget(day: day) }
                 },
                 badgeEmoji: { event, day in styledEmoji(event, day) },
+                isHidden: { event, day in isHiddenByEye(event, day) },
+                onEyeTap: { withAnimation { hideCancelled.toggle() } },
+                eyeHides: hideCancelled,
                 dayMark: { moodMark($0) },
                 badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
@@ -464,7 +469,7 @@ struct PlannerCalendarView: View {
         var result: [PlannerPickChoice] = []
         let dayStart = cal.startOfDay(for: day)
         for occurrence in events.occurrences(on: dayStart)
-            where !occurrence.event.isAllDay && occurrence.start < end && occurrence.end > start {
+            where !occurrence.event.isAllDay && !isHiddenByEye(occurrence.event, day) && occurrence.start < end && occurrence.end > start {
             result.append(PlannerPickChoice(
                 id: occurrence.id, title: occurrence.event.plainTitle,
                 start: occurrence.start, end: occurrence.end,
@@ -518,6 +523,14 @@ struct PlannerCalendarView: View {
         case .notDone: return Color.red.opacity(0.65)
         case .moved: return Color.white
         }
+    }
+
+    /// Режим «глазик»: прячем отменённые, перенесённые (белые) и «не сделано».
+    private func isHiddenByEye(_ event: PlannerEvent, _ day: Date) -> Bool {
+        guard hideCancelled else { return false }
+        if [.cancelled, .fineUnpaid, .finePaid, .errandNotDone, .errandMoved].contains(blockBadge(event, day)) { return true }
+        if let status = event.status(on: day, for: account.current), status == .notDone || status == .moved { return true }
+        return false
     }
 
     private func styledEmoji(_ event: PlannerEvent, _ day: Date) -> String? {

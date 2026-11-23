@@ -20,6 +20,9 @@ struct PlannerSubscriptionSaleSheet: View {
     @State private var selectedType: PlannerSubscriptionType?
     @State private var amountText = ""
     @State private var validText = "30"
+    /// Срок: на N дней или до выбранного дня включительно.
+    @State private var untilMode = false
+    @State private var untilDate = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
     @State private var chargeText = "500"
     @State private var query = ""
     @State private var typeQuery = ""
@@ -39,16 +42,29 @@ struct PlannerSubscriptionSaleSheet: View {
         return Array(types.filter { $0.name.localizedCaseInsensitiveContains(q) }.prefix(5))
     }
 
+    private var trimmedTypeQuery: String { typeQuery.trimmingCharacters(in: .whitespaces) }
+
+    private var canCreateType: Bool {
+        !trimmedTypeQuery.isEmpty
+            && !types.contains { $0.name.caseInsensitiveCompare(trimmedTypeQuery) == .orderedSame }
+    }
+
+    private func createType() {
+        let item = PlannerSubscriptionType(name: trimmedTypeQuery, price: amount ?? 0)
+        context.insert(item)
+        item.markChanged()
+        try? context.save()
+        sync.requestSync()
+        selectedType = item
+        typeQuery = ""
+    }
+
     private var amount: Double? { Double(amountText.replacingOccurrences(of: ",", with: ".")) }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("📜 Вид абонемента") {
-                    if types.isEmpty {
-                        Text("Видов пока нет. Добавь их в разделе «Клиенты» → «Абонементы».")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
                     if let selectedType {
                         HStack {
                             Label(selectedType.name, systemImage: "checkmark.circle.fill")
@@ -59,8 +75,17 @@ struct PlannerSubscriptionSaleSheet: View {
                             .buttonStyle(.borderless)
                         }
                     } else {
-                        TextField("Поиск абонемента", text: $typeQuery)
-                            .autocorrectionDisabled()
+                        HStack {
+                            TextField("Поиск абонемента", text: $typeQuery)
+                                .autocorrectionDisabled()
+                            if canCreateType {
+                                Button(action: createType) {
+                                    Image(systemName: "plus.circle.fill").font(.title3)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Создать новый абонемент")
+                            }
+                        }
                         ForEach(typeMatches) { type in
                             Button {
                                 selectedType = type
@@ -86,14 +111,23 @@ struct PlannerSubscriptionSaleSheet: View {
                             .frame(width: 90)
                         Text("₽").foregroundStyle(.secondary)
                     }
-                    HStack {
-                        Text("Срок действия")
-                        Spacer()
-                        TextField("30", text: $validText)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 60)
-                        Text("дн.").foregroundStyle(.secondary)
+                    Picker("Срок действия", selection: $untilMode) {
+                        Text("На N дней").tag(false)
+                        Text("До даты").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    if untilMode {
+                        DatePicker("Включительно по", selection: $untilDate, displayedComponents: [.date])
+                    } else {
+                        HStack {
+                            Text("Дней")
+                            Spacer()
+                            TextField("30", text: $validText)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 60)
+                            Text("дн.").foregroundStyle(.secondary)
+                        }
                     }
                     HStack {
                         Text("Списание за занятие")
@@ -154,7 +188,8 @@ struct PlannerSubscriptionSaleSheet: View {
         guard let client, let amount else { return }
         PlannerPaymentStore.saveSubscription(
             context, clientID: client.id, month: month, amount: max(0, amount),
-            kindName: selectedType?.name, validDays: Int(validText) ?? 30,
+            kindName: selectedType?.name, validDays: untilMode ? nil : (Int(validText) ?? 30),
+            expiresOn: untilMode ? untilDate : nil,
             charge: Double(chargeText)
         )
         sync.requestSync()
