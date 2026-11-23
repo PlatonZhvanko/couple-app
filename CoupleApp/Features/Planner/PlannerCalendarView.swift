@@ -751,7 +751,7 @@ struct PlannerEventRow: View {
                 HStack(spacing: 6) {
                     if event.isFromYClients { ClientsYClientsBadge(size: 14) }
                     Text(event.isFromYClients ? event.plainTitle : event.displayTitle)
-                        .font(.body.weight(.medium))
+                        .font(.body.weight([.cancelled, .fineUnpaid, .finePaid].contains(badge) ? .heavy : .medium))
                 }
                 HStack(spacing: 6) {
                     Text(timeText)
@@ -766,7 +766,7 @@ struct PlannerEventRow: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
-            if let symbol = badge.symbol {
+            if let symbol = badge.symbol, ![.cancelled, .fineUnpaid, .finePaid].contains(badge) {
                 Text(symbol)
             }
             Text(event.scopeValue.title(account))
