@@ -19,6 +19,8 @@ struct CalendarItem: Identifiable {
     var sharedWith: [CoupleMember] = []
     /// Маленький эмодзи в правом верхнем углу записи (например, 🔧). Пусто — без него.
     var emoji = ""
+    /// Маленький эмодзи в левом верхнем углу записи. Пусто — без него.
+    var leadingEmoji = ""
     var detail: (@MainActor () -> AnyView)? = nil
     /// Перенос записи на новое начало (перетаскиванием в Планере). Вызывается только для владельца.
     var move: (@MainActor (Date) -> Void)? = nil

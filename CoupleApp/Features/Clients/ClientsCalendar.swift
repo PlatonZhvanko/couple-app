@@ -24,7 +24,7 @@ enum ClientsCalendar {
             .filter { $0.end > interval.start }
             .map { item in
                 let name = item.clientID.flatMap { names[$0] } ?? "Клиент"
-                return CalendarItem(
+                var calendarItem = CalendarItem(
                     id: "clients.appointment.\(item.syncID.uuidString)",
                     title: item.service.isEmpty ? name : "\(name) · \(item.service)",
                     start: item.start,
@@ -33,6 +33,18 @@ enum ClientsCalendar {
                     color: .gray,
                     systemImage: "person.crop.circle.badge.clock"
                 )
+                if item.isFromIClients {
+                    // Записи White Lions: жёлтые, прозрачные, с обводкой, как ремонты авто.
+                    let owner = CoupleMember(rawValue: item.member) ?? .partner
+                    calendarItem = CalendarItem(
+                        id: calendarItem.id, title: calendarItem.title,
+                        start: item.start, end: item.end, member: owner,
+                        color: .yellow, systemImage: "person.crop.circle.badge.clock",
+                        leadingEmoji: "🦁",
+                        detail: { AnyView(NavigationStack { ClientsAppointmentDetailView(appointment: item, member: owner) }) }
+                    )
+                }
+                return calendarItem
             }
     }
 }

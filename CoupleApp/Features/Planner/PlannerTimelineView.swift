@@ -567,7 +567,7 @@ struct PlannerTimelineView: View {
             raw.append(PlannerTimelineBlock(
                 id: item.id, source: .external(item), title: item.title,
                 color: item.color, start: start, end: end, badge: .none, owner: nil,
-                corner: item.emoji
+                emoji: item.leadingEmoji, corner: item.emoji
             ))
         }
         raw.sort { $0.start != $1.start ? $0.start < $1.start : $0.end > $1.end }

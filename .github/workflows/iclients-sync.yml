@@ -27,6 +27,8 @@ jobs:
           YCLIENTS_COMPANY_ID: ${{ secrets.YCLIENTS_COMPANY_ID }}
           YCLIENTS_PARTNER_TOKEN: ${{ secrets.YCLIENTS_PARTNER_TOKEN }}
           YCLIENTS_USER_TOKEN: ${{ secrets.YCLIENTS_USER_TOKEN }}
+          # Записи этих клиентов в приложение не переносим (через запятую).
+          ICLIENTS_EXCLUDE_CLIENTS: "DuSH 13, DuSH RGK, DuSH 8, DuSH 3"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python tools/iclients_sync/sync.py

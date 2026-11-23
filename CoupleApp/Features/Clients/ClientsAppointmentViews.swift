@@ -37,7 +37,7 @@ struct ClientsAppointmentDetailView: View {
                 }
                 if appointment.isFromIClients {
                     LabeledContent("Источник") {
-                        HStack(spacing: 6) { ClientsIClientsBadge(); Text("журнал iClients") }
+                        HStack(spacing: 6) { ClientsIClientsBadge(); Text("White Lions") }
                     }
                 }
                 LabeledContent("Дата", value: ClientsFormat.dayTitle(appointment.start))

@@ -198,15 +198,28 @@ enum ClientsFormat {
     }
 }
 
-/// Значок «запись из iClients».
+/// Значок White Lions: жёлтый скруглённый квадрат с тёмной буквой V (рисуется кодом).
 struct ClientsIClientsBadge: View {
+    var size: CGFloat = 18
+
     var body: some View {
-        Text("iC")
-            .font(.system(size: 10, weight: .heavy, design: .rounded))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(Color(red: 0.0, green: 0.55, blue: 0.85), in: RoundedRectangle(cornerRadius: 5))
-            .accessibilityLabel("Из iClients")
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.28)
+                .fill(Color(red: 1.0, green: 0.80, blue: 0.10))
+            Path { p in
+                let w = size, h = size
+                p.move(to: CGPoint(x: w * 0.22, y: h * 0.26))
+                p.addLine(to: CGPoint(x: w * 0.40, y: h * 0.26))
+                p.addLine(to: CGPoint(x: w * 0.50, y: h * 0.55))
+                p.addLine(to: CGPoint(x: w * 0.62, y: h * 0.26))
+                p.addLine(to: CGPoint(x: w * 0.80, y: h * 0.26))
+                p.addLine(to: CGPoint(x: w * 0.56, y: h * 0.78))
+                p.addLine(to: CGPoint(x: w * 0.44, y: h * 0.78))
+                p.closeSubpath()
+            }
+            .fill(Color(red: 0.12, green: 0.12, blue: 0.14))
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel("White Lions")
     }
 }
