@@ -16,8 +16,6 @@ struct PlannerSubscriptionSaleSheet: View {
 
     @Query(filter: #Predicate<PlannerSubscriptionType> { $0.deletedAt == nil }, sort: \PlannerSubscriptionType.name)
     private var types: [PlannerSubscriptionType]
-    @Query(filter: #Predicate<PlannerGroupKind> { $0.deletedAt == nil }, sort: \PlannerGroupKind.name)
-    private var groupKinds: [PlannerGroupKind]
 
     /// Выбранный вид храним по номеру, а не самой записью: если запись заменит синхронизация, окно не упадёт.
     @State private var selectedTypeID: UUID?
@@ -31,29 +29,14 @@ struct PlannerSubscriptionSaleSheet: View {
     @State private var untilMode = false
     @State private var untilDate = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
     @State private var chargeText = "500"
-    @State private var groupQuery = ""
     @State private var client: PlannerClientDirectory.Entry?
 
-    private var trimmedGroupQuery: String { groupQuery.trimmingCharacters(in: .whitespaces) }
     private var selectedType: PlannerSubscriptionType? {
         guard let selectedTypeID else { return nil }
         return types.first { $0.syncID == selectedTypeID }
     }
 
     private var amount: Double? { Double(amountText.replacingOccurrences(of: ",", with: ".")) }
-
-    private var groupMatches: [PlannerGroupKind] {
-        guard let type = selectedType else { return [] }
-        let taken = Set(type.groupNames.map { $0.lowercased() })
-        let pool = groupKinds.filter { !taken.contains($0.name.lowercased()) }
-        guard !trimmedGroupQuery.isEmpty else { return Array(pool.prefix(2)) }
-        return Array(pool.filter { $0.name.localizedCaseInsensitiveContains(trimmedGroupQuery) }.prefix(6))
-    }
-
-    private var canCreateGroup: Bool {
-        !trimmedGroupQuery.isEmpty
-            && !groupKinds.contains { $0.name.caseInsensitiveCompare(trimmedGroupQuery) == .orderedSame }
-    }
 
     var body: some View {
         NavigationStack {
@@ -135,12 +118,42 @@ struct PlannerSubscriptionSaleSheet: View {
             } else {
                 // Поиск на отдельном экране: тут только кнопка, без поля ввода и пересчётов.
                 NavigationLink {
-                    PlannerSubscriptionPickScreen(startAmount: amount) { id in choose(id) }
+                    PlannerListPickScreen(
+                        title: "Абонемент", placeholder: "Название абонемента",
+                        load: loadTypes,
+                        create: createType,
+                        onPick: { id in if let uuid = UUID(uuidString: id) { choose(uuid) } }
+                    )
                 } label: {
-                    Label("Найти абонемент", systemImage: "magnifyingglass")
+                    Label("Выбрать абонемент", systemImage: "magnifyingglass")
                 }
             }
         }
+    }
+
+    private func loadTypes() -> [PlannerPickItem] {
+        let all = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        return all
+            .map { PlannerPickItem(id: $0.syncID.uuidString, name: $0.name, detail: PlannerPricing.format($0.price)) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Вид с таким названием мог быть удалён раньше: возвращаем его, а не заводим второй с тем же номером.
+    private func createType(_ name: String) -> String? {
+        let id = PlannerSubscriptionType.makeID(name: name)
+        let existing = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(predicate: #Predicate { $0.syncID == id })))?.first
+        let item: PlannerSubscriptionType
+        if let existing {
+            item = existing
+            item.deletedAt = nil
+        } else {
+            item = PlannerSubscriptionType(name: name, price: amount ?? 0)
+            context.insert(item)
+        }
+        item.markChanged()
+        try? context.save()
+        sync.requestSync()
+        return item.syncID.uuidString
     }
 
     private func choose(_ id: UUID) {
@@ -173,20 +186,15 @@ struct PlannerSubscriptionSaleSheet: View {
                     .buttonStyle(.borderless)
                 }
             }
-            TextField("Добавить группу или школу", text: $groupQuery)
-                .autocorrectionDisabled()
-            if canCreateGroup {
-                Button { createGroup(type) } label: {
-                    Label("Создать «\(trimmedGroupQuery)»", systemImage: "plus.circle.fill")
-                }
-                .buttonStyle(.borderless)
-            }
-            ForEach(groupMatches) { kind in
-                Button { addGroup(type, kind.name) } label: {
-                    Label(kind.name, systemImage: "plus")
-                        .foregroundStyle(Color.primary)
-                }
-                .buttonStyle(.borderless)
+            NavigationLink {
+                PlannerListPickScreen(
+                    title: "Группа или школа", placeholder: "Поиск группы или школы",
+                    load: { loadGroups(excluding: type) },
+                    create: { name in PlannerGroupKindStore.ensure(context, name: name, category: .group).name },
+                    onPick: { name in addGroup(type, name) }
+                )
+            } label: {
+                Label("Добавить группу или школу", systemImage: "plus.circle")
             }
         } header: {
             Text("👥 Для каких групп")
@@ -195,6 +203,15 @@ struct PlannerSubscriptionSaleSheet: View {
                  ? "Найди группу и добавь её. Рядом появится цена списания за одно занятие этой группы. Можно добавить несколько групп, у каждой своя цена. Пока групп нет, абонемент действует на все."
                  : "Справа цена списания за одно занятие этой группы. Будущие занятия считаются по ней.")
         }
+    }
+
+    private func loadGroups(excluding type: PlannerSubscriptionType) -> [PlannerPickItem] {
+        let taken = Set(type.groupNames.map { $0.lowercased() })
+        let all = (try? context.fetch(FetchDescriptor<PlannerGroupKind>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        return all
+            .filter { !taken.contains($0.name.lowercased()) }
+            .map { PlannerPickItem(id: $0.name, name: $0.name, detail: "") }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private func draftBinding(_ type: PlannerSubscriptionType, _ name: String) -> Binding<String> {
@@ -229,7 +246,6 @@ struct PlannerSubscriptionSaleSheet: View {
         type.markChanged()
         try? context.save()
         sync.requestSync()
-        groupQuery = ""
     }
 
     private func clearGroups(_ type: PlannerSubscriptionType) {
@@ -250,11 +266,6 @@ struct PlannerSubscriptionSaleSheet: View {
         type.markChanged()
         try? context.save()
         sync.requestSync()
-    }
-
-    private func createGroup(_ type: PlannerSubscriptionType) {
-        let kind = PlannerGroupKindStore.ensure(context, name: trimmedGroupQuery, category: .group)
-        addGroup(type, kind.name)
     }
 
     // MARK: Сумма и срок
@@ -305,51 +316,56 @@ struct PlannerSubscriptionSaleSheet: View {
     }
 }
 
-/// Поиск и выбор готового абонемента отдельным экраном: обычный список и поле фильтра.
-/// Хранит только простые значения (название, цена), а не живые записи базы.
-struct PlannerSubscriptionPickScreen: View {
-    let startAmount: Double?
-    let onPick: (UUID) -> Void
+/// Строка для простого экрана выбора: только значения, без живых записей базы.
+struct PlannerPickItem: Identifiable {
+    let id: String
+    let name: String
+    let detail: String
+    let lower: String
 
-    private struct Row: Identifiable {
-        let id: UUID
-        let name: String
-        let lower: String
-        let price: Double
+    init(id: String, name: String, detail: String) {
+        self.id = id
+        self.name = name
+        self.detail = detail
+        self.lower = name.lowercased()
     }
+}
 
-    @Environment(\.modelContext) private var context
-    @Environment(SyncCoordinator.self) private var sync
+/// Простой экран выбора: поле фильтра сверху (отдельно от списка), ниже обычный список и кнопка «Создать».
+struct PlannerListPickScreen: View {
+    let title: String
+    let placeholder: String
+    let load: () -> [PlannerPickItem]
+    /// Создаёт запись по названию и возвращает её номер; nil, если создавать нельзя.
+    let create: ((String) -> String?)?
+    let onPick: (String) -> Void
+
     @Environment(\.dismiss) private var dismiss
-
-    @State private var rows: [Row] = []
+    @State private var rows: [PlannerPickItem] = []
     @State private var query = ""
 
     private var q: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
-
-    private var shown: [Row] {
-        q.isEmpty ? rows : rows.filter { $0.lower.contains(q) }
-    }
-
-    private var canCreate: Bool {
-        !q.isEmpty && !rows.contains { $0.lower == q }
-    }
+    private var shown: [PlannerPickItem] { q.isEmpty ? rows : rows.filter { $0.lower.contains(q) } }
+    private var canCreate: Bool { create != nil && !q.isEmpty && !rows.contains { $0.lower == q } }
 
     var body: some View {
-        List {
-            Section {
-                TextField("Название абонемента", text: $query)
-                    .autocorrectionDisabled()
+        VStack(spacing: 8) {
+            TextField(placeholder, text: $query)
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+            List {
                 if canCreate {
-                    Button(action: create) {
+                    Button {
+                        let name = query.trimmingCharacters(in: .whitespaces)
+                        if let id = create?(name) {
+                            onPick(id)
+                            dismiss()
+                        }
+                    } label: {
                         Label("Создать «\(query.trimmingCharacters(in: .whitespaces))»", systemImage: "plus.circle.fill")
                     }
-                    .buttonStyle(.borderless)
-                }
-            }
-            Section {
-                if shown.isEmpty {
-                    Text("Ничего не найдено").foregroundStyle(.secondary)
                 }
                 ForEach(shown) { row in
                     Button {
@@ -359,61 +375,28 @@ struct PlannerSubscriptionPickScreen: View {
                         HStack {
                             Text(row.name).foregroundStyle(Color.primary)
                             Spacer()
-                            Text(PlannerPricing.format(row.price)).foregroundStyle(.secondary)
+                            if !row.detail.isEmpty {
+                                Text(row.detail).foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    .buttonStyle(.borderless)
+                }
+                if shown.isEmpty && !canCreate {
+                    Text("Ничего не найдено").foregroundStyle(.secondary)
                 }
             }
+            .listStyle(.plain)
         }
-        .navigationTitle("Абонемент")
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear(perform: load)
-    }
-
-    private func load() {
-        let all = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
-        rows = all
-            .map { Row(id: $0.syncID, name: $0.name, lower: $0.name.lowercased(), price: $0.price) }
-            .sorted { $0.name < $1.name }
-    }
-
-    private func create() {
-        let name = query.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        // Вид с таким названием мог быть удалён раньше: возвращаем его, а не заводим второй с тем же номером.
-        let id = PlannerSubscriptionType.makeID(name: name)
-        let existing = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(predicate: #Predicate { $0.syncID == id })))?.first
-        let item: PlannerSubscriptionType
-        if let existing {
-            item = existing
-            item.deletedAt = nil
-        } else {
-            item = PlannerSubscriptionType(name: name, price: startAmount ?? 0)
-            context.insert(item)
-        }
-        item.markChanged()
-        try? context.save()
-        sync.requestSync()
-        onPick(item.syncID)
-        dismiss()
+        .onAppear { if rows.isEmpty { rows = load() } }
     }
 }
 
-/// Выбор клиента: свой экран со своим поиском, чтобы набор текста в других полях не пересчитывал список.
+/// Клиент: тут только кнопка выбора, список и поиск на отдельном экране.
 private struct PlannerSaleClientSection: View {
     @Binding var client: PlannerClientDirectory.Entry?
     @Environment(\.modelContext) private var context
-
-    @State private var query = ""
-    @State private var rows: [(entry: PlannerClientDirectory.Entry, lower: String)] = []
-    @State private var loaded = false
-
-    private var matches: [PlannerClientDirectory.Entry] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return rows.prefix(2).map(\.entry) }
-        return Array(rows.lazy.filter { $0.lower.contains(q) }.prefix(5).map(\.entry))
-    }
 
     var body: some View {
         Section("🙋 Клиент") {
@@ -427,28 +410,28 @@ private struct PlannerSaleClientSection: View {
                     .buttonStyle(.borderless)
                 }
             } else {
-                TextField("Поиск клиента", text: $query)
-                    .autocorrectionDisabled()
-                ForEach(matches) { entry in
-                    Button { client = entry; query = "" } label: {
-                        Label(entry.name, systemImage: "person")
-                            .foregroundStyle(Color.primary)
-                    }
-                    .buttonStyle(.borderless)
+                NavigationLink {
+                    PlannerListPickScreen(
+                        title: "Клиент", placeholder: "Поиск клиента",
+                        load: {
+                            PlannerClientDirectory.all(context).map {
+                                PlannerPickItem(id: $0.id.uuidString, name: $0.name, detail: "")
+                            }
+                        },
+                        create: nil,
+                        onPick: { id in
+                            guard let uuid = UUID(uuidString: id) else { return }
+                            client = PlannerClientDirectory.all(context).first { $0.id == uuid }
+                        }
+                    )
+                } label: {
+                    Label("Выбрать клиента", systemImage: "magnifyingglass")
                 }
             }
-        }
-        .task {
-            guard !loaded else { return }
-            // Список клиентов читаем после показа окна, а не при открытии.
-            await Task.yield()
-            rows = PlannerClientDirectory.all(context).map { ($0, $0.name.lowercased()) }
-            loaded = true
         }
     }
 }
 
-/// Настройки абонементов: виды и список проданных.
 struct PlannerSubscriptionSettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
