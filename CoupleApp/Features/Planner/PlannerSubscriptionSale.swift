@@ -21,6 +21,8 @@ struct PlannerSubscriptionSaleSheet: View {
 
     /// Выбранный вид храним по номеру, а не самой записью: если запись заменит синхронизация, окно не упадёт.
     @State private var selectedTypeID: UUID?
+    /// Галочка «для конкретных групп»: без неё абонемент общий, на все группы.
+    @State private var forGroups = false
     /// Цены списания по группам, пока вводятся: в вид абонемента попадают при продаже или закрытии окна.
     @State private var chargeDrafts: [String: String] = [:]
     @State private var amountText = ""
@@ -70,7 +72,32 @@ struct PlannerSubscriptionSaleSheet: View {
         NavigationStack {
             Form {
                 typeSection
-                if let type = selectedType { groupsSection(type) }
+                if let type = selectedType {
+                    Section {
+                        Toggle("Абонемент для конкретных групп", isOn: $forGroups)
+                            .onChange(of: forGroups) { _, on in
+                                // Выключили: у вида не остаётся групп, он общий.
+                                if !on, !type.groupNames.isEmpty { clearGroups(type) }
+                            }
+                    }
+                    if forGroups {
+                        groupsSection(type)
+                    } else {
+                        Section {
+                            HStack {
+                                Text("Списание за занятие")
+                                Spacer()
+                                TextField("500", text: $chargeText)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 70)
+                                Text("₽").foregroundStyle(.secondary)
+                            }
+                        } footer: {
+                            Text("Абонемент действует на все группы и школы.")
+                        }
+                    }
+                }
                 termSection
                 PlannerSaleClientSection(client: $client)
                 Section {
@@ -110,6 +137,7 @@ struct PlannerSubscriptionSaleSheet: View {
                     Button {
                         commitCharges()
                         selectedTypeID = nil
+                        forGroups = false
                         chargeDrafts = [:]
                         amountText = ""
                     } label: {
@@ -146,6 +174,7 @@ struct PlannerSubscriptionSaleSheet: View {
 
     private func choose(_ type: PlannerSubscriptionType) {
         selectedTypeID = type.syncID
+        forGroups = !type.groupNames.isEmpty
         chargeDrafts = [:]
         typeQuery = ""
         amountText = "\(Int(type.price.rounded()))"
@@ -191,17 +220,6 @@ struct PlannerSubscriptionSaleSheet: View {
                     .buttonStyle(.borderless)
                 }
             }
-            if type.groupNames.isEmpty {
-                HStack {
-                    Text("Списание за занятие")
-                    Spacer()
-                    TextField("500", text: $chargeText)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 70)
-                    Text("₽").foregroundStyle(.secondary)
-                }
-            }
             TextField("Добавить группу или школу", text: $groupQuery)
                 .autocorrectionDisabled()
             if canCreateGroup {
@@ -221,8 +239,8 @@ struct PlannerSubscriptionSaleSheet: View {
             Text("👥 Для каких групп")
         } footer: {
             Text(type.groupNames.isEmpty
-                 ? "Группы не выбраны: абонемент действует на все группы и школы. Добавь группу, чтобы задать для неё своё списание за занятие."
-                 : "Справа цена списания за одно занятие этой группы. Меняется сразу для вида абонемента, будущие занятия считаются по ней.")
+                 ? "Найди группу и добавь её. Рядом появится цена списания за одно занятие этой группы. Можно добавить несколько групп, у каждой своя цена. Пока групп нет, абонемент действует на все."
+                 : "Справа цена списания за одно занятие этой группы. Будущие занятия считаются по ней.")
         }
     }
 
@@ -259,6 +277,15 @@ struct PlannerSubscriptionSaleSheet: View {
         try? context.save()
         sync.requestSync()
         groupQuery = ""
+    }
+
+    private func clearGroups(_ type: PlannerSubscriptionType) {
+        type.groupNames = []
+        type.groupCharges = [:]
+        chargeDrafts = [:]
+        type.markChanged()
+        try? context.save()
+        sync.requestSync()
     }
 
     private func removeGroup(_ type: PlannerSubscriptionType, _ name: String) {
