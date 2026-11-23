@@ -35,6 +35,11 @@ struct ClientsAppointmentDetailView: View {
                 if !appointment.service.isEmpty {
                     LabeledContent("Услуга", value: appointment.service)
                 }
+                if appointment.isFromIClients {
+                    LabeledContent("Источник") {
+                        HStack(spacing: 6) { ClientsIClientsBadge(); Text("журнал iClients") }
+                    }
+                }
                 LabeledContent("Дата", value: ClientsFormat.dayTitle(appointment.start))
                 LabeledContent("Время", value: ClientsFormat.time(appointment))
                 LabeledContent("Цена", value: ClientsFormat.money(appointment.price))

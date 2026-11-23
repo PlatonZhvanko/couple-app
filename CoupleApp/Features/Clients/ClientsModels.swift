@@ -12,6 +12,8 @@ final class ClientsClient: SyncableModel {
         var createdAt: Date
         /// День рождения. Нет в старых записях.
         var birthday: Date?
+        /// "iclients" — клиент добавлен автоматически из iClients. Нет в старых записях.
+        var source: String?
     }
 
     static let recordKind = "clients.client"
@@ -23,6 +25,7 @@ final class ClientsClient: SyncableModel {
     var member: String = CoupleMember.owner.rawValue
     var createdAt: Date = Date.now
     var birthday: Date? = nil
+    var source: String? = nil
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
@@ -40,7 +43,7 @@ final class ClientsClient: SyncableModel {
     }
 
     var payload: Payload {
-        Payload(name: name, phone: phone, note: note, member: member, createdAt: createdAt, birthday: birthday)
+        Payload(name: name, phone: phone, note: note, member: member, createdAt: createdAt, birthday: birthday, source: source)
     }
 
     func apply(_ payload: Payload) {
@@ -50,6 +53,7 @@ final class ClientsClient: SyncableModel {
         member = payload.member
         createdAt = payload.createdAt
         birthday = payload.birthday
+        source = payload.source
     }
 
     /// Только цифры телефона (для WhatsApp и звонка).
@@ -97,6 +101,8 @@ final class ClientsAppointment: SyncableModel {
         var note: String
         var reminderMinutes: Int
         var member: String
+        /// Откуда запись: "iclients" — подтянута из журнала iClients. Нет в старых записях.
+        var source: String?
     }
 
     static let recordKind = "clients.appointment"
@@ -113,9 +119,13 @@ final class ClientsAppointment: SyncableModel {
     /// За сколько минут напомнить. 0 — не напоминать.
     var reminderMinutes: Int = 60
     var member: String = CoupleMember.owner.rawValue
+    /// "iclients" — запись пришла из журнала iClients автоматически.
+    var source: String? = nil
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
+
+    var isFromIClients: Bool { source == "iclients" }
 
     init(member: CoupleMember) {
         self.member = member.rawValue
@@ -130,7 +140,7 @@ final class ClientsAppointment: SyncableModel {
         Payload(
             clientID: clientID, service: service, start: start,
             durationMinutes: durationMinutes, price: price, status: statusRaw,
-            note: note, reminderMinutes: reminderMinutes, member: member
+            note: note, reminderMinutes: reminderMinutes, member: member, source: source
         )
     }
 
@@ -144,6 +154,7 @@ final class ClientsAppointment: SyncableModel {
         note = payload.note
         reminderMinutes = payload.reminderMinutes
         member = payload.member
+        source = payload.source
     }
 
     var status: ClientsAppointmentStatus {
@@ -184,5 +195,18 @@ enum ClientsFormat {
         if cal.isDateInTomorrow(date) { return "Завтра" }
         if cal.isDateInYesterday(date) { return "Вчера" }
         return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    }
+}
+
+/// Значок «запись из iClients».
+struct ClientsIClientsBadge: View {
+    var body: some View {
+        Text("iC")
+            .font(.system(size: 10, weight: .heavy, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color(red: 0.0, green: 0.55, blue: 0.85), in: RoundedRectangle(cornerRadius: 5))
+            .accessibilityLabel("Из iClients")
     }
 }

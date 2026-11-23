@@ -136,6 +136,9 @@ struct ClientsAppointmentRow: View {
                 Text(clientName)
                     .font(.body.weight(.medium))
                     .strikethrough(appointment.status == .cancelled)
+                if appointment.isFromIClients {
+                    ClientsIClientsBadge()
+                }
                 if showDate {
                     Text(appointment.start.formatted(date: .abbreviated, time: .omitted))
                         .font(.caption)
