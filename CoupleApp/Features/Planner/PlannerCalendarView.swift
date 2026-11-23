@@ -536,7 +536,10 @@ struct PlannerCalendarView: View {
     private func isHiddenByEye(_ event: PlannerEvent, _ day: Date) -> Bool {
         guard hideCancelled else { return false }
         if [.cancelled, .fineUnpaid, .finePaid, .errandNotDone, .errandMoved].contains(blockBadge(event, day)) { return true }
-        if let status = event.status(on: day, for: account.current), status == .notDone || status == .moved { return true }
+        switch event.status(on: day, for: account.current) {
+        case .notDone?, .moved?: return true
+        default: break
+        }
         return false
     }
 
