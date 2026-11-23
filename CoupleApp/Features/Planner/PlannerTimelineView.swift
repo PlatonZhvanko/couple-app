@@ -358,6 +358,12 @@ struct PlannerTimelineView: View {
     /// Размер — самый крупный, при котором все строки целиком влезают в ширину
     /// (слова не рвутся) и в высоту. Две строки делим по словам так, чтобы они были
     /// ближе по ширине. Только если совсем мелко, остаётся одно первое слово целиком.
+    /// Значок записи другого раздела в левом верхнем углу (рисуется кодом).
+    static func leadingView(for block: PlannerTimelineBlock) -> AnyView? {
+        if case .external(let item) = block.source { return item.leadingView }
+        return nil
+    }
+
     static func titleLayout(_ title: String, width: CGFloat, height: CGFloat, maxFont: CGFloat)
         -> (text: String, lines: Int, font: CGFloat) {
         func fit(_ lines: [String]) -> CGFloat {
@@ -398,8 +404,7 @@ struct PlannerTimelineView: View {
         // в ширину колонки (слова не рвутся посередине) и строки влезают в высоту.
         let narrow = block.columns > 1
         let badgeSymbol: String? = block.badgeOverride.map { $0.isEmpty ? nil : $0 } ?? block.badge.symbol
-        var leadingView: AnyView?
-        if case .external(let item) = block.source { leadingView = item.leadingView }
+        let leadingView: AnyView? = Self.leadingView(for: block)
         let hasMark = badgeSymbol != nil || block.together || !block.emoji.isEmpty || !block.corner.isEmpty || leadingView != nil
         let topRow = hasMark && height >= 30
         let topInset: CGFloat = topRow ? 11 : 1
