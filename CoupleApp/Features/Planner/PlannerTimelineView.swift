@@ -356,8 +356,8 @@ struct PlannerTimelineView: View {
 
     /// Как написать название в блоке: строки и размер шрифта.
     /// Размер — самый крупный, при котором все строки целиком влезают в ширину
-    /// (слова не рвутся) и в высоту. Две строки делим по словам так, чтобы они были
-    /// ближе по ширине. Только если совсем мелко, остаётся одно первое слово целиком.
+    /// (слова не рвутся) и в высоту. Слова делим на строки так, чтобы они были
+    /// ближе по ширине. Слова никогда не отбрасываются.
     /// Значок записи другого раздела в левом верхнем углу (рисуется кодом).
     static func leadingView(for block: PlannerTimelineBlock) -> AnyView? {
         switch block.source {
@@ -375,22 +375,45 @@ struct PlannerTimelineView: View {
         let words = title.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
         guard words.count >= 2 else { return (title, 1, max(6, fit([title]))) }
 
+        // Все слова остаются в блоке: пробуем разбить на 1…5 строк (самое узкое разбиение
+        // для каждого числа строк) и берём вариант с самым крупным шрифтом.
         var best: (lines: [String], font: CGFloat) = ([title], fit([title]))
-        var bestSplit: [String]?
-        var bestWidth = CGFloat.greatestFiniteMagnitude
-        for split in 1..<words.count {
-            let pair = [words[..<split].joined(separator: " "), words[split...].joined(separator: " ")]
-            let widest = pair.map(unitWidth).max() ?? 0
-            if widest < bestWidth { bestWidth = widest; bestSplit = pair }
-        }
-        if let pair = bestSplit, fit(pair) > best.font { best = (pair, fit(pair)) }
-
-        // Совсем мелко: одно слово целиком, но крупнее.
-        if best.font < 7, let word = words.max(by: { unitWidth($0) < unitWidth($1) }) {
-            let single = fit([words[0]])
-            return (words[0], 1, max(6, max(single, fit([word]))))
+        for count in 2...min(5, words.count) {
+            let lines = Self.balancedLines(words, count: count)
+            let size = fit(lines)
+            if size > best.font { best = (lines, size) }
         }
         return (best.lines.joined(separator: "\n"), best.lines.count, max(6, best.font))
+    }
+
+    /// Делит слова на `count` строк так, чтобы самая широкая строка была как можно уже.
+    static func balancedLines(_ words: [String], count: Int) -> [String] {
+        let n = words.count
+        func line(_ i: Int, _ j: Int) -> String { words[i..<j].joined(separator: " ") }
+        // dp[k][j] — наименьшая ширина самой широкой строки для первых j слов в k строках.
+        var dp = Array(repeating: Array(repeating: CGFloat.greatestFiniteMagnitude, count: n + 1), count: count + 1)
+        var cut = Array(repeating: Array(repeating: 0, count: n + 1), count: count + 1)
+        for j in 1...n { dp[1][j] = unitWidth(line(0, j)) }
+        if count >= 2 {
+            for k in 2...count {
+                for j in k...n {
+                    for i in (k - 1)..<j {
+                        let value = max(dp[k - 1][i], unitWidth(line(i, j)))
+                        if value < dp[k][j] { dp[k][j] = value; cut[k][j] = i }
+                    }
+                }
+            }
+        }
+        var result: [String] = []
+        var j = n
+        var k = count
+        while k >= 1 {
+            let i = k == 1 ? 0 : cut[k][j]
+            result.insert(line(i, j), at: 0)
+            j = i
+            k -= 1
+        }
+        return result
     }
 
     // MARK: - Блок
