@@ -20,6 +20,8 @@ final class SyncCoordinator {
 
     private(set) var status: Status = .localOnly
     private(set) var lastSyncedAt: Date? = nil
+    /// Растёт только когда с сервера пришли новые данные: экраны обновляются по нему, а не при каждом опросе.
+    private(set) var dataVersion = 0
 
     @ObservationIgnored private let container: ModelContainer
     @ObservationIgnored private let account: AccountStore
@@ -88,12 +90,16 @@ final class SyncCoordinator {
 
         repeat {
             runAgain = false
-            status = .syncing
             do {
-                try await performSync(backend: SupabaseSyncBackend(client: client))
-                lastSyncedAt = .now
-                UserDefaults.standard.set(lastSyncedAt, forKey: Keys.lastSynced)
-                status = .idle
+                let changed = try await performSync(backend: SupabaseSyncBackend(client: client))
+                // Тихий опрос без изменений не должен перерисовывать экраны (и мешать вводу текста).
+                let now = Date.now
+                if changed || lastSyncedAt == nil || now.timeIntervalSince(lastSyncedAt ?? now) > 60 {
+                    lastSyncedAt = now
+                    UserDefaults.standard.set(now, forKey: Keys.lastSynced)
+                }
+                if changed { dataVersion += 1 }
+                if status != .idle { status = .idle }
             } catch {
                 status = .failed(error.localizedDescription)
                 return
@@ -101,7 +107,7 @@ final class SyncCoordinator {
         } while runAgain
     }
 
-    private func performSync(backend: some SyncBackend) async throws {
+    private func performSync(backend: some SyncBackend) async throws -> Bool {
         let context = container.mainContext
         var problems: [String] = []
 
@@ -112,6 +118,8 @@ final class SyncCoordinator {
             do { pending += try adapter.collectPending(context) }
             catch { problems.append("\(adapter.kind): \(error.localizedDescription)") }
         }
+        // «Синхронизация…» показываем, только если есть что отправлять.
+        if !pending.isEmpty, status != .syncing { status = .syncing }
         let chunkSize = 100
         var index = 0
         while index < pending.count {
@@ -131,7 +139,7 @@ final class SyncCoordinator {
                 }
             }
         }
-        try context.save()
+        if !pending.isEmpty { try context.save() }
 
         // 2. Забираем изменения со второго телефона.
         let cursor = UserDefaults.standard.object(forKey: Keys.cursor) as? Date
@@ -142,13 +150,14 @@ final class SyncCoordinator {
             do { try adapters[kind]?.applyRemote(records, context) }
             catch { problems.append("\(kind): \(error.localizedDescription)") }
         }
-        try context.save()
+        if !result.records.isEmpty { try context.save() }
         if let newCursor = result.cursor {
             UserDefaults.standard.set(newCursor, forKey: Keys.cursor)
         }
         if let first = problems.first {
             throw SyncIssue(message: "Часть записей не прошла (\(problems.count)): \(first)")
         }
+        return !pending.isEmpty || !result.records.isEmpty
     }
 }
 

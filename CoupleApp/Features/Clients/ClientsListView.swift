@@ -13,8 +13,9 @@ struct ClientsListView: View {
         let query = search.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return clients }
         let digits = query.filter(\.isNumber)
+        let lowered = query.lowercased()
         return clients.filter {
-            $0.name.localizedCaseInsensitiveContains(query)
+            $0.name.lowercased().contains(lowered)
                 || (!digits.isEmpty && $0.phoneDigits.contains(digits))
         }
     }
