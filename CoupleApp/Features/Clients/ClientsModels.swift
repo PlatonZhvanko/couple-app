@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import SwiftUI
 
 /// Клиент. Принадлежит тому, кто его добавил (`member`).
 @Model
