@@ -489,13 +489,15 @@ struct PlannerTimelineView: View {
                 .overlay {
                     // Отменённое занятие или группа: бледный блок с большим знаком запрета.
                     if cancelled {
-                        GeometryReader { geo in
-                            Text("🚫")
-                                .font(.system(size: max(10, min(geo.size.width, geo.size.height) * 0.9)))
-                                .opacity(0.75)
-                                .frame(width: geo.size.width, height: geo.size.height)
-                        }
-                        .allowsHitTesting(false)
+                        // Без GeometryReader: знак сам уменьшается до размера блока.
+                        Text("🚫")
+                            .font(.system(size: 60))
+                            .minimumScaleFactor(0.1)
+                            .lineLimit(1)
+                            .opacity(0.75)
+                            .padding(2)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .allowsHitTesting(false)
                     }
                 }
                 .contentShape(Rectangle())

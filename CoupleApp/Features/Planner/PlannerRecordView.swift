@@ -18,6 +18,7 @@ struct PlannerRecordView: View {
     @State private var confirmDelete = false
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
+    @State private var clientPhone = ""
     @Environment(SyncCoordinator.self) private var sync
     @Environment(AccountStore.self) private var account
 
@@ -114,6 +115,10 @@ struct PlannerRecordView: View {
             }
             .onAppear {
                 clients = PlannerClientDirectory.all(context)
+                // Телефон читаем один раз, а не при каждой перерисовке экрана.
+                if event.isFromYClients, let id = event.participantIDs.first {
+                    clientPhone = PlannerClientDirectory.phone(of: id, context: context)
+                }
             }
             .sheet(isPresented: $showMoveSheet) { moveSheet }
             .sheet(item: $subscriptionClient) { client in
@@ -161,8 +166,7 @@ struct PlannerRecordView: View {
 
     /// Только для записей, пришедших из YClients: источник и связь с клиентом.
     private var yclientsSection: some View {
-        let phone = participants.first.map { PlannerClientDirectory.phone(of: $0.id, context: context) } ?? ""
-        let digits = ClientsContact.internationalDigits(phone)
+        let digits = ClientsContact.internationalDigits(clientPhone)
         return Section {
             LabeledContent("Источник") {
                 HStack(spacing: 6) {
@@ -172,8 +176,8 @@ struct PlannerRecordView: View {
             }
             if !digits.isEmpty {
                 HStack(spacing: 6) {
-                    contactLink("Звонок", "phone.fill", ClientsContact.call(phone))
-                    contactLink("WhatsApp", "message.fill", ClientsContact.whatsApp(phone))
+                    contactLink("Звонок", "phone.fill", ClientsContact.call(clientPhone))
+                    contactLink("WhatsApp", "message.fill", ClientsContact.whatsApp(clientPhone))
                     contactLink("Telegram", "paperplane.fill", URL(string: "https://t.me/+\(digits)"))
                     // У Max нет ссылки «написать по номеру»: копируем номер и открываем Max, дальше поиск по номеру.
                     Button {
