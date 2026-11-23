@@ -1,7 +1,7 @@
-"""Подтягивает записи Насти из журнала iClients в приложение «Вдвоём».
+"""Подтягивает записи Насти из журнала YClients в приложение «Вдвоём».
 
 Запускается по расписанию (см. .github/workflows/iclients-sync.yml):
-1. читает журнал iClients (API YCLIENTS) за ближайшие недели;
+1. читает журнал YClients (API YCLIENTS) за ближайшие недели;
 2. берёт записи, где выбран ресурс «Новик Анастасия»;
 3. кладёт их в таблицу `records` в Supabase как записи клиентов и клиентов Насти.
 Приложение само подтягивает их при обычной синхронизации.
@@ -20,7 +20,7 @@ import requests
 
 API_BASE = "https://api.yclients.com/api/v1"
 PAGE = 100
-# Экземпляр ресурса «Новик Анастасия» в iClients.
+# Экземпляр ресурса «Новик Анастасия» в YClients.
 RESOURCE_TITLE = "Новик Анастасия"
 MEMBER = "partner"
 NS = uuid.UUID("6f1c2b0e-5a3d-4c57-9a52-1c1e5a7d0001")
@@ -72,7 +72,7 @@ def iclients_records(start: date, end: date) -> list[dict]:
         r.raise_for_status()
         body = r.json()
         if not body.get("success"):
-            raise RuntimeError(f"iClients: {(body.get('meta') or {}).get('message')}")
+            raise RuntimeError(f"YClients: {(body.get('meta') or {}).get('message')}")
         batch = body.get("data") or []
         out.extend(batch)
         if len(batch) < PAGE:
@@ -81,7 +81,7 @@ def iclients_records(start: date, end: date) -> list[dict]:
 
 
 def resource_instance_id() -> int:
-    """Id ресурса, который в iClients называется ровно «Новик Анастасия»."""
+    """Id ресурса, который в YClients называется ровно «Новик Анастасия»."""
     headers = {
         "Authorization": f"Bearer {env('YCLIENTS_PARTNER_TOKEN')}, User {env('YCLIENTS_USER_TOKEN')}",
         "Accept": "application/vnd.api.v2+json",
@@ -175,7 +175,7 @@ def main() -> None:
             client_ids[cid] = det_id
             rows.append({
                 "id": det_id, "couple_id": couple_id, "kind": "clients.client", "updated_at": now, "deleted_at": None,
-                "payload": {"name": c.get("display_name") or c.get("name") or "Клиент iClients",
+                "payload": {"name": c.get("display_name") or c.get("name") or "Клиент YClients",
                             "phone": phone, "note": "", "member": MEMBER, "createdAt": now, "source": "iclients"},
             })
 
@@ -194,10 +194,9 @@ def main() -> None:
             "price": float(sum((s.get("cost") or s.get("first_cost") or 0) for s in services)),
             "note": rec.get("comment") or "",
         }
-        cancelled = bool(rec.get("deleted")) or rec.get("attendance") == -1
         old = existing.get(rid)
         if old is None:
-            payload = {**wanted, "status": "cancelled" if cancelled else "planned",
+            payload = {**wanted, "status": "planned",
                        "reminderMinutes": 60, "member": MEMBER, "source": "iclients"}
         else:
             payload = dict(old["payload"] or {})
@@ -207,8 +206,6 @@ def main() -> None:
                     payload[k] = wanted[k]
             if not payload.get("price"):
                 payload["price"] = wanted["price"]
-            if cancelled:
-                payload["status"] = "cancelled"
             if payload == before and not old["deleted_at"]:
                 continue
         rows.append({"id": rid, "couple_id": couple_id, "kind": "clients.appointment",
@@ -225,7 +222,7 @@ def main() -> None:
 
     if rows:
         db.upsert(rows)
-    print(f"Записей в iClients: {len(fetched)}, обновлено в приложении: {len(rows)}")
+    print(f"Записей в YClients: {len(fetched)}, обновлено в приложении: {len(rows)}")
 
 
 if __name__ == "__main__":

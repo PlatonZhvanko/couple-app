@@ -33,14 +33,14 @@ enum ClientsCalendar {
                     color: .gray,
                     systemImage: "person.crop.circle.badge.clock"
                 )
-                if item.isFromIClients {
-                    // Записи White Lions: жёлтые, прозрачные, с обводкой, как ремонты авто.
+                if item.isFromYClients {
+                    // Записи YClients: жёлтые, прозрачные, с обводкой, как ремонты авто.
                     let owner = CoupleMember(rawValue: item.member) ?? .partner
                     calendarItem = CalendarItem(
                         id: calendarItem.id, title: calendarItem.title,
                         start: item.start, end: item.end, member: owner,
                         color: .yellow, systemImage: "person.crop.circle.badge.clock",
-                        leadingEmoji: "🦁",
+                        leadingView: AnyView(ClientsYClientsBadge(size: 13)),
                         detail: { AnyView(NavigationStack { ClientsAppointmentDetailView(appointment: item, member: owner) }) }
                     )
                 }

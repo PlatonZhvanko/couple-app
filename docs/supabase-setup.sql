@@ -116,7 +116,7 @@ grant execute on function public.my_couple_id() to authenticated;
 -- from auth.users u, c
 -- where u.email in ('я@example.com', 'она@example.com');
 
--- Для автоматической синхронизации iClients (tools/iclients_sync): серверный
+-- Для автоматической синхронизации YClients (tools/iclients_sync): серверный
 -- ключ должен иметь доступ к этим таблицам. Выполнить один раз.
 grant select on public.couples, public.couple_members to service_role;
 grant select, insert, update on public.records to service_role;

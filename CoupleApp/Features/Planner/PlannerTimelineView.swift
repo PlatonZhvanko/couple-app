@@ -398,7 +398,9 @@ struct PlannerTimelineView: View {
         // в ширину колонки (слова не рвутся посередине) и строки влезают в высоту.
         let narrow = block.columns > 1
         let badgeSymbol: String? = block.badgeOverride.map { $0.isEmpty ? nil : $0 } ?? block.badge.symbol
-        let hasMark = badgeSymbol != nil || block.together || !block.emoji.isEmpty || !block.corner.isEmpty
+        var leadingView: AnyView?
+        if case .external(let item) = block.source { leadingView = item.leadingView }
+        let hasMark = badgeSymbol != nil || block.together || !block.emoji.isEmpty || !block.corner.isEmpty || leadingView != nil
         let topRow = hasMark && height >= 30
         let topInset: CGFloat = topRow ? 11 : 1
         let trailingInset: CGFloat = (hasMark && !topRow) ? 15 : 1
@@ -435,6 +437,8 @@ struct PlannerTimelineView: View {
             // Эмодзи типа дела стоит в верхней строке, название записи ниже него.
             if topRow, !block.emoji.isEmpty {
                 Text(block.emoji).font(.system(size: 10)).padding(1)
+            } else if topRow, let leadingView {
+                leadingView.padding(1)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -567,7 +571,7 @@ struct PlannerTimelineView: View {
             raw.append(PlannerTimelineBlock(
                 id: item.id, source: .external(item), title: item.title,
                 color: item.color, start: start, end: end, badge: .none, owner: nil,
-                emoji: item.leadingEmoji, corner: item.emoji
+                corner: item.emoji
             ))
         }
         raw.sort { $0.start != $1.start ? $0.start < $1.start : $0.end > $1.end }

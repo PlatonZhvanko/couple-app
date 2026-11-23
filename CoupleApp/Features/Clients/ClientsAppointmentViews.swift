@@ -35,9 +35,9 @@ struct ClientsAppointmentDetailView: View {
                 if !appointment.service.isEmpty {
                     LabeledContent("Услуга", value: appointment.service)
                 }
-                if appointment.isFromIClients {
+                if appointment.isFromYClients {
                     LabeledContent("Источник") {
-                        HStack(spacing: 6) { ClientsIClientsBadge(); Text("White Lions") }
+                        HStack(spacing: 6) { ClientsYClientsBadge(); Text("YClients") }
                     }
                 }
                 LabeledContent("Дата", value: ClientsFormat.dayTitle(appointment.start))
