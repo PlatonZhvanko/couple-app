@@ -19,7 +19,10 @@ struct PlannerSubscriptionSaleSheet: View {
     @Query(filter: #Predicate<PlannerGroupKind> { $0.deletedAt == nil }, sort: \PlannerGroupKind.name)
     private var groupKinds: [PlannerGroupKind]
 
-    @State private var selectedType: PlannerSubscriptionType?
+    /// Выбранный вид храним по номеру, а не самой записью: если запись заменит синхронизация, окно не упадёт.
+    @State private var selectedTypeID: UUID?
+    /// Цены списания по группам, пока вводятся: в вид абонемента попадают при продаже или закрытии окна.
+    @State private var chargeDrafts: [String: String] = [:]
     @State private var amountText = ""
     @State private var validText = "30"
     /// Срок: на N дней или до выбранного дня включительно.
@@ -32,6 +35,11 @@ struct PlannerSubscriptionSaleSheet: View {
 
     private var trimmedTypeQuery: String { typeQuery.trimmingCharacters(in: .whitespaces) }
     private var trimmedGroupQuery: String { groupQuery.trimmingCharacters(in: .whitespaces) }
+    private var selectedType: PlannerSubscriptionType? {
+        guard let selectedTypeID else { return nil }
+        return types.first { $0.syncID == selectedTypeID }
+    }
+
     private var amount: Double? { Double(amountText.replacingOccurrences(of: ",", with: ".")) }
 
     /// Без запроса показываем только два готовых абонемента, с запросом настоящий поиск по подстроке.
@@ -80,7 +88,7 @@ struct PlannerSubscriptionSaleSheet: View {
                 }
             }
             .onDisappear {
-                try? context.save()
+                commitCharges()
                 sync.requestSync()
             }
         }
@@ -100,7 +108,9 @@ struct PlannerSubscriptionSaleSheet: View {
                     }
                     Spacer()
                     Button {
-                        selectedType = nil
+                        commitCharges()
+                        selectedTypeID = nil
+                        chargeDrafts = [:]
                         amountText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
@@ -108,16 +118,13 @@ struct PlannerSubscriptionSaleSheet: View {
                     .buttonStyle(.borderless)
                 }
             } else {
-                HStack {
-                    TextField("Найти абонемент", text: $typeQuery)
-                        .autocorrectionDisabled()
-                    if canCreateType {
-                        Button(action: createType) {
-                            Image(systemName: "plus.circle.fill").font(.title3)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Создать новый абонемент")
+                TextField("Найти абонемент", text: $typeQuery)
+                    .autocorrectionDisabled()
+                if canCreateType {
+                    Button(action: createType) {
+                        Label("Создать «\(trimmedTypeQuery)»", systemImage: "plus.circle.fill")
                     }
+                    .buttonStyle(.borderless)
                 }
                 ForEach(typeMatches) { type in
                     Button { choose(type) } label: {
@@ -138,7 +145,8 @@ struct PlannerSubscriptionSaleSheet: View {
     }
 
     private func choose(_ type: PlannerSubscriptionType) {
-        selectedType = type
+        selectedTypeID = type.syncID
+        chargeDrafts = [:]
         typeQuery = ""
         amountText = "\(Int(type.price.rounded()))"
         validText = "\(type.validDays)"
@@ -146,8 +154,17 @@ struct PlannerSubscriptionSaleSheet: View {
     }
 
     private func createType() {
-        let item = PlannerSubscriptionType(name: trimmedTypeQuery, price: amount ?? 0)
-        context.insert(item)
+        // Вид с таким названием мог быть удалён раньше: возвращаем его, а не заводим второй с тем же номером.
+        let id = PlannerSubscriptionType.makeID(name: trimmedTypeQuery)
+        let existing = (try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(predicate: #Predicate { $0.syncID == id })))?.first
+        let item: PlannerSubscriptionType
+        if let existing {
+            item = existing
+            item.deletedAt = nil
+        } else {
+            item = PlannerSubscriptionType(name: trimmedTypeQuery, price: amount ?? 0)
+            context.insert(item)
+        }
         item.markChanged()
         try? context.save()
         sync.requestSync()
@@ -163,7 +180,7 @@ struct PlannerSubscriptionSaleSheet: View {
                 HStack {
                     Text(name)
                     Spacer()
-                    TextField("500", text: chargeBinding(type, name))
+                    TextField("500", text: draftBinding(type, name))
                         .keyboardType(.numberPad)
                         .multilineTextAlignment(.trailing)
                         .frame(width: 70)
@@ -185,16 +202,13 @@ struct PlannerSubscriptionSaleSheet: View {
                     Text("₽").foregroundStyle(.secondary)
                 }
             }
-            HStack {
-                TextField("Добавить группу или школу", text: $groupQuery)
-                    .autocorrectionDisabled()
-                if canCreateGroup {
-                    Button { createGroup(type) } label: {
-                        Image(systemName: "plus.circle.fill").font(.title3)
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Создать новую группу")
+            TextField("Добавить группу или школу", text: $groupQuery)
+                .autocorrectionDisabled()
+            if canCreateGroup {
+                Button { createGroup(type) } label: {
+                    Label("Создать «\(trimmedGroupQuery)»", systemImage: "plus.circle.fill")
                 }
+                .buttonStyle(.borderless)
             }
             ForEach(groupMatches) { kind in
                 Button { addGroup(type, kind.name) } label: {
@@ -212,20 +226,29 @@ struct PlannerSubscriptionSaleSheet: View {
         }
     }
 
-    private func chargeBinding(_ type: PlannerSubscriptionType, _ name: String) -> Binding<String> {
-        Binding(
-            get: { "\(Int(type.charge(forGroup: name).rounded()))" },
-            set: { text in
-                guard let value = Double(text) else { return }
-                var map = type.groupCharges
-                map[name.lowercased()] = max(0, value)
-                type.groupCharges = map
-                type.markChanged()
-            }
+    private func draftBinding(_ type: PlannerSubscriptionType, _ name: String) -> Binding<String> {
+        let key = name.lowercased()
+        return Binding(
+            get: { chargeDrafts[key] ?? "\(Int(type.charge(forGroup: name).rounded()))" },
+            set: { chargeDrafts[key] = $0 }
         )
     }
 
+    /// Записывает введённые цены списания в вид абонемента (один раз, а не на каждую цифру).
+    private func commitCharges() {
+        guard let type = selectedType, !chargeDrafts.isEmpty else { return }
+        var map = type.groupCharges
+        for (key, text) in chargeDrafts {
+            if let value = Double(text) { map[key] = max(0, value) }
+        }
+        type.groupCharges = map
+        type.markChanged()
+        chargeDrafts = [:]
+        try? context.save()
+    }
+
     private func addGroup(_ type: PlannerSubscriptionType, _ name: String) {
+        commitCharges()
         guard !type.groupNames.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else { return }
         // Первое добавленное название: новая цена списания по умолчанию как в общем поле.
         var map = type.groupCharges
@@ -239,6 +262,7 @@ struct PlannerSubscriptionSaleSheet: View {
     }
 
     private func removeGroup(_ type: PlannerSubscriptionType, _ name: String) {
+        chargeDrafts.removeValue(forKey: name.lowercased())
         type.groupNames = type.groupNames.filter { $0 != name }
         var map = type.groupCharges
         map.removeValue(forKey: name.lowercased())
@@ -289,6 +313,7 @@ struct PlannerSubscriptionSaleSheet: View {
 
     private func save() {
         guard let client, let amount else { return }
+        commitCharges()
         PlannerPaymentStore.saveSubscription(
             context, clientID: client.id, month: month, amount: max(0, amount),
             kindName: selectedType?.name, validDays: untilMode ? nil : (Int(validText) ?? 30),
