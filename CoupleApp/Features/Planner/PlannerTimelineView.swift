@@ -368,6 +368,8 @@ struct PlannerTimelineView: View {
 
     static func titleLayout(_ title: String, width: CGFloat, height: CGFloat, maxFont: CGFloat)
         -> (text: String, lines: Int, font: CGFloat) {
+        // Очень короткое название («СШ») не раздуваем на весь блок.
+        let maxFont = title.count <= 4 ? min(maxFont, 12) : maxFont
         func fit(_ lines: [String]) -> CGFloat {
             let widest = max(0.1, lines.map(unitWidth).max() ?? 1)
             return min(maxFont, height / (CGFloat(lines.count) * 1.18), width / widest)
