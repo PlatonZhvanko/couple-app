@@ -748,8 +748,11 @@ struct PlannerEventRow: View {
                 .fill(event.categoryValue.color)
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: 3) {
-                Text(event.displayTitle)
-                    .font(.body.weight(.medium))
+                HStack(spacing: 6) {
+                    if event.isFromYClients { ClientsYClientsBadge(size: 14) }
+                    Text(event.displayTitle)
+                        .font(.body.weight(.medium))
+                }
                 HStack(spacing: 6) {
                     Text(timeText)
                     if event.repeatValue != .none {
@@ -773,7 +776,23 @@ struct PlannerEventRow: View {
                 .background(Capsule().fill(event.categoryValue.color.opacity(0.15)))
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+        .background(
+            Group {
+                if event.isFromYClients {
+                    // Записи YClients: прозрачный жёлтый фон с обводкой.
+                    RoundedRectangle(cornerRadius: 12).fill(Color.yellow.opacity(0.25))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.yellow))
+                } else {
+                    RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground))
+                }
+            }
+        )
+        .overlay {
+            // Отменённое занятие или группа: большой знак запрета поверх бледной записи.
+            if [.cancelled, .fineUnpaid, .finePaid].contains(badge) {
+                Text("🚫").font(.system(size: 44)).opacity(0.75).allowsHitTesting(false)
+            }
+        }
         .contentShape(Rectangle())
     }
 
