@@ -7,4 +7,5 @@ jobs:
   p:
     runs-on: ubuntu-latest
     steps:
-      - run: curl -s -m 30 -w "\nPING http %{http_code}\n" -X POST -H "x-cron-secret: x" https://izyhshljamzgyzxoupss.supabase.co/functions/v1/yclients-sync
+      - run: |
+          curl -s -m 30 -w "\nPING http %{http_code}\n" -X POST -H "x-cron-secret: x" https://izyhshljamzgyzxoupss.supabase.co/functions/v1/yclients-sync
