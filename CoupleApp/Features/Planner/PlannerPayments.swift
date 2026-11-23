@@ -512,12 +512,13 @@ enum PlannerPaymentStore {
 enum PlannerMover {
     /// Перенести один раз события (`occurrenceStart`) на новое время.
     /// Повторяющееся событие не ломается: этот раз выделяется в отдельную запись.
+    @discardableResult
     static func move(
         _ event: PlannerEvent,
         occurrenceStart: Date,
         to newStart: Date,
         context: ModelContext
-    ) {
+    ) -> PlannerEvent {
         let cal = PlannerCalendar.calendar
         let oldDay = cal.startOfDay(for: occurrenceStart)
         let newStartValue = event.isAllDay ? cal.startOfDay(for: newStart) : newStart
@@ -564,6 +565,7 @@ enum PlannerMover {
             }
         }
         try? context.save()
+        return target
     }
 }
 
