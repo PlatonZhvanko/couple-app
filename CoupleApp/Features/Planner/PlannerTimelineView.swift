@@ -157,7 +157,6 @@ struct PlannerTimelineView: View {
 
     private var header: some View {
         VStack(spacing: 0) {
-            if onEyeTap != nil { eyeRow }
             headerRow
         }
     }

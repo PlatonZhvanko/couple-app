@@ -411,6 +411,23 @@ struct PlannerCalendarView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
             .contentShape(Rectangle())
+            .overlay {
+                // Глазик «Скрыть»: на высоте месяца и года, над субботой (в дневном режиме правее).
+                GeometryReader { geo in
+                    let timeColumn: CGFloat = 44
+                    let column = (geo.size.width - timeColumn) / 7
+                    Button { withAnimation { hideCancelled.toggle() } } label: {
+                        Image(systemName: hideCancelled ? "eye.slash" : "eye.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(hideCancelled ? Color.secondary : Color.plannerToday)
+                            .frame(width: 36, height: 30)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(hideCancelled ? "Показать отменённые и перенесённые" : "Скрыть отменённые и перенесённые")
+                    .position(x: dayFocus ? geo.size.width - 52 : timeColumn + column * 5.5,
+                              y: geo.size.height / 2)
+                }
+            }
             .gesture(DragGesture(minimumDistance: 30).onEnded { value in
                 if value.translation.width < -40 { movePlanner(1) }
                 if value.translation.width > 40 { movePlanner(-1) }
@@ -445,8 +462,6 @@ struct PlannerCalendarView: View {
                 },
                 badgeEmoji: { event, day in styledEmoji(event, day) },
                 isHidden: { event, day in isHiddenByEye(event, day) },
-                onEyeTap: { withAnimation { hideCancelled.toggle() } },
-                eyeHides: hideCancelled,
                 dayMark: { moodMark($0) },
                 badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
@@ -574,9 +589,9 @@ struct PlannerCalendarView: View {
             base = typeColor
         }
         guard isOwner || event.categoryValue == .errand else { return base }
-        let current = event.status(on: day, for: account.current)
+        let current = event.status(on: day, for: viewedMember)
         let hex = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType, status: current,
-                                                         sharedMember: event.scopeValue == .shared ? account.current.rawValue : nil).colorHex
+                                                         sharedMember: event.scopeValue == .shared ? viewedMember.rawValue : nil).colorHex
         if !hex.isEmpty, let custom = Color(hex: hex) { return custom }
         guard let status = current else { return base }
         switch status {
@@ -590,7 +605,7 @@ struct PlannerCalendarView: View {
     private func isHiddenByEye(_ event: PlannerEvent, _ day: Date) -> Bool {
         guard hideCancelled else { return false }
         if [.cancelled, .fineUnpaid, .finePaid, .errandNotDone, .errandMoved].contains(blockBadge(event, day)) { return true }
-        switch event.status(on: day, for: account.current) {
+        switch event.status(on: day, for: viewedMember) {
         case .notDone?, .moved?: return true
         default: break
         }
@@ -600,8 +615,8 @@ struct PlannerCalendarView: View {
     private func styledEmoji(_ event: PlannerEvent, _ day: Date) -> String? {
         guard isOwner || event.categoryValue == .errand else { return nil }
         let r = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType,
-                                                status: event.status(on: day, for: account.current),
-                                                sharedMember: event.scopeValue == .shared ? account.current.rawValue : nil)
+                                                status: event.status(on: day, for: viewedMember),
+                                                sharedMember: event.scopeValue == .shared ? viewedMember.rawValue : nil)
         if r.hideEmoji { return "" }
         return r.emoji.isEmpty ? nil : r.emoji
     }
@@ -610,7 +625,7 @@ struct PlannerCalendarView: View {
         guard isOwner || event.categoryValue == .errand else {
             return PlannerPaymentStore.badge(for: event, day: day, payments: paymentIndex.byEvent[event.syncID] ?? [])
         }
-        switch event.status(on: day, for: account.current) {
+        switch event.status(on: day, for: viewedMember) {
         case .done: return .errandDone
         case .notDone: return .errandNotDone
         case .moved: return .errandMoved
