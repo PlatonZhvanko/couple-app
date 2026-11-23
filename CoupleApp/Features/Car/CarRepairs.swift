@@ -342,8 +342,16 @@ struct CarRepairFormView: View {
                 Section("Когда желательно") {
                     Toggle("По дате", isOn: $hasDate)
                     if hasDate {
-                        DatePicker("Дата и время", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                        Button("Выбрать в календаре", systemImage: "calendar") { showPicker = true }
+                        if repair == nil {
+                            DatePicker("Дата и время", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                            Button("Выбрать в календаре", systemImage: "calendar") { showPicker = true }
+                        } else {
+                            // Дату существующего ремонта меняют касанием по журналу: кнопка «Перенести» в Планере.
+                            LabeledContent("Дата и время", value: "\(PlannerCalendar.dayTitle(date)), \(PlannerCalendar.time(date))")
+                            Text("Чтобы перенести, открой ремонт в Планере и нажми «Перенести».")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                         Stepper("Длительность: \(duration) мин", value: $duration, in: 30...600, step: 30)
                     }
                     LabeledContent("По пробегу, км") {

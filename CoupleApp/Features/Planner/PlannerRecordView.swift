@@ -355,15 +355,11 @@ struct PlannerRecordView: View {
                 } footer: {
                     Text("В журнале выбери день и нажми пальцем на нужное время.")
                 }
-                Section("Или ввести день и время") {
-                    DatePicker("Новое время", selection: $moveTarget)
-                }
             }
             .navigationTitle("Перенос дела")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Отмена") { showMoveSheet = false } }
-                ToolbarItem(placement: .confirmationAction) { Button("Перенести", action: performMove) }
             }
         }
         .presentationDetents([.medium])
