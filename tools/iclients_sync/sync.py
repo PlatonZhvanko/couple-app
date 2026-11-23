@@ -97,6 +97,9 @@ def digits(phone: str) -> str:
 
 
 def main() -> None:
+    if not os.environ.get("SUPABASE_SERVICE_KEY", "").strip():
+        print("Секреты ещё не добавлены, пропускаю")
+        return
     today = datetime.now(timezone.utc).date()
     start, end = today - timedelta(days=DAYS_BACK), today + timedelta(days=DAYS_AHEAD)
     fetched = [
