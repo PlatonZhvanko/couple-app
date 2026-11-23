@@ -27,7 +27,7 @@ struct NutritionDishesView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(dish.name).foregroundStyle(.primary)
-                            Text("\(max(dish.servings, 1)) порц. · \(v.defaultGrams.nutritionText) г порция")
+                            Text("\(max(dish.servings, 1)) порц. · \(v.defaultGrams.nutritionText) г порция · добавил(а): \(dish.member == account.current.rawValue ? account.myName : account.partnerName)")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -40,6 +40,20 @@ struct NutritionDishesView: View {
                 for index in offsets { dishes[index].markDeleted() }
                 try? context.save()
                 sync.requestSync()
+            }
+        }
+        .refreshable { await sync.syncNow() }
+        .safeAreaInset(edge: .bottom) {
+            if sync.status == .localOnly {
+                Text("Вход без сервера: блюда не уходят партнёру. Войдите по почте, чтобы библиотека была общей.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+            } else {
+                Text("Общая библиотека: блюда видны обоим. Потяните вниз, чтобы обновить.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
             }
         }
         .navigationTitle("Мои блюда")
