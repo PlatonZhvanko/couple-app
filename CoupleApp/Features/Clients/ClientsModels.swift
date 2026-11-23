@@ -13,7 +13,7 @@ final class ClientsClient: SyncableModel {
         var createdAt: Date
         /// День рождения. Нет в старых записях.
         var birthday: Date?
-        /// "iclients" — клиент добавлен автоматически из iClients. Нет в старых записях.
+        /// "iclients" — клиент добавлен автоматически из YClients. Нет в старых записях.
         var source: String?
     }
 
@@ -102,7 +102,7 @@ final class ClientsAppointment: SyncableModel {
         var note: String
         var reminderMinutes: Int
         var member: String
-        /// Откуда запись: "iclients" — подтянута из журнала iClients. Нет в старых записях.
+        /// Откуда запись: "iclients" — подтянута из журнала YClients. Нет в старых записях.
         var source: String?
     }
 
@@ -120,13 +120,13 @@ final class ClientsAppointment: SyncableModel {
     /// За сколько минут напомнить. 0 — не напоминать.
     var reminderMinutes: Int = 60
     var member: String = CoupleMember.owner.rawValue
-    /// "iclients" — запись пришла из журнала iClients автоматически.
+    /// "iclients" — запись пришла из журнала YClients автоматически.
     var source: String? = nil
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
 
-    var isFromIClients: Bool { source == "iclients" }
+    var isFromYClients: Bool { source == "iclients" }
 
     init(member: CoupleMember) {
         self.member = member.rawValue
@@ -199,8 +199,8 @@ enum ClientsFormat {
     }
 }
 
-/// Значок White Lions: жёлтый скруглённый квадрат с тёмной буквой V (рисуется кодом).
-struct ClientsIClientsBadge: View {
+/// Значок YClients: жёлтый скруглённый квадрат с тёмной буквой V (рисуется кодом).
+struct ClientsYClientsBadge: View {
     var size: CGFloat = 18
 
     var body: some View {
@@ -221,6 +221,6 @@ struct ClientsIClientsBadge: View {
             .fill(Color(red: 0.12, green: 0.12, blue: 0.14))
         }
         .frame(width: size, height: size)
-        .accessibilityLabel("White Lions")
+        .accessibilityLabel("YClients")
     }
 }

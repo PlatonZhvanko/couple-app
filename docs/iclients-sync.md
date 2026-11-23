@@ -1,7 +1,7 @@
-# Синхронизация iClients → планер Насти
+# Синхронизация YClients → планер Насти
 
 Раз в 10 минут GitHub Actions (`.github/workflows/iclients-sync.yml`) запускает
-`tools/iclients_sync/sync.py`. Он читает журнал iClients, берёт записи с ресурсом
+`tools/iclients_sync/sync.py`. Он читает журнал YClients, берёт записи с ресурсом
 «Новик Анастасия» (id 261720) и кладёт их в Supabase (`records`) как
 `clients.appointment` и `clients.client` с `member = partner`, `source = iclients`.
 
@@ -9,5 +9,6 @@
 `YCLIENTS_COMPANY_ID`, `YCLIENTS_PARTNER_TOKEN`, `YCLIENTS_USER_TOKEN`,
 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (секретный ключ Supabase, не anon).
 
-Правила: «не пришёл»/удалена/пропала из журнала → «Отмена»; время и длительность
-берутся из iClients; клиенты ищутся по телефону, иначе создаются.
+Правила: статусы «пришёл/не пришёл» не синхронизируются (оплату и статусы Настя отмечает сама);
+время и длительность подтягиваются (перенос, удлинение, сокращение); если запись удалена в YClients
+и Настя ещё не отметила её статус, она становится «Отмена»; клиенты ищутся по телефону, иначе создаются.

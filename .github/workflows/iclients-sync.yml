@@ -1,4 +1,4 @@
-name: Синхронизация iClients
+name: Синхронизация YClients
 
 on:
   schedule:
@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests
-      - name: Подтянуть записи Насти из iClients
+      - name: Подтянуть записи Насти из YClients
         env:
           YCLIENTS_COMPANY_ID: ${{ secrets.YCLIENTS_COMPANY_ID }}
           YCLIENTS_PARTNER_TOKEN: ${{ secrets.YCLIENTS_PARTNER_TOKEN }}
