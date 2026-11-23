@@ -22,6 +22,8 @@ struct PlannerTrainingEditor: View {
     @Environment(SyncCoordinator.self) private var sync
     @Environment(AccountStore.self) private var account
 
+    /// День, с которого открыли запись (для повторяющихся: какое именно занятие правят).
+    private let day: Date
     @State private var mode: Mode
     @State private var groupCategory: PlannerCategory
     @State private var title: String
@@ -69,6 +71,7 @@ struct PlannerTrainingEditor: View {
 
     init(event: PlannerEvent?, day: Date, at time: Date? = nil) {
         self.event = event
+        self.day = day
         let cal = PlannerCalendar.calendar
         if let event {
             let category = event.categoryValue
@@ -626,6 +629,10 @@ struct PlannerTrainingEditor: View {
             return new
         }()
 
+        // Клиенты, добавленные в одно занятие повторяющейся записи, остаются только в нём.
+        let oldIDs = target.participantIDs
+        let detachDay: Date? = (event != nil && target.repeatValue != .none) ? day : nil
+        var detachedIDs: [UUID]?
         target.errandType = ""
         switch mode {
         case .client:
@@ -648,7 +655,12 @@ struct PlannerTrainingEditor: View {
                 PlannerGroupKindStore.ensure(context, name: custom, category: groupCategory)
             }
             target.title = custom.isEmpty ? groupCategory.title : custom
-            target.participantIDs = participants.map(\.id)
+            let newIDs = participants.map(\.id)
+            if detachDay != nil, newIDs != oldIDs {
+                detachedIDs = newIDs
+            } else {
+                target.participantIDs = newIDs
+            }
         case .errand:
             target.title = title.trimmingCharacters(in: .whitespaces)
             target.participantIDs = []
@@ -682,6 +694,14 @@ struct PlannerTrainingEditor: View {
         }
         target.markChanged()
         try? context.save()
+        if let ids = detachedIDs, let detachDay {
+            // Только это занятие: выделяем его в отдельную запись со своим составом.
+            let start = PlannerCalendar.combine(day: detachDay, time: target.start)
+            let single = PlannerMover.move(target, occurrenceStart: start, to: start, context: context)
+            single.participantIDs = ids
+            single.markChanged()
+            try? context.save()
+        }
         sync.requestSync()
         if reminder >= 0 {
             let me = account.current
