@@ -121,7 +121,7 @@ struct PlannerCalendarView: View {
     /// Меняется при листании и после синхронизации: тогда перечитываем записи других разделов.
     private var refreshKey: String {
         let first = days.first?.timeIntervalSince1970 ?? 0
-        let synced = sync.lastSyncedAt?.timeIntervalSince1970 ?? 0
+        let synced = sync.dataVersion
         return "\(first)-\(days.count)-\(synced)-\(allEvents.count)"
     }
 

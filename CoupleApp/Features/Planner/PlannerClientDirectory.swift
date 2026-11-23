@@ -7,6 +7,16 @@ enum PlannerClientDirectory {
     struct Entry: Identifiable, Hashable {
         let id: UUID
         let name: String
+        /// Название в нижнем регистре: поиск идёт по нему, без медленного сравнения на каждый символ.
+        let lower: String
+
+        init(id: UUID, name: String) {
+            self.id = id
+            self.name = name
+            self.lower = name.lowercased()
+        }
+
+        func matches(_ lowercasedQuery: String) -> Bool { lower.contains(lowercasedQuery) }
     }
 
     /// Все клиенты по алфавиту.

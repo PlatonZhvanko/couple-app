@@ -444,7 +444,8 @@ struct PlannerTrainingEditor: View {
         let pool = directory.filter { !selected.contains($0.id) }
         // Без запроса показываем только двух недавних.
         guard !trimmedQuery.isEmpty else { return [] }
-        return Array(pool.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(6))
+        let q = trimmedQuery.lowercased()
+        return Array(pool.lazy.filter { $0.matches(q) }.prefix(6))
     }
 
     private var queryMatchesExisting: Bool {

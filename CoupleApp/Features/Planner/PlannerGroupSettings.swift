@@ -104,7 +104,8 @@ struct PlannerGroupEditor: View {
     private var suggestions: [PlannerClientDirectory.Entry] {
         let pool = directory.filter { !memberIDs.contains($0.id) }
         guard !trimmedQuery.isEmpty else { return Array(pool.prefix(2)) }
-        return Array(pool.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }.prefix(6))
+        let q = trimmedQuery.lowercased()
+        return Array(pool.lazy.filter { $0.matches(q) }.prefix(6))
     }
 
     private var queryMatchesExisting: Bool {
