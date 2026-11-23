@@ -21,7 +21,7 @@ import requests
 API_BASE = "https://api.yclients.com/api/v1"
 PAGE = 100
 # Экземпляр ресурса «Новик Анастасия» в iClients.
-RESOURCE_INSTANCE_ID = int(os.environ.get("ICLIENTS_RESOURCE_ID") or 261720)
+RESOURCE_TITLE = "Новик Анастасия"
 MEMBER = "partner"
 NS = uuid.UUID("6f1c2b0e-5a3d-4c57-9a52-1c1e5a7d0001")
 DAYS_BACK = 1
@@ -31,7 +31,16 @@ http = requests.Session()
 
 
 def norm(name: str) -> str:
-    return " ".join(name.lower().split())
+    """Имя для сравнения: без регистра, «ё»=«е», дефисы и точки как пробелы."""
+    name = name.lower().replace("ё", "е")
+    for ch in "-–—_.,":
+        name = name.replace(ch, " ")
+    return " ".join(name.split())
+
+
+def is_excluded(name: str) -> bool:
+    n = norm(name)
+    return any(n == e or n.startswith(e + " ") for e in EXCLUDED)
 
 
 # Клиенты, чьи записи не переносим (имена через запятую, регистр не важен).
@@ -69,6 +78,21 @@ def iclients_records(start: date, end: date) -> list[dict]:
         if len(batch) < PAGE:
             return out
         page += 1
+
+
+def resource_instance_id() -> int:
+    """Id ресурса, который в iClients называется ровно «Новик Анастасия»."""
+    headers = {
+        "Authorization": f"Bearer {env('YCLIENTS_PARTNER_TOKEN')}, User {env('YCLIENTS_USER_TOKEN')}",
+        "Accept": "application/vnd.api.v2+json",
+    }
+    r = http.get(f"{API_BASE}/resources/{env('YCLIENTS_COMPANY_ID')}", headers=headers, timeout=30)
+    r.raise_for_status()
+    found = [inst["id"] for res in r.json().get("data") or []
+             for inst in res.get("instances") or [] if (inst.get("title") or "").strip() == RESOURCE_TITLE]
+    if len(found) != 1:
+        sys.exit(f"Ресурс «{RESOURCE_TITLE}» найден {len(found)} раз, ожидался один")
+    return found[0]
 
 
 class Supabase:
@@ -110,11 +134,12 @@ def main() -> None:
         return
     today = datetime.now(timezone.utc).date()
     start, end = today - timedelta(days=DAYS_BACK), today + timedelta(days=DAYS_AHEAD)
+    resource_id = resource_instance_id()
     fetched = [
         r for r in iclients_records(start, end)
         if not r.get("activity_id")
-        and any(i.get("id") == RESOURCE_INSTANCE_ID for i in r.get("resource_instances") or [])
-        and norm((r.get("client") or {}).get("display_name") or (r.get("client") or {}).get("name") or "") not in EXCLUDED
+        and any(i.get("id") == resource_id for i in r.get("resource_instances") or [])
+        and not is_excluded((r.get("client") or {}).get("display_name") or (r.get("client") or {}).get("name") or "")
     ]
 
     db = Supabase()
