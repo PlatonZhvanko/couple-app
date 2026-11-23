@@ -476,7 +476,10 @@ enum PlannerPaymentStore {
         for event in events where isTraining(event) && event.categoryValue != .personal && !event.participantIDs.isEmpty {
             for day in days where event.startsOn(day) && !event.isCancelled(on: day) {
                 for clientID in event.participantIDs {
-                    let hasSubscription = subs.contains { $0.clientID == clientID && $0.covers(day) }
+                    let hasSubscription = subs.contains {
+                        $0.clientID == clientID && $0.covers(day)
+                            && PlannerSubscriptionTypeStore.applies($0, to: event, context: context)
+                    }
                     guard hasSubscription,
                           payment(context, eventID: event.syncID, day: day, clientID: clientID) == nil
                     else { continue }
@@ -639,6 +642,8 @@ final class PlannerSubscriptionType: SyncableModel {
         var price: Double
         var validDays: Int? = nil
         var charge: Double? = nil
+        /// На какие группы действует (названия); нет или пусто: на все.
+        var groups: [String]? = nil
     }
 
     static let recordKind = "planner.subscriptionType"
@@ -650,9 +655,16 @@ final class PlannerSubscriptionType: SyncableModel {
     var validDays: Int = 30
     /// Сколько списывается за одно занятие.
     var charge: Double = PlannerPricing.subscriptionCharge
+    /// Названия групп, на которые действует абонемент, по одному в строке. Пусто: на все.
+    var groupsRaw: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
+
+    var groupNames: [String] {
+        get { groupsRaw.split(separator: "\n").map(String.init) }
+        set { groupsRaw = newValue.joined(separator: "\n") }
+    }
 
     init(name: String, price: Double) {
         self.syncID = Self.makeID(name: name)
@@ -665,12 +677,13 @@ final class PlannerSubscriptionType: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(name: name, price: price, validDays: validDays, charge: charge) }
+    var payload: Payload { Payload(name: name, price: price, validDays: validDays, charge: charge, groups: groupNames.isEmpty ? nil : groupNames) }
 
     func apply(_ payload: Payload) {
         name = payload.name
         price = payload.price
         validDays = payload.validDays ?? 30
+        groupsRaw = (payload.groups ?? []).joined(separator: "\n")
         charge = payload.charge ?? PlannerPricing.subscriptionCharge
     }
 
@@ -680,6 +693,19 @@ final class PlannerSubscriptionType: SyncableModel {
 }
 
 enum PlannerSubscriptionTypeStore {
+    /// Действует ли проданный абонемент на это занятие: если у вида указаны группы,
+    /// то только на них, если пусто, то на все.
+    @MainActor
+    static func applies(_ sub: PlannerSubscription, to event: PlannerEvent, context: ModelContext) -> Bool {
+        guard !sub.kindName.isEmpty else { return true }
+        let kind = sub.kindName
+        let type = try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.name == kind }
+        )).first
+        guard let groups = type?.groupNames, !groups.isEmpty else { return true }
+        return groups.contains { $0.caseInsensitiveCompare(event.title) == .orderedSame }
+    }
+
     /// Удалить одну продажу абонемента вместе со списаниями с неё.
     @MainActor
     static func deleteSale(_ context: ModelContext, sub: PlannerSubscription) {

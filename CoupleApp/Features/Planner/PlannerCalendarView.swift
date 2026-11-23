@@ -32,11 +32,17 @@ struct PlannerCalendarView: View {
     @Query(filter: #Predicate<PlannerErrandKind> { $0.deletedAt == nil })
     private var errandKinds: [PlannerErrandKind]
     @State private var shiftEdit: ShiftEditTarget?
+    /// Несколько записей в одном времени: меню снизу, чтобы выбрать нужную.
+    @State private var pickItems: [PlannerOccurrence] = []
+    @State private var pickDay = Date.now
+    @State private var showPick = false
 
     private struct ShiftEditTarget: Identifiable {
         let day: Date
         var id: Date { day }
     }
+    @Query(filter: #Predicate<PlannerStatusStyle> { $0.deletedAt == nil })
+    private var statusStyles: [PlannerStatusStyle]
     @Query(filter: #Predicate<PlannerColorRule> { $0.deletedAt == nil })
     private var colorRules: [PlannerColorRule]
     @Query(filter: #Predicate<PlannerSubscription> { $0.deletedAt == nil })
@@ -177,6 +183,14 @@ struct PlannerCalendarView: View {
                 if let detail = item.detail { detail() } else { EmptyView() }
             }
         }
+        .confirmationDialog("Что открыть?", isPresented: $showPick, titleVisibility: .visible) {
+            ForEach(pickItems) { occurrence in
+                Button("\(PlannerCalendar.time(occurrence.start)) \(occurrence.event.plainTitle)") {
+                    sheetTarget = SheetTarget(kind: .detail, event: occurrence.event, day: pickDay)
+                }
+            }
+            Button("Отмена", role: .cancel) {}
+        }
         .sheet(item: $shiftEdit) { target in
             PlannerShiftSheet(day: target.day, defaultAmount: shiftAmount)
         }
@@ -286,7 +300,7 @@ struct PlannerCalendarView: View {
     private var todayEarned: Double {
         if isOwner {
             let entries = PlannerLedger.entries(events: allEvents, shifts: shifts, ops: moneyOps)
-            return PlannerLedger.net(on: .now, entries: entries)
+            return PlannerLedger.income(on: .now, entries: entries)
         }
         let map = PlannerPaymentStore.eventMap(allEvents)
         let cash = payments
@@ -347,6 +361,7 @@ struct PlannerCalendarView: View {
                 onShiftHold: { day in
                     if isOwner && !showsPartner { shiftEdit = ShiftEditTarget(day: day) }
                 },
+                badgeEmoji: { event, day in styledEmoji(event, day) },
                 dayMark: { moodMark($0) },
                 badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
@@ -369,7 +384,14 @@ struct PlannerCalendarView: View {
                 },
                 onEventTap: { event, day in
                     guard moving == nil else { return }
-                    sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
+                    let overlapping = overlappingOccurrences(of: event, at: day)
+                    if overlapping.count > 1 {
+                        pickItems = overlapping
+                        pickDay = day
+                        showPick = true
+                    } else {
+                        sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
+                    }
                 },
                 onMove: { event, from, to in moveByDrag(event, from: from, to: to) },
                 onSwipe: { movePlanner($0) }
@@ -413,6 +435,13 @@ struct PlannerCalendarView: View {
         return result
     }
 
+    /// Записи, которые идут одновременно с нажатой (для выбора, если в одном месте их несколько).
+    private func overlappingOccurrences(of event: PlannerEvent, at time: Date) -> [PlannerOccurrence] {
+        let occurrences = events.occurrences(on: cal.startOfDay(for: time)).filter { !$0.event.isAllDay }
+        guard let tapped = occurrences.first(where: { $0.event === event }) else { return [] }
+        return occurrences.filter { $0.start < tapped.end && $0.end > tapped.start }
+    }
+
     /// Часть смены по дням: 0 — вся, 1 — первая половина, 2 — вторая.
     private var shiftParts: [Date: Int] {
         var result: [Date: Int] = [:]
@@ -434,13 +463,24 @@ struct PlannerCalendarView: View {
            let hex = errandColors[event.errandType.lowercased()], let typeColor = Color(hex: hex) {
             base = typeColor
         }
-        guard isOwner || event.categoryValue == .errand,
-              let status = event.status(on: day, for: account.current) else { return base }
+        guard isOwner || event.categoryValue == .errand else { return base }
+        let current = event.status(on: day, for: account.current)
+        let hex = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType, status: current).colorHex
+        if !hex.isEmpty, let custom = Color(hex: hex) { return custom }
+        guard let status = current else { return base }
         switch status {
         case .done: return Color.green.opacity(0.75)
         case .notDone: return Color.red.opacity(0.65)
         case .moved: return Color.white
         }
+    }
+
+    private func styledEmoji(_ event: PlannerEvent, _ day: Date) -> String? {
+        guard isOwner || event.categoryValue == .errand else { return nil }
+        let r = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType,
+                                                status: event.status(on: day, for: account.current))
+        if r.hideEmoji { return "" }
+        return r.emoji.isEmpty ? nil : r.emoji
     }
 
     private func blockBadge(_ event: PlannerEvent, _ day: Date) -> PlannerPayBadge {
