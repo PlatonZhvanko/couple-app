@@ -259,14 +259,17 @@ struct ClientsClientEditor: View {
     }
 
     private func save() {
-        let target = client ?? ClientsClient(name: trimmedName, member: member)
+        // Одинаковых карточек не бывает: новый клиент с уже существующим именем открывает старую карточку.
+        let sameName = client == nil ? PlannerClientMerge.existing(name: trimmedName, member: member, context: context) : nil
+        let target = client ?? sameName ?? ClientsClient(name: trimmedName, member: member)
         target.name = trimmedName
         target.phone = phone.trimmingCharacters(in: .whitespaces)
         target.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
         target.birthday = hasBirthday ? birthday : nil
         target.markChanged()
-        if client == nil { context.insert(target) }
+        if client == nil && sameName == nil { context.insert(target) }
         try? context.save()
+        PlannerClientMerge.mergeAll(context)
         sync.requestSync()
         dismiss()
     }
