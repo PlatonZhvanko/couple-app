@@ -155,6 +155,65 @@ function db() {
   };
 }
 
+// --- Олимпик: расписание всех кортов, только для просмотра (YClients не меняем) ---
+function mskYmd(d: Date): string {
+  return new Date(d.getTime() + MSK).toISOString().slice(0, 10);
+}
+
+function olimpicStatus(rec: Json): string {
+  if (rec.attendance === -1 || rec.visit_attendance === -1) return "noshow";
+  if (rec.attendance === 1 || rec.visit_attendance === 1) return "arrived";
+  if (rec.attendance === 2 || rec.visit_attendance === 2 || rec.confirmed === 1) return "confirmed";
+  return "pending";
+}
+
+async function syncOlimpic(all: Json[], supa: ReturnType<typeof db>, coupleId: string, now: string,
+                           rows: Json[], startDay: Date): Promise<string> {
+  const live = all.filter((r) => !r.deleted && r.staff?.id);
+  // Корты — это сотрудники журнала, у которых есть записи в окне синхронизации.
+  const courtMap = new Map<number, string>();
+  for (const r of live) courtMap.set(r.staff.id, String(r.staff.name ?? "").trim() || `Корт ${r.staff.id}`);
+  const collator = new Intl.Collator("ru", { numeric: true });
+  const courts = [...courtMap.entries()].map(([id, name]) => ({ id, name }))
+    .sort((a, b) => collator.compare(a.name, b.name));
+
+  const perDay = new Map<string, Json[]>();
+  for (const r of live) {
+    const begin = new Date(r.datetime);
+    const day = mskYmd(begin);
+    const client = r.client?.display_name || r.client?.name ||
+      (r.services ?? []).map((s: Json) => s.title).filter(Boolean).join(", ") || "Занятие";
+    const list = perDay.get(day) ?? [];
+    list.push({
+      id: r.id, court: r.staff.id, client, start: iso(begin), length: r.seance_length || 3600,
+      status: olimpicStatus(r),
+      service: (r.services ?? []).map((s: Json) => s.title).filter(Boolean).join(", "),
+    });
+    perDay.set(day, list);
+  }
+
+  const existing = new Map<string, Json>();
+  for (const r of await supa.get("records", "select=id,payload,deleted_at&kind=eq.planner.olimpic_day")) existing.set(r.id, r);
+
+  // Дни окна (с запасом назад) и любые дни, где раньше были записи.
+  const days = new Set<string>(perDay.keys());
+  for (let t = startDay.getTime(); t <= startDay.getTime() + (DAYS_AHEAD + DAYS_BACK) * 86400000; t += 86400000) days.add(mskYmd(new Date(t)));
+  const windowStart = mskYmd(startDay);
+  let changed = 0;
+  for (const day of days) {
+    if (day < windowStart) continue;
+    const id = await uuid5(`olimpic:day:${day}`);
+    const bookings = (perDay.get(day) ?? []).sort((a, b) => a.start.localeCompare(b.start) || a.id - b.id);
+    const payload = { day, courts, bookings };
+    const old = existing.get(id);
+    if (!old && bookings.length === 0) continue;
+    if (old && !old.deleted_at && sameJson(old.payload, payload)) continue;
+    rows.push({ id, couple_id: coupleId, kind: "planner.olimpic_day", updated_at: now, deleted_at: null, payload });
+    changed++;
+  }
+  return `Олимпик: кортов ${courts.length} (${courts.map((c) => c.name).join("; ")}), дней обновлено ${changed}`;
+}
+
 async function sync(): Promise<string> {
   const excluded = (Deno.env.get("ICLIENTS_EXCLUDE_CLIENTS") ?? "ДЮСШ-13, ДЮСШ-РГК, ДЮСШ-8, ДЮСШ-3")
     .split(",").map((n) => n.trim()).filter(Boolean).map(norm);
@@ -165,7 +224,8 @@ async function sync(): Promise<string> {
   const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
   const resourceId = await resourceInstanceId();
-  const fetched = (await ycRecords(ymd(startDay), ymd(endDay))).filter((r) =>
+  const allRecords = await ycRecords(ymd(startDay), ymd(endDay));
+  const fetched = allRecords.filter((r) =>
     !r.deleted && !r.activity_id &&
     (r.resource_instances ?? []).some((i: Json) => i.id === resourceId) &&
     !isExcluded(r.client?.display_name || r.client?.name || "", excluded)
@@ -278,7 +338,14 @@ async function sync(): Promise<string> {
     }
   }
 
-  const summary = `Записей в YClients: ${fetched.length}, обновлено в приложении: ${rows.length}`;
+  let olimpic = "";
+  try {
+    olimpic = await syncOlimpic(allRecords, supa, coupleId, now, rows, startDay);
+  } catch (e) {
+    olimpic = `Олимпик: ошибка ${(e as Error).message}`; // не ломаем синхронизацию Насти
+  }
+
+  const summary = `Записей в YClients: ${fetched.length}, обновлено в приложении: ${rows.length}. ${olimpic}`;
   // Отметка «синхронизация жива»: приложение этот вид записей не читает.
   rows.push({ id: await uuid5("heartbeat"), couple_id: coupleId, kind: "sys.heartbeat", updated_at: now, deleted_at: null,
     payload: { lastRun: now, summary, engine: "supabase" } });

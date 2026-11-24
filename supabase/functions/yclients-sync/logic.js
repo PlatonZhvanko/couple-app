@@ -1,4 +1,3 @@
-"use strict";
 // Синхронизация записей Насти из YClients в приложение «Вдвоём».
 // Логика синхронизации. Её собирает в logic.js (см. build.sh) и запускает загрузчик index.ts.
 // Секреты YClients берутся из настроек функции, в коде их нет.
@@ -148,6 +147,67 @@ function db() {
         },
     };
 }
+// --- Олимпик: расписание всех кортов, только для просмотра (YClients не меняем) ---
+function mskYmd(d) {
+    return new Date(d.getTime() + MSK).toISOString().slice(0, 10);
+}
+function olimpicStatus(rec) {
+    if (rec.attendance === -1 || rec.visit_attendance === -1)
+        return "noshow";
+    if (rec.attendance === 1 || rec.visit_attendance === 1)
+        return "arrived";
+    if (rec.attendance === 2 || rec.visit_attendance === 2 || rec.confirmed === 1)
+        return "confirmed";
+    return "pending";
+}
+async function syncOlimpic(all, supa, coupleId, now, rows, startDay) {
+    const live = all.filter((r) => !r.deleted && r.staff?.id);
+    // Корты — это сотрудники журнала, у которых есть записи в окне синхронизации.
+    const courtMap = new Map();
+    for (const r of live)
+        courtMap.set(r.staff.id, String(r.staff.name ?? "").trim() || `Корт ${r.staff.id}`);
+    const collator = new Intl.Collator("ru", { numeric: true });
+    const courts = [...courtMap.entries()].map(([id, name]) => ({ id, name }))
+        .sort((a, b) => collator.compare(a.name, b.name));
+    const perDay = new Map();
+    for (const r of live) {
+        const begin = new Date(r.datetime);
+        const day = mskYmd(begin);
+        const client = r.client?.display_name || r.client?.name ||
+            (r.services ?? []).map((s) => s.title).filter(Boolean).join(", ") || "Занятие";
+        const list = perDay.get(day) ?? [];
+        list.push({
+            id: r.id, court: r.staff.id, client, start: iso(begin), length: r.seance_length || 3600,
+            status: olimpicStatus(r),
+            service: (r.services ?? []).map((s) => s.title).filter(Boolean).join(", "),
+        });
+        perDay.set(day, list);
+    }
+    const existing = new Map();
+    for (const r of await supa.get("records", "select=id,payload,deleted_at&kind=eq.planner.olimpic_day"))
+        existing.set(r.id, r);
+    // Дни окна (с запасом назад) и любые дни, где раньше были записи.
+    const days = new Set(perDay.keys());
+    for (let t = startDay.getTime(); t <= startDay.getTime() + (DAYS_AHEAD + DAYS_BACK) * 86400000; t += 86400000)
+        days.add(mskYmd(new Date(t)));
+    const windowStart = mskYmd(startDay);
+    let changed = 0;
+    for (const day of days) {
+        if (day < windowStart)
+            continue;
+        const id = await uuid5(`olimpic:day:${day}`);
+        const bookings = (perDay.get(day) ?? []).sort((a, b) => a.start.localeCompare(b.start) || a.id - b.id);
+        const payload = { day, courts, bookings };
+        const old = existing.get(id);
+        if (!old && bookings.length === 0)
+            continue;
+        if (old && !old.deleted_at && sameJson(old.payload, payload))
+            continue;
+        rows.push({ id, couple_id: coupleId, kind: "planner.olimpic_day", updated_at: now, deleted_at: null, payload });
+        changed++;
+    }
+    return `Олимпик: кортов ${courts.length} (${courts.map((c) => c.name).join("; ")}), дней обновлено ${changed}`;
+}
 async function sync() {
     const excluded = (Deno.env.get("ICLIENTS_EXCLUDE_CLIENTS") ?? "ДЮСШ-13, ДЮСШ-РГК, ДЮСШ-8, ДЮСШ-3")
         .split(",").map((n) => n.trim()).filter(Boolean).map(norm);
@@ -157,7 +217,8 @@ async function sync() {
     const endDay = new Date(today.getTime() + DAYS_AHEAD * 86400000);
     const ymd = (d) => d.toISOString().slice(0, 10);
     const resourceId = await resourceInstanceId();
-    const fetched = (await ycRecords(ymd(startDay), ymd(endDay))).filter((r) => !r.deleted && !r.activity_id &&
+    const allRecords = await ycRecords(ymd(startDay), ymd(endDay));
+    const fetched = allRecords.filter((r) => !r.deleted && !r.activity_id &&
         (r.resource_instances ?? []).some((i) => i.id === resourceId) &&
         !isExcluded(r.client?.display_name || r.client?.name || "", excluded));
     const supa = db();
@@ -271,7 +332,14 @@ async function sync() {
             rows.push({ id: rid, couple_id: coupleId, kind: "clients.appointment", updated_at: now, deleted_at: now, payload: p });
         }
     }
-    const summary = `Записей в YClients: ${fetched.length}, обновлено в приложении: ${rows.length}`;
+    let olimpic = "";
+    try {
+        olimpic = await syncOlimpic(allRecords, supa, coupleId, now, rows, startDay);
+    }
+    catch (e) {
+        olimpic = `Олимпик: ошибка ${e.message}`; // не ломаем синхронизацию Насти
+    }
+    const summary = `Записей в YClients: ${fetched.length}, обновлено в приложении: ${rows.length}. ${olimpic}`;
     // Отметка «синхронизация жива»: приложение этот вид записей не читает.
     rows.push({ id: await uuid5("heartbeat"), couple_id: coupleId, kind: "sys.heartbeat", updated_at: now, deleted_at: null,
         payload: { lastRun: now, summary, engine: "supabase" } });
