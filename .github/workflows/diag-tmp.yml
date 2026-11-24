@@ -13,3 +13,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      - run: |
+          curl -s "https://raw.githubusercontent.com/PlatonZhvanko/couple-app/main/supabase/functions/yclients-sync/logic.js?t=$(date +%s)" | grep -c heartbeat
+          curl -s -m 30 -w "\nFUNC http %{http_code}\n" -X POST -H "x-cron-secret: x" https://izyhshljamzgyzxoupss.supabase.co/functions/v1/yclients-sync
