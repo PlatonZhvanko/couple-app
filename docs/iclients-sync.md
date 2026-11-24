@@ -19,4 +19,7 @@ GitHub по расписанию запускал синхронизацию н�
 функция `supabase/functions/yclients-sync/index.ts` (то же, что `sync.py`) и расписание
 `supabase/schedule-sync.sql` (pg_cron каждые 5 минут). Секреты функции: `YCLIENTS_COMPANY_ID`,
 `YCLIENTS_PARTNER_TOKEN`, `YCLIENTS_USER_TOKEN`, `CRON_SECRET` (общий пароль с расписанием).
-Ключ базы функция получает от Supabase сама. GitHub-запуск остаётся запасным ручным.
+Ключ базы функция получает от Supabase сама.
+В Supabase вставлен только маленький загрузчик `index.ts`: он при каждом запуске скачивает свежую
+логику `logic.js` из репозитория, поэтому правки приходят без ручной вставки. Логику правят в
+`logic.ts` и собирают `sh supabase/functions/yclients-sync/build.sh` (нужен пакет typescript). GitHub-запуск остаётся запасным ручным.
