@@ -126,6 +126,11 @@ class Supabase:
             r.raise_for_status()
 
 
+def name_key(name: str) -> str:
+    """Имя для сравнения карточек: без регистра и лишних пробелов, «ё»=«е»."""
+    return " ".join((name or "").lower().replace("ё", "е").split())
+
+
 def digits(phone: str) -> str:
     d = re.sub(r"\D", "", phone or "")
     return d[-10:] if len(d) >= 10 else d
@@ -185,6 +190,7 @@ def main() -> None:
                   if r["kind"] == "clients.client" and not r["deleted_at"]
                   and (r["payload"] or {}).get("member") == MEMBER]
     by_phone = {digits(r["payload"].get("phone", "")): r["id"] for r in my_clients if digits(r["payload"].get("phone", ""))}
+    by_name = {name_key(r["payload"].get("name", "")): r["id"] for r in my_clients if name_key(r["payload"].get("name", ""))}
     client_ids: dict[int, str] = {}
     for rec in fetched:
         c = rec.get("client") or {}
@@ -193,15 +199,20 @@ def main() -> None:
             continue
         det_id = str(uuid.uuid5(NS, f"client:{cid}"))
         phone = c.get("phone") or ""
+        cname = c.get("display_name") or c.get("name") or "Клиент YClients"
         if det_id in existing:
             client_ids[cid] = det_id
         elif digits(phone) and digits(phone) in by_phone:
             client_ids[cid] = by_phone[digits(phone)]
+        elif name_key(cname) in by_name:
+            # Клиент с таким именем уже есть: записи идут в его карточку, дубль не создаём.
+            client_ids[cid] = by_name[name_key(cname)]
         else:
             client_ids[cid] = det_id
+            by_name[name_key(cname)] = det_id
             rows.append({
                 "id": det_id, "couple_id": couple_id, "kind": "clients.client", "updated_at": now, "deleted_at": None,
-                "payload": {"name": c.get("display_name") or c.get("name") or "Клиент YClients",
+                "payload": {"name": cname,
                             "phone": phone, "note": "", "member": MEMBER, "createdAt": now, "source": "iclients"},
             })
 

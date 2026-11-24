@@ -37,6 +37,10 @@ function iso(d: Date): string {
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+function nameKey(name: string): string {
+  return (name ?? "").toLowerCase().replaceAll("ё", "е").split(/\s+/).filter(Boolean).join(" ");
+}
+
 function digits(phone: string): string {
   const d = (phone ?? "").replace(/\D/g, "");
   return d.length >= 10 ? d.slice(-10) : d;
@@ -187,19 +191,28 @@ async function sync(): Promise<string> {
       byPhone.set(digits(r.payload.phone), r.id);
     }
   }
+  const byName = new Map<string, string>();
+  for (const r of existing.values()) {
+    if (r.kind === "clients.client" && !r.deleted_at && r.payload?.member === MEMBER && nameKey(r.payload.name ?? "")) {
+      byName.set(nameKey(r.payload.name), r.id);
+    }
+  }
   const clientIds = new Map<number, string>();
   for (const rec of fetched) {
     const c = rec.client ?? {};
     if (!c.id || clientIds.has(c.id)) continue;
     const detId = await uuid5(`client:${c.id}`);
     const phone: string = c.phone ?? "";
+    const cname: string = c.display_name || c.name || "Клиент YClients";
     if (existing.has(detId)) clientIds.set(c.id, detId);
     else if (digits(phone) && byPhone.has(digits(phone))) clientIds.set(c.id, byPhone.get(digits(phone))!);
+    else if (byName.has(nameKey(cname))) clientIds.set(c.id, byName.get(nameKey(cname))!);
     else {
       clientIds.set(c.id, detId);
+      byName.set(nameKey(cname), detId);
       rows.push({
         id: detId, couple_id: coupleId, kind: "clients.client", updated_at: now, deleted_at: null,
-        payload: { name: c.display_name || c.name || "Клиент YClients", phone, note: "", member: MEMBER, createdAt: now, source: "iclients" },
+        payload: { name: cname, phone, note: "", member: MEMBER, createdAt: now, source: "iclients" },
       });
     }
   }
