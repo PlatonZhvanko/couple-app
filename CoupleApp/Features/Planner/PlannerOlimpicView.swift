@@ -92,6 +92,8 @@ struct PlannerOlimpicView: View {
     private func fillColor(_ b: PlannerOlimpicDay.Booking) -> Color {
         if b.status == "noshow" { return Color(red: 0.95, green: 0.25, blue: 0.30) }
         if b.nastya == true { return Color(red: 1.0, green: 0.78, blue: 0.10) }
+        // Групповые события (турниры, группы) — тёмно-зелёные, отличаются от обычных записей.
+        if b.group == true { return Color(red: 0.05, green: 0.45, blue: 0.25) }
         return isPadel(b) ? Color(red: 0.20, green: 0.52, blue: 0.98) : Color(red: 0.13, green: 0.72, blue: 0.40)
     }
 
