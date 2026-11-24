@@ -84,9 +84,9 @@ struct PlannerOlimpicView: View {
     }
 
     private func fillColor(_ b: PlannerOlimpicDay.Booking) -> Color {
-        if b.status == "noshow" { return Color(red: 1.0, green: 0.45, blue: 0.48) }
+        if b.status == "noshow" { return Color(red: 1.0, green: 0.33, blue: 0.36) }
         if b.nastya == true { return Color.yellow.opacity(0.35) }
-        return isPadel(b) ? Color(red: 0.50, green: 0.72, blue: 1.0) : Color(red: 0.50, green: 0.88, blue: 0.58)
+        return isPadel(b) ? Color(red: 0.25, green: 0.58, blue: 1.0) : Color(red: 0.20, green: 0.80, blue: 0.40)
     }
 
     private func statusName(_ status: String) -> String {
