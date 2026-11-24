@@ -33,6 +33,8 @@ struct RootView: View {
     /// Меняется при уходе в фон: весь интерфейс пересоздаётся с нуля.
     @State private var generation = UUID()
     @State private var showReload = false
+    /// После закрытия сторожем зависшего приложения: короткая подсказка при следующем запуске.
+    @State private var showRestartNote = false
 
     var body: some View {
         ZStack {
@@ -85,6 +87,7 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background:
+                Watchdog.shared.setActive(false)
                 // Защита от «мёртвого» экрана: при сворачивании сбрасываем весь интерфейс
                 // (окна, навигацию, ввод) и возвращаемся в планер. Сохранённые данные целы.
                 UserDefaults.standard.set("planner", forKey: "root.selectedTab")
@@ -92,6 +95,7 @@ struct RootView: View {
                 showReload = true
                 generation = UUID()
             case .active:
+                Watchdog.shared.setActive(true)
                 if showReload {
                     Task {
                         try? await Task.sleep(for: .seconds(0.7))
@@ -103,6 +107,42 @@ struct RootView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .overlay(alignment: .top) {
+            if showRestartNote {
+                Text("Приложение зависало и перезапустилось. Данные целы.")
+                    .font(.footnote.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .task {
+            // Сторож зависаний: после зависания сбрасываем интерфейс и возвращаем на главный экран.
+            let defaults = UserDefaults.standard
+            if defaults.double(forKey: Watchdog.killedKey) > 0 {
+                defaults.removeObject(forKey: Watchdog.killedKey)
+                defaults.set("planner", forKey: "root.selectedTab")
+                withAnimation { showRestartNote = true }
+                Task {
+                    try? await Task.sleep(for: .seconds(5))
+                    withAnimation { showRestartNote = false }
+                }
+            }
+            try? await Task.sleep(for: .seconds(5))
+            Watchdog.shared.onRecovered = {
+                UserDefaults.standard.set("planner", forKey: "root.selectedTab")
+                showReload = true
+                generation = UUID()
+                Task {
+                    try? await Task.sleep(for: .seconds(0.8))
+                    withAnimation(.easeOut(duration: 0.3)) { showReload = false }
+                }
+            }
+            Watchdog.shared.setActive(true)
+            Watchdog.shared.start()
+        }
         .task {
             // Окно появляется не сразу, поэтому пробуем несколько раз.
             for _ in 0..<10 {

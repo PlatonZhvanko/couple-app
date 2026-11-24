@@ -83,9 +83,13 @@ struct PetsRootView: View {
 /// Карточка питомца: данные, внимание, быстрые кнопки, дела по здоровью и траты.
 struct PetsDetailView: View {
     let pet: PetsPet
-    @State private var editing = false
-    @State private var addingEntry = false
-    @State private var addingTask = false
+    private enum DetailSheet: String, Identifiable {
+        case edit, entry, task
+        var id: String { rawValue }
+    }
+
+    /// Одно окно за раз: две кнопки в одной строке списка не должны открывать окна одновременно.
+    @State private var sheet: DetailSheet?
 
     @Query(filter: #Predicate<PetsTask> { $0.deletedAt == nil }) private var allTasks: [PetsTask]
     @Query(filter: #Predicate<PetsEntry> { $0.deletedAt == nil }) private var allEntries: [PetsEntry]
@@ -113,14 +117,9 @@ struct PetsDetailView: View {
             }
             Section {
                 HStack(spacing: 12) {
-                    Button { addingEntry = true } label: {
-                        Label("Трата", systemImage: "rublesign.circle.fill").frame(maxWidth: .infinity)
-                    }
-                    Button { addingTask = true } label: {
-                        Label("Что сделать", systemImage: "cross.case.fill").frame(maxWidth: .infinity)
-                    }
+                    quickButton("💸", "Трата") { sheet = .entry }
+                    quickButton("🩺", "Что сделать") { sheet = .task }
                 }
-                .buttonStyle(.borderedProminent)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             }
@@ -155,11 +154,30 @@ struct PetsDetailView: View {
         }
         .navigationTitle(pet.displayName)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { Button("Изменить") { editing = true } }
+            ToolbarItem(placement: .topBarTrailing) { Button("Изменить") { sheet = .edit } }
         }
-        .sheet(isPresented: $editing) { PetsFormView(pet: pet) }
-        .sheet(isPresented: $addingEntry) { PetsEntryFormView(pet: pet, entry: nil) }
-        .sheet(isPresented: $addingTask) { PetsTaskFormView(pet: pet, task: nil) }
+        .sheet(item: $sheet) { item in
+            switch item {
+            case .edit: PetsFormView(pet: pet)
+            case .entry: PetsEntryFormView(pet: pet, entry: nil)
+            case .task: PetsTaskFormView(pet: pet, task: nil)
+            }
+        }
+    }
+
+    /// Аккуратная кнопка: маленький эмодзи и текст по центру.
+    private func quickButton(_ emoji: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(emoji).font(.subheadline)
+                Text(title).font(.subheadline.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.pink.opacity(0.18)))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.primary)
     }
 }
 
