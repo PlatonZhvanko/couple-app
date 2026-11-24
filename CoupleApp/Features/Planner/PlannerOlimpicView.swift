@@ -277,8 +277,14 @@ struct PlannerOlimpicView: View {
         .padding(.vertical, 1)
         .frame(width: width - 2, height: height, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 6).fill(fillColor(b).opacity(0.30))
-                .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(fillColor(b).opacity(0.9), lineWidth: 1) }
+            RoundedRectangle(cornerRadius: 6)
+                .fill(fillColor(b).opacity(b.status == "noshow" && b.nastya != true ? 0.80 : 0.30))
+                .overlay {
+                    // «Не пришёл» у обычных записей — плотный красный без обводки; у Настиных — прозрачный с обводкой и значком Y.
+                    if !(b.status == "noshow" && b.nastya != true) {
+                        RoundedRectangle(cornerRadius: 6).strokeBorder(fillColor(b).opacity(0.9), lineWidth: 1)
+                    }
+                }
         )
         .overlay(alignment: .topTrailing) { if b.nastya == true { ClientsYClientsBadge(size: 9).padding(1) } }
         .clipShape(RoundedRectangle(cornerRadius: 6))
