@@ -21,6 +21,8 @@ final class PlannerOlimpicDay: SyncableModel {
         /// confirmed, arrived, pending или noshow.
         var status: String
         var service: String?
+        /// Ресурс «Новик Анастасия» (её тренировки).
+        var nastya: Bool?
     }
 
     struct Payload: Codable {
