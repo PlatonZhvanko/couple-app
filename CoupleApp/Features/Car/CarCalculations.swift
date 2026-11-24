@@ -174,7 +174,15 @@ extension CarReminder {
 
 enum CarFormat {
     static func money(_ value: Double) -> String {
-        value.formatted(.currency(code: "RUB").precision(.fractionLength(0...0)).locale(Locale(identifier: "ru_RU")))
+        // Без тяжёлых форматтеров валюты: они медленные, а суммы рисуются списками.
+        guard value.isFinite else { return "0\u{00A0}₽" }
+        let number = Int(value.rounded())
+        var out = ""
+        for (index, char) in String(abs(number)).reversed().enumerated() {
+            if index > 0 && index % 3 == 0 { out.append("\u{00A0}") }
+            out.append(char)
+        }
+        return (number < 0 ? "-" : "") + String(out.reversed()) + "\u{00A0}₽"
     }
 
     static func km(_ value: Int) -> String {

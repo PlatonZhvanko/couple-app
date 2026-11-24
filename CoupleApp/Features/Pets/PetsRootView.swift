@@ -131,7 +131,7 @@ struct PetsDetailView: View {
                     HStack {
                         Label("Траты", systemImage: "rublesign.circle")
                         Spacer()
-                        Text(CarFormat.money(spent)).foregroundStyle(.secondary)
+                        Text(PetsSpendingView.money(spent)).foregroundStyle(.secondary)
                     }
                 }
             }
