@@ -563,104 +563,125 @@ struct PetsEntryFormView: View {
     }
 }
 
-/// Траты питомца: за всё время, месяц или выбранный период. Простой плоский список без тяжёлой работы.
+/// Траты питомца. Намеренно простой экран: данные читаются один раз в обычные значения
+/// (без @Query и наблюдения за моделями), период выбирается меню в панели.
 struct PetsSpendingView: View {
     let pet: PetsPet
 
-    @Query(filter: #Predicate<PetsEntry> { $0.deletedAt == nil }, sort: \PetsEntry.date, order: .reverse)
-    private var allEntries: [PetsEntry]
+    private struct Row: Identifiable {
+        let id: UUID
+        let title: String
+        let caption: String
+        let amount: Double
+    }
+
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
-    /// 0 — всё время, 1 — месяц, 2 — свой период.
+    /// 0 — всё время, 1 — месяц, 2 — год.
     @State private var period = 0
-    @State private var from = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
-    @State private var to = Date.now
+    @State private var rows: [Row] = []
     @State private var adding = false
     @State private var editing: PetsEntry?
 
-    private func inPeriod(_ date: Date) -> Bool {
-        switch period {
-        case 1:
-            let start = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
-            return date >= start
-        case 2:
-            let cal = Calendar.current
-            let start = cal.startOfDay(for: from)
-            let end = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: to)) ?? to
-            return date >= start && date < end
-        default:
-            return true
-        }
-    }
+    private var periodTitle: String { ["Всё время", "Месяц", "Год"][period] }
+    private var total: Double { rows.reduce(0) { $0 + $1.amount } }
 
     var body: some View {
-        let entries = allEntries.filter { $0.petID == pet.syncID && inPeriod($0.date) }
-        let total = entries.reduce(0) { $0 + $1.amount }
         List {
             Section {
-                Picker("Период", selection: $period) {
-                    Text("Всё время").tag(0)
-                    Text("Месяц").tag(1)
-                    Text("Период").tag(2)
-                }
-                .pickerStyle(.segmented)
-                if period == 2 {
-                    DatePicker("С", selection: $from, displayedComponents: .date)
-                    DatePicker("По", selection: $to, displayedComponents: .date)
-                }
                 HStack {
-                    Text("Итого")
+                    Text(periodTitle)
                     Spacer()
                     Text(Self.money(total)).bold()
                 }
             }
             Section("Траты") {
-                if entries.isEmpty {
+                if rows.isEmpty {
                     Text("За период трат нет").foregroundStyle(.secondary)
                 }
-                ForEach(entries) { item in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.note.isEmpty ? item.category : item.note)
-                            Text("\(item.category) · \(item.date.formatted(date: .abbreviated, time: .omitted))")
-                                .font(.caption).foregroundStyle(.secondary)
+                ForEach(rows) { row in
+                    Button { open(row.id) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(row.title)
+                                Text(row.caption).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(Self.money(row.amount))
                         }
-                        Spacer()
-                        Text(Self.money(item.amount))
                     }
-                    .contentShape(Rectangle())
-                    .onTapGesture { editing = item }
-                    .swipeActions {
-                        Button("Удалить", role: .destructive) { remove(item) }
-                    }
+                    .tint(.primary)
                 }
+                .onDelete(perform: delete)
             }
         }
         .navigationTitle("Траты")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Menu("Период", systemImage: "calendar") {
+                    Button("Всё время") { period = 0; load() }
+                    Button("Месяц") { period = 1; load() }
+                    Button("Год") { period = 2; load() }
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("Добавить", systemImage: "plus") { adding = true }
             }
         }
-        .sheet(isPresented: $adding) { PetsEntryFormView(pet: pet, entry: nil) }
-        .sheet(item: $editing) { PetsEntryFormView(pet: pet, entry: $0) }
+        .sheet(isPresented: $adding, onDismiss: load) { PetsEntryFormView(pet: pet, entry: nil) }
+        .sheet(item: $editing, onDismiss: load) { PetsEntryFormView(pet: pet, entry: $0) }
+        .task { load() }
+        .onChange(of: sync.dataVersion) { _, _ in load() }
+    }
+
+    private func fetch() -> [PetsEntry] {
+        let petID = pet.syncID
+        let descriptor = FetchDescriptor<PetsEntry>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.petID == petID },
+            sortBy: [SortDescriptor(\PetsEntry.date, order: .reverse)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private func load() {
+        let cal = Calendar.current
+        let start: Date? = switch period {
+        case 1: cal.date(byAdding: .month, value: -1, to: .now)
+        case 2: cal.date(byAdding: .year, value: -1, to: .now)
+        default: nil
+        }
+        rows = fetch().compactMap { entry in
+            if let start, entry.date < start { return nil }
+            return Row(
+                id: entry.syncID,
+                title: entry.note.isEmpty ? entry.category : entry.note,
+                caption: "\(entry.category) · \(entry.date.formatted(date: .abbreviated, time: .omitted))",
+                amount: entry.amount
+            )
+        }
+    }
+
+    private func open(_ id: UUID) {
+        editing = fetch().first { $0.syncID == id }
+    }
+
+    private func delete(at offsets: IndexSet) {
+        let ids = offsets.map { rows[$0].id }
+        for entry in fetch() where ids.contains(entry.syncID) { entry.markDeleted() }
+        try? context.save()
+        sync.requestSync()
+        load()
     }
 
     /// Простое форматирование суммы без тяжёлых форматтеров.
     static func money(_ value: Double) -> String {
+        guard value.isFinite else { return "0\u{00A0}₽" }
         let number = Int(value.rounded())
-        let text = String(abs(number))
         var out = ""
-        for (index, char) in text.reversed().enumerated() {
+        for (index, char) in String(abs(number)).reversed().enumerated() {
             if index > 0 && index % 3 == 0 { out.append("\u{00A0}") }
             out.append(char)
         }
-        return (number < 0 ? "-" : "") + String(out.reversed()) + " ₽"
-    }
-
-    private func remove(_ item: PetsEntry) {
-        item.markDeleted()
-        try? context.save()
-        sync.requestSync()
+        return (number < 0 ? "-" : "") + String(out.reversed()) + "\u{00A0}₽"
     }
 }
