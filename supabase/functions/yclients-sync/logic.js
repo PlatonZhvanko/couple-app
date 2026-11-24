@@ -160,9 +160,10 @@ function olimpicStatus(rec) {
         return "confirmed";
     return "pending";
 }
-async function syncOlimpic(all, supa, coupleId, now, rows, startDay) {
+// Разбор записей журнала в корты и брони по дням.
+function buildOlimpic(all) {
     const live = all.filter((r) => !r.deleted && r.staff?.id);
-    // Корты — это сотрудники журнала, у которых есть записи в окне синхронизации.
+    // Корты — это сотрудники журнала, у которых есть записи в окне.
     const courtMap = new Map();
     for (const r of live)
         courtMap.set(r.staff.id, String(r.staff.name ?? "").trim() || `Корт ${r.staff.id}`);
@@ -173,16 +174,32 @@ async function syncOlimpic(all, supa, coupleId, now, rows, startDay) {
     for (const r of live) {
         const begin = new Date(r.datetime);
         const day = mskYmd(begin);
-        const client = r.client?.display_name || r.client?.name ||
-            (r.services ?? []).map((s) => s.title).filter(Boolean).join(", ") || "Занятие";
+        const services = (r.services ?? []).map((s) => s.title).filter(Boolean).join(", ");
+        const client = r.client?.display_name || r.client?.name || services || "Занятие";
         const list = perDay.get(day) ?? [];
         list.push({
             id: r.id, court: r.staff.id, client, start: iso(begin), length: r.seance_length || 3600,
-            status: olimpicStatus(r),
-            service: (r.services ?? []).map((s) => s.title).filter(Boolean).join(", "),
+            status: olimpicStatus(r), service: services,
         });
         perDay.set(day, list);
     }
+    for (const list of perDay.values())
+        list.sort((a, b) => a.start.localeCompare(b.start) || a.id - b.id);
+    return { courts, perDay };
+}
+// Мгновенный запрос из приложения (кнопка «Олимпик»): читаем журнал за выбранный день и отдаём как есть.
+// YClients только читаем. День — «гггг-мм-дд» по Москве.
+async function olimpicLive(ymd) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd))
+        throw new Error("плохая дата");
+    const d = new Date(`${ymd}T00:00:00Z`);
+    const from = new Date(d.getTime() - 86400000).toISOString().slice(0, 10);
+    const to = new Date(d.getTime() + 86400000).toISOString().slice(0, 10);
+    const { courts, perDay } = buildOlimpic(await ycRecords(from, to));
+    return JSON.stringify({ day: ymd, courts, bookings: perDay.get(ymd) ?? [] });
+}
+async function syncOlimpic(all, supa, coupleId, now, rows, startDay) {
+    const { courts, perDay } = buildOlimpic(all);
     const existing = new Map();
     for (const r of await supa.get("records", "select=id,payload,deleted_at&kind=eq.planner.olimpic_day"))
         existing.set(r.id, r);
@@ -196,7 +213,7 @@ async function syncOlimpic(all, supa, coupleId, now, rows, startDay) {
         if (day < windowStart)
             continue;
         const id = await uuid5(`olimpic:day:${day}`);
-        const bookings = (perDay.get(day) ?? []).sort((a, b) => a.start.localeCompare(b.start) || a.id - b.id);
+        const bookings = perDay.get(day) ?? [];
         const payload = { day, courts, bookings };
         const old = existing.get(id);
         if (!old && bookings.length === 0)

@@ -440,7 +440,7 @@ struct PlannerCalendarView: View {
                     }
                     .buttonStyle(.borderless)
                     .position(x: dayFocus ? geo.size.width - 112 : timeColumn + column,
-                              y: geo.size.height / 2)
+                              y: geo.size.height / 2 - 12)
                 }
             }
             .gesture(DragGesture(minimumDistance: 30).onEnded { value in
