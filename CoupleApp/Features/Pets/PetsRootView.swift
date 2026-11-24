@@ -9,8 +9,16 @@ struct PetsRootView: View {
     @Query(filter: #Predicate<PetsPet> { $0.deletedAt == nil }, sort: \PetsPet.createdAt)
     private var pets: [PetsPet]
 
-    @State private var editing: PetsPet?
+    @Query(filter: #Predicate<PetsTask> { $0.deletedAt == nil }, sort: \PetsTask.createdAt)
+    private var tasks: [PetsTask]
+
     @State private var adding = false
+
+    /// Меняется при любых правках питомцев и дел (в том числе со второго телефона): тогда уведомления пересоздаются.
+    private var signature: String {
+        (pets.map { "\($0.syncID)\($0.updatedAt.timeIntervalSince1970)" }
+            + tasks.map { "\($0.syncID)\($0.updatedAt.timeIntervalSince1970)\($0.isDone)" }).joined(separator: "|")
+    }
 
     var body: some View {
         NavigationStack {
@@ -45,7 +53,11 @@ struct PetsRootView: View {
         .petsCatVisit()
         .onAppear {
             PetsSeed.seedIfNeeded(context: context)
+            PetsSeed.applyBreedsIfNeeded(context: context)
             sync.requestSync()
+        }
+        .task(id: signature) {
+            PetsNotifications.reschedule(pets: pets, tasks: tasks)
         }
     }
 
@@ -61,22 +73,27 @@ struct PetsRootView: View {
     }
 
     private func subtitle(_ pet: PetsPet) -> String {
-        var parts = [pet.species]
-        if let b = pet.birthday {
-            let years = Calendar.current.dateComponents([.year], from: b, to: .now).year ?? 0
-            parts.append(years > 0 ? "\(years) г." : "малыш")
-        }
+        var parts = [pet.breed.isEmpty ? pet.species : pet.breed]
+        if let age = PetsAge.text(pet) { parts.append(age) }
         if pet.weightKg > 0 { parts.append(String(format: "%.1f кг", pet.weightKg)) }
         return parts.joined(separator: " · ")
     }
 }
 
-/// Карточка питомца.
+/// Карточка питомца: данные, внимание, быстрые кнопки, дела по здоровью и траты.
 struct PetsDetailView: View {
     let pet: PetsPet
     @State private var editing = false
+    @State private var addingEntry = false
+    @State private var addingTask = false
+
+    @Query(filter: #Predicate<PetsTask> { $0.deletedAt == nil }) private var allTasks: [PetsTask]
+    @Query(filter: #Predicate<PetsEntry> { $0.deletedAt == nil }) private var allEntries: [PetsEntry]
 
     var body: some View {
+        let tasks = allTasks.filter { $0.petID == pet.syncID }
+        let alerts = PetsAlerts.alerts(pet: pet, tasks: tasks)
+        let spent = allEntries.filter { $0.petID == pet.syncID }.reduce(0) { $0 + $1.amount }
         List {
             Section {
                 HStack {
@@ -86,11 +103,46 @@ struct PetsDetailView: View {
                 }
                 .listRowBackground(Color.clear)
             }
+            if !alerts.isEmpty {
+                Section("Внимание") {
+                    ForEach(alerts) { alert in
+                        Label(alert.text, systemImage: alert.urgent ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
+                            .foregroundStyle(alert.urgent ? .red : .orange)
+                    }
+                }
+            }
+            Section {
+                HStack(spacing: 12) {
+                    Button { addingEntry = true } label: {
+                        Label("Трата", systemImage: "rublesign.circle.fill").frame(maxWidth: .infinity)
+                    }
+                    Button { addingTask = true } label: {
+                        Label("Что сделать", systemImage: "cross.case.fill").frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+            }
+            Section {
+                NavigationLink { PetsTasksView(pet: pet) } label: {
+                    Label("Здоровье и дела", systemImage: "cross.case")
+                }
+                NavigationLink { PetsSpendingView(pet: pet) } label: {
+                    HStack {
+                        Label("Траты", systemImage: "rublesign.circle")
+                        Spacer()
+                        Text(CarFormat.money(spent)).foregroundStyle(.secondary)
+                    }
+                }
+            }
             Section("О питомце") {
                 LabeledContent("Вид", value: pet.species)
+                if !pet.breed.isEmpty { LabeledContent("Порода", value: pet.breed) }
                 if let b = pet.birthday {
                     LabeledContent("День рождения", value: b.formatted(date: .long, time: .omitted))
                 }
+                if let age = PetsAge.text(pet) { LabeledContent("Возраст", value: age) }
                 if pet.weightKg > 0 {
                     LabeledContent("Вес", value: String(format: "%.1f кг", pet.weightKg))
                 }
@@ -106,6 +158,8 @@ struct PetsDetailView: View {
             ToolbarItem(placement: .topBarTrailing) { Button("Изменить") { editing = true } }
         }
         .sheet(isPresented: $editing) { PetsFormView(pet: pet) }
+        .sheet(isPresented: $addingEntry) { PetsEntryFormView(pet: pet, entry: nil) }
+        .sheet(isPresented: $addingTask) { PetsTaskFormView(pet: pet, task: nil) }
     }
 }
 
@@ -119,6 +173,7 @@ struct PetsFormView: View {
 
     @State private var name: String
     @State private var species: String
+    @State private var breed: String
     @State private var hasBirthday: Bool
     @State private var birthday: Date
     @State private var weightText: String
@@ -130,6 +185,7 @@ struct PetsFormView: View {
         self.pet = pet
         _name = State(initialValue: pet?.name ?? "")
         _species = State(initialValue: pet?.species ?? "Кот")
+        _breed = State(initialValue: pet?.breed ?? "")
         _hasBirthday = State(initialValue: pet?.birthday != nil)
         _birthday = State(initialValue: pet?.birthday ?? .now)
         _weightText = State(initialValue: (pet?.weightKg ?? 0) > 0 ? String(pet!.weightKg) : "")
@@ -143,6 +199,7 @@ struct PetsFormView: View {
                 Section {
                     TextField("Кличка", text: $name)
                     TextField("Вид", text: $species)
+                    TextField("Порода", text: $breed)
                     Toggle("Знаю день рождения", isOn: $hasBirthday)
                     if hasBirthday {
                         DatePicker("Дата", selection: $birthday, in: ...Date.now, displayedComponents: .date)
@@ -185,6 +242,7 @@ struct PetsFormView: View {
         let target = pet ?? PetsPet(name: name)
         target.name = name
         target.species = species
+        target.breed = breed
         target.birthday = hasBirthday ? birthday : nil
         target.weightKg = Double(weightText.replacingOccurrences(of: ",", with: ".")) ?? 0
         target.note = note

@@ -6,7 +6,10 @@ enum PetsFeature {
         id: "pets",
         title: "Питомцы",
         systemImage: "pawprint.fill",
-        models: [PetsPet.self]
+        models: [PetsPet.self, PetsTask.self, PetsEntry.self],
+        calendarItems: { context, interval in
+            PetsCalendar.items(context: context, interval: interval)
+        }
     ) {
         PetsRootView()
     }

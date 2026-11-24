@@ -14,6 +14,7 @@ final class PetsPet: SyncableModel {
         var note: String
         var vetNote: String
         var createdAt: Date
+        var breed: String?
     }
 
     static let recordKind = "pets.pet"
@@ -30,6 +31,8 @@ final class PetsPet: SyncableModel {
     var note: String = ""
     /// Прививки, обработки, визиты к врачу.
     var vetNote: String = ""
+    /// Порода: «Дворовая», «Шотландская».
+    var breed: String = ""
     var createdAt: Date = Date.now
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
@@ -46,7 +49,7 @@ final class PetsPet: SyncableModel {
 
     var payload: Payload {
         Payload(name: name, species: species, iconKey: iconKey, birthday: birthday, weightKg: weightKg,
-                note: note, vetNote: vetNote, createdAt: createdAt)
+                note: note, vetNote: vetNote, createdAt: createdAt, breed: breed.isEmpty ? nil : breed)
     }
 
     func apply(_ payload: Payload) {
@@ -58,6 +61,7 @@ final class PetsPet: SyncableModel {
         note = payload.note
         vetNote = payload.vetNote
         createdAt = payload.createdAt
+        breed = payload.breed ?? ""
     }
 
     var displayName: String { name.trimmingCharacters(in: .whitespaces).isEmpty ? "Питомец" : name }
@@ -90,7 +94,24 @@ enum PetsSeed {
             pet.syncID = id
             pet.iconKey = cat.style.rawValue
             pet.note = cat.note
+            pet.breed = cat.id.hasSuffix("A004") ? "Шотландская" : "Дворовая"
             context.insert(pet)
+        }
+        try? context.save()
+    }
+
+    /// Породы нашим котам: всем «Дворовая», Мисе «Шотландская». Один раз, и только если порода пустая.
+    @MainActor
+    static func applyBreedsIfNeeded(context: ModelContext) {
+        let key = "pets.breeds.v1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        let pets = (try? context.fetch(FetchDescriptor<PetsPet>())) ?? []
+        guard !pets.isEmpty else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        for pet in pets where pet.deletedAt == nil && pet.breed.isEmpty {
+            guard let seed = cats.first(where: { UUID(uuidString: $0.id) == pet.syncID }) else { continue }
+            pet.breed = seed.id.hasSuffix("A004") ? "Шотландская" : "Дворовая"
+            pet.markChanged()
         }
         try? context.save()
     }
