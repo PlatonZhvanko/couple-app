@@ -271,8 +271,11 @@ async function sync() {
             rows.push({ id: rid, couple_id: coupleId, kind: "clients.appointment", updated_at: now, deleted_at: now, payload: p });
         }
     }
-    if (rows.length)
-        await supa.upsert(rows);
-    return `Записей в YClients: ${fetched.length}, обновлено в приложении: ${rows.length}`;
+    const summary = `Записей в YClients: ${fetched.length}, обновлено в приложении: ${rows.length}`;
+    // Отметка «синхронизация жива»: приложение этот вид записей не читает.
+    rows.push({ id: await uuid5("heartbeat"), couple_id: coupleId, kind: "sys.heartbeat", updated_at: now, deleted_at: null,
+        payload: { lastRun: now, summary, engine: "supabase" } });
+    await supa.upsert(rows);
+    return summary;
 }
 
