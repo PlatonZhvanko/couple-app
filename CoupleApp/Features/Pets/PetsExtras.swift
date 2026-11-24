@@ -192,35 +192,57 @@ enum PetsNotifications {
 // MARK: - Статистика
 
 /// Траты на питомцев в статистике: общие у обоих, по каждому питомцу отдельно.
+/// Данные читаются один раз в обычные значения (без @Query на экране).
 struct StatisticsPetsSpend: View {
     let period: StatisticsPeriod
 
-    @Query(filter: #Predicate<PetsEntry> { $0.deletedAt == nil }, sort: \PetsEntry.date, order: .reverse)
-    private var entries: [PetsEntry]
-    @Query(filter: #Predicate<PetsPet> { $0.deletedAt == nil }, sort: \PetsPet.createdAt)
-    private var pets: [PetsPet]
+    private struct Line: Identifiable {
+        let id: UUID
+        let title: String
+        let caption: String
+        let amount: Double
+        let petName: String
+    }
+
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    @State private var lines: [Line] = []
 
     var body: some View {
-        let mine = entries.filter { $0.amount > 0 && period.contains($0.date) }
-        let total = mine.reduce(0) { $0 + $1.amount }
+        let total = lines.reduce(0) { $0 + $1.amount }
+        let names = Array(Set(lines.map(\.petName))).sorted()
         StatisticsLine(title: "🐾 Траты на питомцев", value: PlannerPricing.format(total)) {
-            if mine.isEmpty {
+            if lines.isEmpty {
                 Text("За период трат на питомцев нет").foregroundStyle(.secondary)
             }
-            ForEach(pets) { pet in
-                let list = mine.filter { $0.petID == pet.syncID }
-                if !list.isEmpty {
-                    StatisticsLine(title: pet.displayName, value: PlannerPricing.format(list.reduce(0) { $0 + $1.amount })) {
-                        ForEach(list) { entry in
-                            StatisticsDetailRow(
-                                title: entry.note.isEmpty ? entry.category : entry.note,
-                                caption: "\(StatisticsFormat.day(entry.date)) · \(entry.category)",
-                                value: "−" + PlannerPricing.format(entry.amount)
-                            )
-                        }
+            ForEach(names, id: \.self) { name in
+                let list = lines.filter { $0.petName == name }
+                StatisticsLine(title: name, value: PlannerPricing.format(list.reduce(0) { $0 + $1.amount })) {
+                    ForEach(list) { line in
+                        StatisticsDetailRow(title: line.title, caption: line.caption,
+                                            value: "−" + PlannerPricing.format(line.amount))
                     }
                 }
             }
+        }
+        .task(id: reloadKey) { load() }
+    }
+
+    private var reloadKey: String {
+        "\(period.interval.start.timeIntervalSince1970)-\(period.interval.end.timeIntervalSince1970)-\(sync.dataVersion)"
+    }
+
+    private func load() {
+        let pets = (try? context.fetch(FetchDescriptor<PetsPet>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        let names = Dictionary(pets.map { ($0.syncID, $0.displayName) }, uniquingKeysWith: { first, _ in first })
+        let entries = (try? context.fetch(FetchDescriptor<PetsEntry>(
+            predicate: #Predicate { $0.deletedAt == nil },
+            sortBy: [SortDescriptor(\PetsEntry.date, order: .reverse)]))) ?? []
+        lines = entries.compactMap { entry in
+            guard entry.amount > 0, period.contains(entry.date), let name = names[entry.petID] else { return nil }
+            return Line(id: entry.syncID, title: entry.note.isEmpty ? entry.category : entry.note,
+                        caption: "\(StatisticsFormat.day(entry.date)) · \(entry.category)",
+                        amount: entry.amount, petName: name)
         }
     }
 }
