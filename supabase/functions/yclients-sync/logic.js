@@ -160,36 +160,48 @@ function olimpicStatus(rec) {
         return "confirmed";
     return "pending";
 }
-// Групповые события (турниры, группы): отдельный запрос YClients, только чтение.
-// Пробуем два адреса: старый «activity» и новый «locations/.../events».
+// Групповые события (турниры, группы): только чтение. Как в боте тренерских расписаний:
+// список событий за период (API v2), а корт и ресурсы берём из карточки каждого события (API v1).
 let groupsNote = "";
 async function ycGroups(start, end) {
     const id = env("YCLIENTS_COMPANY_ID");
-    const paths = [`/activity/${id}/search`, `/locations/${id}/events/search`];
-    const errors = [];
-    for (const path of paths) {
-        try {
-            const out = [];
-            for (let page = 1; page <= 20; page++) {
-                const body = await ycGet(path, { from: start, till: end, page: String(page), count: String(PAGE) });
-                const batch = Array.isArray(body.data) ? body.data : [];
-                out.push(...batch);
-                if (batch.length < PAGE)
-                    break;
-            }
-            groupsNote = `групповых ${out.length}`;
-            return out;
+    try {
+        const url = new URL(`https://api.yclients.com/api/v2/companies/${id}/activities`);
+        url.searchParams.set("filter[from]", `${start} 00:00:00`);
+        url.searchParams.set("filter[to]", `${end} 23:59:59`);
+        const r = await fetch(url, { headers: ycHeaders() });
+        if (!r.ok)
+            throw new Error(`список ${r.status}`);
+        const list = (await r.json()).data ?? [];
+        const ids = list.map((x) => x.id).slice(0, 400);
+        const out = [];
+        let failed = 0;
+        for (let i = 0; i < ids.length; i += 8) {
+            const part = await Promise.all(ids.slice(i, i + 8).map(async (aid) => {
+                try {
+                    const d = await ycGet(`/activity/${id}/${aid}`);
+                    return d.data;
+                }
+                catch {
+                    failed++;
+                    return null;
+                }
+            }));
+            for (const a of part)
+                if (a && !a.is_deleted)
+                    out.push(a);
         }
-        catch (e) {
-            errors.push(`${path}: ${e.message}`);
-        }
+        groupsNote = `групповых ${out.length} из ${list.length}${failed ? `, не открылось ${failed}` : ""}`;
+        return out;
     }
-    groupsNote = `групповые не загрузились (${errors.join("; ")})`;
-    return [];
+    catch (e) {
+        groupsNote = `групповые не загрузились (${e.message})`;
+        return [];
+    }
 }
 // Групповое событие приводим к виду записи, чтобы показывать их одинаково.
 function groupAsRecord(a) {
-    if (a.deleted)
+    if (a.deleted || a.is_deleted)
         return null;
     const staffId = a.staff?.id ?? a.staff_id;
     if (!staffId || !a.date)
@@ -270,7 +282,7 @@ async function olimpicLive(ymd) {
     return JSON.stringify({ day: ymd, courts, bookings: perDay.get(ymd) ?? [], debug: groupsNote });
 }
 async function syncOlimpic(all, supa, coupleId, now, rows, startDay) {
-    const { courts, perDay } = buildOlimpic(all, await nastyaIdOrNull(), await ycGroups(mskYmd(startDay), mskYmd(new Date(startDay.getTime() + (DAYS_AHEAD + DAYS_BACK) * 86400000))));
+    const { courts, perDay } = buildOlimpic(all, await nastyaIdOrNull(), await ycGroups(mskYmd(startDay), mskYmd(new Date(startDay.getTime() + 14 * 86400000))));
     const existing = new Map();
     for (const r of await supa.get("records", "select=id,payload,deleted_at&kind=eq.planner.olimpic_day"))
         existing.set(r.id, r);
