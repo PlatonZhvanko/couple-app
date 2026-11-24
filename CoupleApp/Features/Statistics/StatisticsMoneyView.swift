@@ -94,6 +94,7 @@ struct StatisticsMoneyView: View {
 
             Section("🚗 Машина") {
                 StatisticsMyCarSpend(period: period)
+                StatisticsPetsSpend(period: period)
             }
 
             Section("🎾 Занятия") {

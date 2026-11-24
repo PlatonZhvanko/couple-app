@@ -35,6 +35,7 @@ struct StatisticsOwnerMoneyView: View {
                 StatisticsLine(title: "Прибыль/Приход", value: PlannerPricing.format(sum(profit))) { details(profit) }
                 StatisticsLine(title: "Траты", value: PlannerPricing.format(abs(sum(expense)))) { details(expense) }
                 StatisticsMyCarSpend(period: period)
+                StatisticsPetsSpend(period: period)
                 StatisticsLine(title: "Чистыми", value: PlannerPricing.format(sum(rows)), bold: true) { details(rows) }
             }
             Section("Откуда деньги") {
