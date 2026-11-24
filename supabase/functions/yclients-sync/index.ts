@@ -204,9 +204,10 @@ async function sync(): Promise<string> {
     const detId = await uuid5(`client:${c.id}`);
     const phone: string = c.phone ?? "";
     const cname: string = c.display_name || c.name || "Клиент YClients";
-    if (existing.has(detId)) clientIds.set(c.id, detId);
+    if (existing.has(detId) && !existing.get(detId)!.deleted_at) clientIds.set(c.id, detId);
     else if (digits(phone) && byPhone.has(digits(phone))) clientIds.set(c.id, byPhone.get(digits(phone))!);
     else if (byName.has(nameKey(cname))) clientIds.set(c.id, byName.get(nameKey(cname))!);
+    else if (existing.has(detId)) clientIds.set(c.id, detId); // склеена приложением: не оживляем
     else {
       clientIds.set(c.id, detId);
       byName.set(nameKey(cname), detId);
