@@ -160,6 +160,52 @@ function olimpicStatus(rec) {
         return "confirmed";
     return "pending";
 }
+// Групповые события (турниры, группы): отдельный запрос YClients, только чтение.
+// Пробуем два адреса: старый «activity» и новый «locations/.../events».
+let groupsNote = "";
+async function ycGroups(start, end) {
+    const id = env("YCLIENTS_COMPANY_ID");
+    const paths = [`/activity/${id}/search`, `/locations/${id}/events/search`];
+    const errors = [];
+    for (const path of paths) {
+        try {
+            const out = [];
+            for (let page = 1; page <= 20; page++) {
+                const body = await ycGet(path, { from: start, till: end, page: String(page), count: String(PAGE) });
+                const batch = Array.isArray(body.data) ? body.data : [];
+                out.push(...batch);
+                if (batch.length < PAGE)
+                    break;
+            }
+            groupsNote = `групповых ${out.length}`;
+            return out;
+        }
+        catch (e) {
+            errors.push(`${path}: ${e.message}`);
+        }
+    }
+    groupsNote = `групповые не загрузились (${errors.join("; ")})`;
+    return [];
+}
+// Групповое событие приводим к виду записи, чтобы показывать их одинаково.
+function groupAsRecord(a) {
+    if (a.deleted)
+        return null;
+    const staffId = a.staff?.id ?? a.staff_id;
+    if (!staffId || !a.date)
+        return null;
+    let date = String(a.date);
+    if (!date.includes("T"))
+        date = date.replace(" ", "T") + "+03:00";
+    return {
+        id: 1000000000 + Number(a.id), group: true, datetime: date, seance_length: a.length || 3600,
+        staff: { id: staffId, name: a.staff?.name ?? "" },
+        client: { name: a.service?.title || "Групповое событие" },
+        services: a.service?.title ? [{ title: a.service.title }] : [],
+        resource_instances: a.resource_instances ?? [], records_count: a.records_count ?? a.clients_count ?? 0,
+        attendance: 0,
+    };
+}
 async function nastyaIdOrNull() {
     try {
         return await resourceInstanceId();
@@ -169,7 +215,8 @@ async function nastyaIdOrNull() {
     }
 }
 // Разбор записей журнала в корты и брони по дням.
-function buildOlimpic(all, nastyaId) {
+function buildOlimpic(all, nastyaId, groups = []) {
+    all = [...all, ...groups.map(groupAsRecord).filter((x) => !!x)];
     const live = all.filter((r) => !r.deleted && r.staff?.id && !/админ/i.test(String(r.staff.name ?? "")));
     // Корты — это сотрудники журнала, у которых есть записи в окне.
     const courtMap = new Map();
@@ -201,7 +248,8 @@ function buildOlimpic(all, nastyaId) {
         const list = perDay.get(day) ?? [];
         list.push({
             id: r.id, court: r.staff.id, client, start: iso(begin), length: r.seance_length || 3600,
-            status: olimpicStatus(r), service: services,
+            status: r.group ? "group" : olimpicStatus(r), service: services,
+            group: !!r.group, count: r.records_count ?? 0,
             nastya: (r.resource_instances ?? []).some((i) => (nastyaId !== null && i.id === nastyaId) || norm(String(i.title ?? i.name ?? "")) === norm(RESOURCE_TITLE)),
         });
         perDay.set(day, list);
@@ -218,11 +266,11 @@ async function olimpicLive(ymd) {
     const d = new Date(`${ymd}T00:00:00Z`);
     const from = new Date(d.getTime() - 86400000).toISOString().slice(0, 10);
     const to = new Date(d.getTime() + 86400000).toISOString().slice(0, 10);
-    const { courts, perDay } = buildOlimpic(await ycRecords(from, to), await nastyaIdOrNull());
-    return JSON.stringify({ day: ymd, courts, bookings: perDay.get(ymd) ?? [] });
+    const { courts, perDay } = buildOlimpic(await ycRecords(from, to), await nastyaIdOrNull(), await ycGroups(from, to));
+    return JSON.stringify({ day: ymd, courts, bookings: perDay.get(ymd) ?? [], debug: groupsNote });
 }
 async function syncOlimpic(all, supa, coupleId, now, rows, startDay) {
-    const { courts, perDay } = buildOlimpic(all, await nastyaIdOrNull());
+    const { courts, perDay } = buildOlimpic(all, await nastyaIdOrNull(), await ycGroups(mskYmd(startDay), mskYmd(new Date(startDay.getTime() + (DAYS_AHEAD + DAYS_BACK) * 86400000))));
     const existing = new Map();
     for (const r of await supa.get("records", "select=id,payload,deleted_at&kind=eq.planner.olimpic_day"))
         existing.set(r.id, r);
@@ -246,7 +294,7 @@ async function syncOlimpic(all, supa, coupleId, now, rows, startDay) {
         rows.push({ id, couple_id: coupleId, kind: "planner.olimpic_day", updated_at: now, deleted_at: null, payload });
         changed++;
     }
-    return `Олимпик: кортов ${courts.length} (${courts.map((c) => c.name).join("; ")}), дней обновлено ${changed}`;
+    return `Олимпик (${groupsNote}): кортов ${courts.length} (${courts.map((c) => c.name).join("; ")}), дней обновлено ${changed}`;
 }
 async function sync() {
     const excluded = (Deno.env.get("ICLIENTS_EXCLUDE_CLIENTS") ?? "ДЮСШ-13, ДЮСШ-РГК, ДЮСШ-8, ДЮСШ-3")

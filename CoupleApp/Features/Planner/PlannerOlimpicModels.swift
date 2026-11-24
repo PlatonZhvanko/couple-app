@@ -25,6 +25,10 @@ final class PlannerOlimpicDay: SyncableModel {
         var service: String?
         /// Ресурс «Новик Анастасия» (её тренировки).
         var nastya: Bool?
+        /// Групповое событие (турнир, группа).
+        var group: Bool?
+        /// Сколько записано (у группового события).
+        var count: Int?
     }
 
     struct Payload: Codable {

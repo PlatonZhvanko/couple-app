@@ -11,6 +11,9 @@ struct PlannerOlimpicView: View {
     @State private var hideNoShow = true
     @State private var selectedDay = PlannerCalendar.calendar.startOfDay(for: .now)
     @State private var detail: PlannerOlimpicDay.Booking?
+    /// Несколько записей в одном времени: выбор, какую посмотреть.
+    @State private var pickChoices: [PlannerOlimpicDay.Booking] = []
+    @State private var showPick = false
     @State private var showDatePicker = false
     /// Свежие данные, полученные сейчас из YClients (через функцию Supabase).
     @State private var live: [String: PlannerOlimpicDay.Payload] = [:]
@@ -183,6 +186,12 @@ struct PlannerOlimpicView: View {
             }
             .presentationDetents([.medium])
         }
+        .confirmationDialog("Что посмотреть?", isPresented: $showPick, titleVisibility: .visible) {
+            ForEach(pickChoices) { b in
+                Button("\(b.client), \(timeText(start(b) ?? .now))") { detail = b }
+            }
+            Button("Отмена", role: .cancel) {}
+        }
         .sheet(item: $detail) { booking in
             detailView(booking)
                 .presentationDetents([.height(260)])
@@ -248,13 +257,15 @@ struct PlannerOlimpicView: View {
                         }
                 }
             }
-            ForEach(bookings.filter { $0.court == court.id }) { b in
+            ForEach(layers(for: court.id), id: \.booking.id) { layer in
+                let b = layer.booking
                 if let begin = start(b) {
                     let top = begin.timeIntervalSince(origin) * perSecond
                     let height = max(Double(b.length) * perSecond - 1, 8)
                     if top + height > 0 {
-                        block(b, begin: begin, width: width, height: height)
-                            .offset(y: top)
+                        // Запись поверх другой: узкая, серая, справа; нижняя остаётся своего цвета.
+                        block(b, begin: begin, width: layer.onTop ? width / 2 : width, height: height, gray: layer.onTop)
+                            .offset(x: layer.onTop ? width / 2 : 0, y: top)
                     }
                 }
             }
@@ -264,7 +275,7 @@ struct PlannerOlimpicView: View {
         .padding(.top, 6)
     }
 
-    private func block(_ b: PlannerOlimpicDay.Booking, begin: Date, width: CGFloat, height: CGFloat) -> some View {
+    private func block(_ b: PlannerOlimpicDay.Booking, begin: Date, width: CGFloat, height: CGFloat, gray: Bool = false) -> some View {
         let end = begin.addingTimeInterval(Double(b.length))
         return VStack(alignment: .leading, spacing: 0) {
             Text(b.client).font(.system(size: 9, weight: .semibold)).lineLimit(height > 36 ? 3 : 1)
@@ -278,10 +289,10 @@ struct PlannerOlimpicView: View {
         .frame(width: width - 2, height: height, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(fillColor(b).opacity(b.status == "noshow" && b.nastya != true ? 0.80 : 0.30))
+                .fill((gray ? Color.gray : fillColor(b)).opacity(gray ? 0.75 : (b.status == "noshow" && b.nastya != true ? 0.80 : 0.30)))
                 .overlay {
                     // «Не пришёл» у обычных записей — плотный красный без обводки; у Настиных — прозрачный с обводкой и значком Y.
-                    if !(b.status == "noshow" && b.nastya != true) {
+                    if !gray && !(b.status == "noshow" && b.nastya != true) {
                         RoundedRectangle(cornerRadius: 6).strokeBorder(fillColor(b).opacity(0.9), lineWidth: 1)
                     }
                 }
@@ -290,7 +301,43 @@ struct PlannerOlimpicView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .padding(.horizontal, 1)
         .contentShape(Rectangle())
-        .onTapGesture { detail = b }
+        .onTapGesture { tap(b) }
+    }
+
+    private struct Layer { let booking: PlannerOlimpicDay.Booking; let onTop: Bool }
+
+    private func interval(_ b: PlannerOlimpicDay.Booking) -> (Date, Date)? {
+        guard let begin = start(b) else { return nil }
+        return (begin, begin.addingTimeInterval(Double(b.length)))
+    }
+
+    /// Записи корта по порядку: та, что накладывается на более раннюю, рисуется сверху (серой).
+    private func layers(for court: Int) -> [Layer] {
+        let list = bookings.filter { $0.court == court }.sorted {
+            let a = start($0) ?? .distantPast, c = start($1) ?? .distantPast
+            if a != c { return a < c }
+            if ($0.group == true) != ($1.group == true) { return $0.group == true }
+            return $0.length > $1.length
+        }
+        var result: [Layer] = []
+        var coveredUntil = Date.distantPast
+        for b in list {
+            guard let (begin, end) = interval(b) else { continue }
+            result.append(Layer(booking: b, onTop: begin < coveredUntil))
+            if end > coveredUntil, begin >= coveredUntil { coveredUntil = end }
+            else if begin < coveredUntil { /* верхняя не удлиняет «нижний» слой */ }
+        }
+        return result
+    }
+
+    /// Нажатие: если в этом времени несколько записей, предлагаем выбрать.
+    private func tap(_ b: PlannerOlimpicDay.Booking) {
+        guard let (begin, end) = interval(b) else { detail = b; return }
+        let same = bookings.filter { other in
+            guard other.court == b.court, let (s, e) = interval(other) else { return false }
+            return s < end && e > begin
+        }.sorted { (start($0) ?? .distantPast) < (start($1) ?? .distantPast) }
+        if same.count > 1 { pickChoices = same; showPick = true } else { detail = b }
     }
 
     private func timeText(_ date: Date) -> String {
@@ -308,7 +355,11 @@ struct PlannerOlimpicView: View {
             Label("\(timeText(begin))–\(timeText(end))", systemImage: "clock")
             if !court.isEmpty { Label(court, systemImage: "tennisball") }
             if let service = b.service, !service.isEmpty { Label(service, systemImage: "list.bullet") }
-            Label(statusName(b.status), systemImage: "circle.fill").foregroundStyle(fillColor(b))
+            if b.group == true {
+                Label("Групповое событие" + ((b.count ?? 0) > 0 ? ", записано \(b.count ?? 0)" : ""), systemImage: "person.3")
+            } else {
+                Label(statusName(b.status), systemImage: "circle.fill").foregroundStyle(fillColor(b))
+            }
             Text("Только просмотр: запись берётся из YClients.")
                 .font(.footnote).foregroundStyle(.secondary)
             Spacer()
