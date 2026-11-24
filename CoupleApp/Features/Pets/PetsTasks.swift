@@ -331,7 +331,8 @@ struct PetsTaskFormView: View {
     @State private var date: Date
     @State private var duration: Int
     @State private var hasAge: Bool
-    @State private var ageText: String
+    @State private var ageYears: Int
+    @State private var ageMonths: Int
     @State private var note: String
     @State private var isDone: Bool
     @State private var showPicker = false
@@ -345,7 +346,8 @@ struct PetsTaskFormView: View {
         _date = State(initialValue: task?.desiredDate ?? Self.defaultDate())
         _duration = State(initialValue: task?.durationMinutes ?? 60)
         _hasAge = State(initialValue: (task?.desiredAgeMonths ?? 0) > 0)
-        _ageText = State(initialValue: (task?.desiredAgeMonths ?? 0) > 0 ? String(task?.desiredAgeMonths ?? 0) : "")
+        _ageYears = State(initialValue: (task?.desiredAgeMonths ?? 0) / 12)
+        _ageMonths = State(initialValue: (task?.desiredAgeMonths ?? 0) % 12)
         _note = State(initialValue: task?.note ?? "")
         _isDone = State(initialValue: task?.isDone ?? false)
     }
@@ -396,11 +398,8 @@ struct PetsTaskFormView: View {
                     }
                     Toggle("По возрасту", isOn: $hasAge)
                     if hasAge {
-                        LabeledContent("Возраст, мес.") {
-                            TextField("например 8", text: $ageText)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                        }
+                        Stepper("Лет: \(ageYears)", value: $ageYears, in: 0...30)
+                        Stepper("Месяцев: \(ageMonths)", value: $ageMonths, in: 0...11)
                         if pet.birthday == nil {
                             Text("Укажите день рождения питомца, тогда напомним в нужный месяц.")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -440,7 +439,7 @@ struct PetsTaskFormView: View {
         target.price = CarNumber.double(priceText) ?? 0
         target.desiredDate = hasDate ? date : nil
         target.durationMinutes = duration
-        target.desiredAgeMonths = hasAge ? (CarNumber.int(ageText) ?? 0) : 0
+        target.desiredAgeMonths = hasAge ? ageYears * 12 + ageMonths : 0
         target.note = note
         if task == nil { context.insert(target) }
         target.markChanged()

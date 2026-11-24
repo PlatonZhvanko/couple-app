@@ -100,11 +100,11 @@ struct PetsDetailView: View {
         let spent = allEntries.filter { $0.petID == pet.syncID }.reduce(0) { $0 + $1.amount }
         List {
             Section {
-                HStack {
-                    Spacer()
+                VStack(spacing: 6) {
                     PetsAvatar(pet: pet, size: 140)
-                    Spacer()
+                    ageBlock
                 }
+                .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
             }
             if !alerts.isEmpty {
@@ -163,6 +163,40 @@ struct PetsDetailView: View {
             case .task: PetsTaskFormView(pet: pet, task: nil)
             }
         }
+    }
+
+    /// Под аватаркой: дата рождения, крупно полные годы, мелко месяцы и дни.
+    @ViewBuilder
+    private var ageBlock: some View {
+        if let birthday = pet.birthday {
+            let parts = Calendar.current.dateComponents([.year, .month, .day], from: birthday, to: .now)
+            let years = max(0, parts.year ?? 0)
+            let months = max(0, parts.month ?? 0)
+            let days = max(0, parts.day ?? 0)
+            VStack(spacing: 2) {
+                Text("🎂 \(birthday.formatted(date: .long, time: .omitted))")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if years > 0 {
+                    Text("\(years) \(yearWord(years))").font(.title2.weight(.bold))
+                    Text("\(months) мес. \(days) дн.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("\(months) мес.").font(.title2.weight(.bold))
+                    Text("\(days) дн.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            Button("Указать день рождения") { sheet = .edit }
+                .font(.footnote)
+                .buttonStyle(.borderless)
+        }
+    }
+
+    private func yearWord(_ n: Int) -> String {
+        let last = n % 10, two = n % 100
+        if two >= 11 && two <= 14 { return "лет" }
+        if last == 1 { return "год" }
+        if (2...4).contains(last) { return "года" }
+        return "лет"
     }
 
     /// Аккуратная кнопка: маленький эмодзи и текст по центру.
