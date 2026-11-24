@@ -76,13 +76,17 @@ struct PlannerOlimpicView: View {
 
     private func start(_ b: PlannerOlimpicDay.Booking) -> Date? { Self.isoFormatter.date(from: b.start) }
 
-    private func color(_ status: String) -> Color {
-        switch status {
-        case "arrived": return Color(red: 0.62, green: 0.80, blue: 1.0)
-        case "confirmed": return Color(red: 0.66, green: 0.92, blue: 0.72)
-        case "noshow": return Color(red: 1.0, green: 0.72, blue: 0.74)
-        default: return Color(red: 1.0, green: 0.90, blue: 0.55)
-        }
+    /// Цвет блока: Настины записи (ресурс «Новик Анастасия») — прозрачный жёлтый с обводкой,
+    /// «не пришёл» — красный, падел — синий, остальные (теннис) — зелёный.
+    private func isPadel(_ b: PlannerOlimpicDay.Booking) -> Bool {
+        let name = courts.first { $0.id == b.court }?.name.lowercased() ?? ""
+        return name.contains("падел") || name.contains("padel")
+    }
+
+    private func fillColor(_ b: PlannerOlimpicDay.Booking) -> Color {
+        if b.status == "noshow" { return Color(red: 1.0, green: 0.45, blue: 0.48) }
+        if b.nastya == true { return Color.yellow.opacity(0.35) }
+        return isPadel(b) ? Color(red: 0.50, green: 0.72, blue: 1.0) : Color(red: 0.50, green: 0.88, blue: 0.58)
     }
 
     private func statusName(_ status: String) -> String {
@@ -265,11 +269,15 @@ struct PlannerOlimpicView: View {
                 Text("\(timeText(begin))–\(timeText(end))").font(.system(size: 8).monospacedDigit())
             }
         }
-        .foregroundStyle(Color.black)
+        .foregroundStyle(b.nastya == true && b.status != "noshow" ? Color.primary : Color.black)
         .padding(.horizontal, 2)
         .padding(.vertical, 1)
         .frame(width: width - 2, height: height, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 4).fill(color(b.status)))
+        .background(
+            RoundedRectangle(cornerRadius: 4).fill(fillColor(b))
+                .overlay { if b.nastya == true && b.status != "noshow" { RoundedRectangle(cornerRadius: 4).strokeBorder(Color.yellow) } }
+        )
+        .overlay(alignment: .topTrailing) { if b.nastya == true { ClientsYClientsBadge(size: 9).padding(1) } }
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .padding(.horizontal, 1)
         .contentShape(Rectangle())
@@ -291,7 +299,7 @@ struct PlannerOlimpicView: View {
             Label("\(timeText(begin))–\(timeText(end))", systemImage: "clock")
             if !court.isEmpty { Label(court, systemImage: "tennisball") }
             if let service = b.service, !service.isEmpty { Label(service, systemImage: "list.bullet") }
-            Label(statusName(b.status), systemImage: "circle.fill").foregroundStyle(color(b.status))
+            Label(statusName(b.status), systemImage: "circle.fill").foregroundStyle(fillColor(b))
             Text("Только просмотр: запись берётся из YClients.")
                 .font(.footnote).foregroundStyle(.secondary)
             Spacer()
