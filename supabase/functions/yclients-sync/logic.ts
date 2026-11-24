@@ -178,8 +178,21 @@ function buildOlimpic(all: Json[], nastyaId: number | null) {
   const courtMap = new Map<number, string>();
   for (const r of live) courtMap.set(r.staff.id, String(r.staff.name ?? "").trim() || `Корт ${r.staff.id}`);
   const collator = new Intl.Collator("ru", { numeric: true });
-  const courts = [...courtMap.entries()].map(([id, name]) => ({ id, name }))
-    .sort((a, b) => collator.compare(a.name, b.name));
+  // Тип корта: по названию корта, а если там не сказано, то по тому, что в записях на нём («Падел…»).
+  const isPadelText = (t: string) => /падел|padel/i.test(t);
+  const padelStats = new Map<number, { padel: number; all: number }>();
+  for (const r of live) {
+    const st = padelStats.get(r.staff.id) ?? { padel: 0, all: 0 };
+    st.all++;
+    const text = (r.services ?? []).map((x: Json) => String(x.title ?? "")).join(" ");
+    if (isPadelText(text)) st.padel++;
+    padelStats.set(r.staff.id, st);
+  }
+  const courts = [...courtMap.entries()].map(([id, name]) => {
+    const st = padelStats.get(id) ?? { padel: 0, all: 0 };
+    const padel = isPadelText(name) || (st.all > 0 && st.padel * 2 > st.all);
+    return { id, name, kind: padel ? "padel" : "tennis" };
+  }).sort((a, b) => collator.compare(a.name, b.name));
   const perDay = new Map<string, Json[]>();
   for (const r of live) {
     const begin = new Date(r.datetime);

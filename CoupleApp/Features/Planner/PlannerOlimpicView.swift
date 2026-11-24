@@ -79,14 +79,17 @@ struct PlannerOlimpicView: View {
     /// Цвет блока: Настины записи (ресурс «Новик Анастасия») — прозрачный жёлтый с обводкой,
     /// «не пришёл» — красный, падел — синий, остальные (теннис) — зелёный.
     private func isPadel(_ b: PlannerOlimpicDay.Booking) -> Bool {
-        let name = courts.first { $0.id == b.court }?.name.lowercased() ?? ""
+        guard let court = courts.first(where: { $0.id == b.court }) else { return false }
+        if let kind = court.kind { return kind == "padel" }
+        let name = court.name.lowercased()
         return name.contains("падел") || name.contains("padel")
     }
 
+    /// Основной цвет блока (для заливки, обводки и значка статуса).
     private func fillColor(_ b: PlannerOlimpicDay.Booking) -> Color {
-        if b.status == "noshow" { return Color(red: 1.0, green: 0.33, blue: 0.36) }
-        if b.nastya == true { return Color.yellow.opacity(0.35) }
-        return isPadel(b) ? Color(red: 0.25, green: 0.58, blue: 1.0) : Color(red: 0.20, green: 0.80, blue: 0.40)
+        if b.status == "noshow" { return Color(red: 0.95, green: 0.25, blue: 0.30) }
+        if b.nastya == true { return Color(red: 1.0, green: 0.78, blue: 0.10) }
+        return isPadel(b) ? Color(red: 0.20, green: 0.52, blue: 0.98) : Color(red: 0.13, green: 0.72, blue: 0.40)
     }
 
     private func statusName(_ status: String) -> String {
@@ -269,16 +272,16 @@ struct PlannerOlimpicView: View {
                 Text("\(timeText(begin))–\(timeText(end))").font(.system(size: 8).monospacedDigit())
             }
         }
-        .foregroundStyle(b.nastya == true && b.status != "noshow" ? Color.primary : Color.black)
+        .foregroundStyle(Color.primary)
         .padding(.horizontal, 2)
         .padding(.vertical, 1)
         .frame(width: width - 2, height: height, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 4).fill(fillColor(b))
-                .overlay { if b.nastya == true && b.status != "noshow" { RoundedRectangle(cornerRadius: 4).strokeBorder(Color.yellow) } }
+            RoundedRectangle(cornerRadius: 6).fill(fillColor(b).opacity(0.30))
+                .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(fillColor(b).opacity(0.9), lineWidth: 1) }
         )
         .overlay(alignment: .topTrailing) { if b.nastya == true { ClientsYClientsBadge(size: 9).padding(1) } }
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .padding(.horizontal, 1)
         .contentShape(Rectangle())
         .onTapGesture { detail = b }
