@@ -342,9 +342,21 @@ enum PlannerPaymentStore {
     }
 
     /// Сколько спишется с абонемента клиента за занятие в этот день.
-    static func subscriptionCharge(_ context: ModelContext, clientID: UUID, day: Date) -> Double {
-        allSubscriptions(context).first { $0.clientID == clientID && $0.covers(day) }?.charge
-            ?? PlannerPricing.subscriptionCharge
+    static func subscriptionCharge(_ context: ModelContext, clientID: UUID, day: Date, event: PlannerEvent? = nil) -> Double {
+        guard let sub = allSubscriptions(context).first(where: { $0.clientID == clientID && $0.covers(day) }) else {
+            return PlannerPricing.subscriptionCharge
+        }
+        // Если у вида абонемента задана своя цена списания для этой группы, берём её.
+        if let event, !sub.kindName.isEmpty {
+            let kind = sub.kindName
+            let type = try? context.fetch(FetchDescriptor<PlannerSubscriptionType>(
+                predicate: #Predicate { $0.deletedAt == nil && $0.name == kind }
+            )).first
+            if let type, type.groupCharges[event.title.lowercased()] != nil {
+                return type.charge(forGroup: event.title)
+            }
+        }
+        return sub.charge
     }
 
     static func payment(_ context: ModelContext, eventID: UUID, day: Date, clientID: UUID) -> PlannerPayment? {
@@ -381,7 +393,7 @@ enum PlannerPaymentStore {
             item.method = method.rawValue
             if amount == nil {
                 if method == .subscription {
-                    item.amount = Self.subscriptionCharge(context, clientID: clientID, day: day)
+                    item.amount = Self.subscriptionCharge(context, clientID: clientID, day: day, event: event)
                 } else if old == .subscription {
                     item.amount = price
                 }
@@ -438,7 +450,7 @@ enum PlannerPaymentStore {
     }
 
     /// Оформить (или изменить) абонемент клиента на месяц и сразу списать им тренировки месяца.
-    static func saveSubscription(_ context: ModelContext, clientID: UUID, month: Date, amount: Double, kindName: String? = nil, validDays: Int? = nil, charge: Double? = nil) {
+    static func saveSubscription(_ context: ModelContext, clientID: UUID, month: Date, amount: Double, kindName: String? = nil, validDays: Int? = nil, expiresOn: Date? = nil, charge: Double? = nil) {
         let monthStart = PlannerCalendar.startOfMonth(month)
         let id = PlannerSubscription.makeID(clientID: clientID, month: monthStart)
         let found = try? context.fetch(FetchDescriptor<PlannerSubscription>(predicate: #Predicate { $0.syncID == id }))
@@ -457,6 +469,10 @@ enum PlannerPaymentStore {
         if let validDays {
             item.soldAt = .now
             item.expiresAt = cal.startOfDay(for: .now).addingTimeInterval(Double(max(1, validDays)) * 86400 - 1)
+        }
+        if let expiresOn {
+            item.soldAt = .now
+            item.expiresAt = cal.startOfDay(for: expiresOn).addingTimeInterval(86400 - 1)
         }
         item.markChanged()
         try? context.save()
@@ -496,12 +512,13 @@ enum PlannerPaymentStore {
 enum PlannerMover {
     /// Перенести один раз события (`occurrenceStart`) на новое время.
     /// Повторяющееся событие не ломается: этот раз выделяется в отдельную запись.
+    @discardableResult
     static func move(
         _ event: PlannerEvent,
         occurrenceStart: Date,
         to newStart: Date,
         context: ModelContext
-    ) {
+    ) -> PlannerEvent {
         let cal = PlannerCalendar.calendar
         let oldDay = cal.startOfDay(for: occurrenceStart)
         let newStartValue = event.isAllDay ? cal.startOfDay(for: newStart) : newStart
@@ -548,6 +565,7 @@ enum PlannerMover {
             }
         }
         try? context.save()
+        return target
     }
 }
 
@@ -630,13 +648,68 @@ enum PlannerGroupKindStore {
         return item
     }
 
+    /// Добавляет клиентов шаблона группы во все ещё не прошедшие записи этой группы.
+    /// Прошедшие по дате разовые записи не трогаем; уже добавленных не дублируем.
+    @MainActor
+    @discardableResult
+    static func propagate(_ context: ModelContext, kind: PlannerGroupKind, ids: [UUID]) -> Bool {
+        guard !ids.isEmpty else { return false }
+        let now = Date.now
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        var changed = false
+        for event in events where [PlannerCategory.group, .school].contains(event.categoryValue)
+            && event.title.caseInsensitiveCompare(kind.name) == .orderedSame {
+            let isSeries = event.repeatValue != .none
+            if isSeries {
+                if let until = event.repeatUntil, until < now { continue }
+            } else if event.end < now {
+                continue
+            }
+            let missing = ids.filter { !event.participantIDs.contains($0) }
+            guard !missing.isEmpty else { continue }
+            event.participantIDs.append(contentsOf: missing)
+            event.markChanged()
+            changed = true
+        }
+        if changed { try? context.save() }
+        return changed
+    }
+
+    /// Порядок клиентов шаблона переносится в будущие записи группы (прошедшие не трогаем).
+    @MainActor
+    static func applyOrder(_ context: ModelContext, kind: PlannerGroupKind) {
+        let order = kind.memberIDs
+        guard order.count > 1 else { return }
+        let now = Date.now
+        let events = (try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
+        var changed = false
+        for event in events where [PlannerCategory.group, .school].contains(event.categoryValue)
+            && event.title.caseInsensitiveCompare(kind.name) == .orderedSame {
+            if event.repeatValue != .none {
+                if let until = event.repeatUntil, until < now { continue }
+            } else if event.end < now {
+                continue
+            }
+            let inTemplate = order.filter { event.participantIDs.contains($0) }
+            let others = event.participantIDs.filter { !order.contains($0) }
+            let result = inTemplate + others
+            if result != event.participantIDs {
+                event.participantIDs = result
+                event.markChanged()
+                changed = true
+            }
+        }
+        if changed { try? context.save() }
+    }
+
     /// Чинит записи, где вместо выбранной группы осталось набранное в поиске («Сш»):
     /// если по смыслу подходит ровно одна группа (название содержит набранное), записи
     /// переносятся на неё, а лишняя пустая группа убирается. Если вариантов несколько, не трогаем.
     @MainActor
-    static func repairTypedDuplicates(_ context: ModelContext) {
+    @discardableResult
+    static func repairTypedDuplicates(_ context: ModelContext) -> Bool {
         let kinds = ((try? context.fetch(FetchDescriptor<PlannerGroupKind>())) ?? []).filter { $0.deletedAt == nil }
-        guard kinds.count > 1 else { return }
+        guard kinds.count > 1 else { return false }
         let events = ((try? context.fetch(FetchDescriptor<PlannerEvent>(predicate: #Predicate { $0.deletedAt == nil }))) ?? [])
             .filter { [PlannerCategory.group, .school].contains($0.categoryValue) }
         var changed = false
@@ -660,6 +733,7 @@ enum PlannerGroupKindStore {
             }
         }
         if changed { try? context.save() }
+        return changed
     }
 }
 
@@ -676,6 +750,8 @@ final class PlannerSubscriptionType: SyncableModel {
         var charge: Double? = nil
         /// На какие группы действует (названия); нет или пусто: на все.
         var groups: [String]? = nil
+        /// Списание за занятие по группам: название группы в нижнем регистре и сумма.
+        var groupCharges: [String: Double]? = nil
     }
 
     static let recordKind = "planner.subscriptionType"
@@ -689,9 +765,28 @@ final class PlannerSubscriptionType: SyncableModel {
     var charge: Double = PlannerPricing.subscriptionCharge
     /// Названия групп, на которые действует абонемент, по одному в строке. Пусто: на все.
     var groupsRaw: String = ""
+    /// Списание по группам: строки «название=сумма» (название в нижнем регистре).
+    var groupChargesRaw: String = ""
     var updatedAt: Date = Date.now
     var deletedAt: Date? = nil
     var needsSync: Bool = true
+
+    var groupCharges: [String: Double] {
+        get {
+            var result: [String: Double] = [:]
+            for line in groupChargesRaw.split(separator: "\n") {
+                let parts = line.split(separator: "=", maxSplits: 1).map(String.init)
+                if parts.count == 2, let value = Double(parts[1]) { result[parts[0]] = value }
+            }
+            return result
+        }
+        set { groupChargesRaw = newValue.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "\n") }
+    }
+
+    /// Сколько списывать за занятие этой группы: своя цена группы, иначе общая.
+    func charge(forGroup title: String) -> Double {
+        groupCharges[title.lowercased()] ?? charge
+    }
 
     var groupNames: [String] {
         get { groupsRaw.split(separator: "\n").map(String.init) }
@@ -709,13 +804,14 @@ final class PlannerSubscriptionType: SyncableModel {
         apply(payload)
     }
 
-    var payload: Payload { Payload(name: name, price: price, validDays: validDays, charge: charge, groups: groupNames.isEmpty ? nil : groupNames) }
+    var payload: Payload { Payload(name: name, price: price, validDays: validDays, charge: charge, groups: groupNames.isEmpty ? nil : groupNames, groupCharges: groupCharges.isEmpty ? nil : groupCharges) }
 
     func apply(_ payload: Payload) {
         name = payload.name
         price = payload.price
         validDays = payload.validDays ?? 30
         groupsRaw = (payload.groups ?? []).joined(separator: "\n")
+        groupCharges = payload.groupCharges ?? [:]
         charge = payload.charge ?? PlannerPricing.subscriptionCharge
     }
 

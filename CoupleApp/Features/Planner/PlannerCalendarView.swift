@@ -35,6 +35,8 @@ struct PlannerCalendarView: View {
     /// Несколько записей в одном времени: меню снизу, чтобы выбрать нужную.
     @State private var pickChoices: [PlannerPickChoice] = []
     @State private var showPick = false
+    /// Глазик: скрыть отменённые, перенесённые и «не сделано» (записи не удаляются).
+    @AppStorage("planner.hideCancelled") private var hideCancelled = false
 
     private struct ShiftEditTarget: Identifiable {
         let day: Date
@@ -56,6 +58,8 @@ struct PlannerCalendarView: View {
     @State private var externalDetail: CalendarItem?
     /// Запись, которую сейчас переносят: нужно выбрать новое время.
     @State private var moving: MovingState?
+    /// Перенос записи другого раздела (например, ремонта авто): тоже касанием по журналу.
+    @State private var movingExternal: CalendarItem?
     /// Элементы из других разделов (например, записи клиентов).
     @State private var externalItems: [CalendarItem] = []
 
@@ -117,7 +121,7 @@ struct PlannerCalendarView: View {
     /// Меняется при листании и после синхронизации: тогда перечитываем записи других разделов.
     private var refreshKey: String {
         let first = days.first?.timeIntervalSince1970 ?? 0
-        let synced = sync.lastSyncedAt?.timeIntervalSince1970 ?? 0
+        let synced = sync.dataVersion
         return "\(first)-\(days.count)-\(synced)-\(allEvents.count)"
     }
 
@@ -131,7 +135,14 @@ struct PlannerCalendarView: View {
         PlannerPaymentStore.autoCharge(context, events: allEvents, days: days)
     }
 
+    /// Оплаты, разложенные по записям: строится один раз за перерисовку, а не для каждого блока.
+    private final class PaymentIndex {
+        var byEvent: [UUID: [PlannerPayment]] = [:]
+    }
+    @State private var paymentIndex = PaymentIndex()
+
     var body: some View {
+        let _ = { paymentIndex.byEvent = Dictionary(grouping: payments, by: \.eventID) }()
         Group {
             if style == .planner {
                 plannerBody
@@ -142,12 +153,23 @@ struct PlannerCalendarView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if let moving {
                 movingBanner(moving)
+            } else if let movingExternal {
+                externalMovingBanner(movingExternal)
             }
         }
         .task(id: refreshKey) { refresh() }
         .task {
-            PlannerGroupKindStore.repairTypedDuplicates(context)
-            sync.requestSync()
+            // Разовые починки данных: не на старте, один раз, с флагом «выполнено».
+            let defaults = UserDefaults.standard
+            guard !defaults.bool(forKey: "planner.dataRepair.v2") else { return }
+            defaults.set(true, forKey: "planner.dataRepair.v2")
+            try? await Task.sleep(for: .seconds(4))
+            var changed = PlannerGroupKindStore.repairTypedDuplicates(context)
+            let kinds = (try? context.fetch(FetchDescriptor<PlannerGroupKind>())) ?? []
+            for kind in kinds where kind.deletedAt == nil && !kind.memberIDs.isEmpty {
+                if PlannerGroupKindStore.propagate(context, kind: kind, ids: kind.memberIDs) { changed = true }
+            }
+            if changed { sync.requestSync() }
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -167,7 +189,7 @@ struct PlannerCalendarView: View {
                         Image(systemName: "dollarsign.circle.fill")
                     }
                     .disabled(showsPartner)
-                    .accessibilityLabel(account.current == .owner ? "Продажа или приход денег" : "Продать абонемент")
+                    .accessibilityLabel(account.current == .owner ? "Приход денег" : "Продать абонемент")
                     Button {
                         sheetTarget = SheetTarget(kind: .edit, event: nil, day: selectedDay)
                     } label: {
@@ -184,6 +206,24 @@ struct PlannerCalendarView: View {
         .sheet(item: $externalDetail, onDismiss: { refresh() }) { item in
             Group {
                 if let detail = item.detail { detail() } else { EmptyView() }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if canEditExternal(item), item.move != nil {
+                    Button {
+                        externalDetail = nil
+                        withAnimation { movingExternal = item }
+                    } label: {
+                        Label("Перенести", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 6)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .sheet(isPresented: $showPick) {
@@ -272,6 +312,36 @@ struct PlannerCalendarView: View {
         .foregroundStyle(Color.primary)
     }
 
+    private func externalMovingBanner(_ item: CalendarItem) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Куда перенести?").font(.subheadline.weight(.semibold))
+                Text("Нажми на любое время или день: «\(item.title)»")
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button("Отмена") { withAnimation { self.movingExternal = nil } }
+                .font(.subheadline.weight(.semibold))
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.accentColor.opacity(0.2))
+        .foregroundStyle(Color.primary)
+    }
+
+    private func finishExternalMove(to start: Date) {
+        guard let item = movingExternal else { return }
+        item.move?(start)
+        sync.requestSync()
+        withAnimation {
+            movingExternal = nil
+            selectedDay = cal.startOfDay(for: start)
+        }
+        refresh()
+    }
+
     private func finishMove(to start: Date) {
         guard let moving else { return }
         if moving.isCarry {
@@ -341,6 +411,23 @@ struct PlannerCalendarView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
             .contentShape(Rectangle())
+            .overlay {
+                // Глазик «Скрыть»: на высоте месяца и года, над субботой (в дневном режиме правее).
+                GeometryReader { geo in
+                    let timeColumn: CGFloat = 44
+                    let column = (geo.size.width - timeColumn) / 7
+                    Button { withAnimation { hideCancelled.toggle() } } label: {
+                        Image(systemName: hideCancelled ? "eye.slash" : "eye.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(hideCancelled ? Color.secondary : Color.plannerToday)
+                            .frame(width: 36, height: 30)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(hideCancelled ? "Показать отменённые и перенесённые" : "Скрыть отменённые и перенесённые")
+                    .position(x: dayFocus ? geo.size.width - 52 : timeColumn + column * 5.5,
+                              y: geo.size.height / 2)
+                }
+            }
             .gesture(DragGesture(minimumDistance: 30).onEnded { value in
                 if value.translation.width < -40 { movePlanner(1) }
                 if value.translation.width > 40 { movePlanner(-1) }
@@ -374,6 +461,7 @@ struct PlannerCalendarView: View {
                     if isOwner && !showsPartner { shiftEdit = ShiftEditTarget(day: day) }
                 },
                 badgeEmoji: { event, day in styledEmoji(event, day) },
+                isHidden: { event, day in isHiddenByEye(event, day) },
                 dayMark: { moodMark($0) },
                 badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
@@ -389,13 +477,15 @@ struct PlannerCalendarView: View {
                     if showsPartner { return }
                     if moving != nil {
                         finishMove(to: start)
+                    } else if movingExternal != nil {
+                        finishExternalMove(to: start)
                     } else {
                         selectedDay = cal.startOfDay(for: start)
                         sheetTarget = SheetTarget(kind: .edit, event: nil, day: start, time: start)
                     }
                 },
                 onEventTap: { event, day in
-                    guard moving == nil else { return }
+                    guard moving == nil, movingExternal == nil else { return }
                     guard let tapped = events.occurrences(on: cal.startOfDay(for: day)).first(where: { $0.event === event }) else {
                         sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
                         return
@@ -455,7 +545,7 @@ struct PlannerCalendarView: View {
         var result: [PlannerPickChoice] = []
         let dayStart = cal.startOfDay(for: day)
         for occurrence in events.occurrences(on: dayStart)
-            where !occurrence.event.isAllDay && occurrence.start < end && occurrence.end > start {
+            where !occurrence.event.isAllDay && !isHiddenByEye(occurrence.event, day) && occurrence.start < end && occurrence.end > start {
             result.append(PlannerPickChoice(
                 id: occurrence.id, title: occurrence.event.plainTitle,
                 start: occurrence.start, end: occurrence.end,
@@ -498,10 +588,10 @@ struct PlannerCalendarView: View {
            let hex = errandColors[event.errandType.lowercased()], let typeColor = Color(hex: hex) {
             base = typeColor
         }
-        guard isOwner || event.categoryValue == .errand else { return base }
-        let current = event.status(on: day, for: account.current)
+        guard viewedMember == .owner || event.categoryValue == .errand else { return base }
+        let current = event.status(on: day, for: viewedMember)
         let hex = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType, status: current,
-                                                         sharedMember: event.scopeValue == .shared ? account.current.rawValue : nil).colorHex
+                                                         sharedMember: event.scopeValue == .shared ? viewedMember.rawValue : nil).colorHex
         if !hex.isEmpty, let custom = Color(hex: hex) { return custom }
         guard let status = current else { return base }
         switch status {
@@ -511,20 +601,31 @@ struct PlannerCalendarView: View {
         }
     }
 
+    /// Режим «глазик»: прячем отменённые, перенесённые (белые) и «не сделано».
+    private func isHiddenByEye(_ event: PlannerEvent, _ day: Date) -> Bool {
+        guard hideCancelled else { return false }
+        if [.cancelled, .fineUnpaid, .finePaid, .errandNotDone, .errandMoved].contains(blockBadge(event, day)) { return true }
+        switch event.status(on: day, for: viewedMember) {
+        case .notDone?, .moved?: return true
+        default: break
+        }
+        return false
+    }
+
     private func styledEmoji(_ event: PlannerEvent, _ day: Date) -> String? {
-        guard isOwner || event.categoryValue == .errand else { return nil }
+        guard viewedMember == .owner || event.categoryValue == .errand else { return nil }
         let r = PlannerStatusStyleStore.resolve(statusStyles, errandType: event.errandType,
-                                                status: event.status(on: day, for: account.current),
-                                                sharedMember: event.scopeValue == .shared ? account.current.rawValue : nil)
+                                                status: event.status(on: day, for: viewedMember),
+                                                sharedMember: event.scopeValue == .shared ? viewedMember.rawValue : nil)
         if r.hideEmoji { return "" }
         return r.emoji.isEmpty ? nil : r.emoji
     }
 
     private func blockBadge(_ event: PlannerEvent, _ day: Date) -> PlannerPayBadge {
-        guard isOwner || event.categoryValue == .errand else {
-            return PlannerPaymentStore.badge(for: event, day: day, payments: payments)
+        guard viewedMember == .owner || event.categoryValue == .errand else {
+            return PlannerPaymentStore.badge(for: event, day: day, payments: paymentIndex.byEvent[event.syncID] ?? [])
         }
-        switch event.status(on: day, for: account.current) {
+        switch event.status(on: day, for: viewedMember) {
         case .done: return .errandDone
         case .notDone: return .errandNotDone
         case .moved: return .errandMoved
@@ -634,6 +735,8 @@ struct PlannerCalendarView: View {
             if shiftMode && isOwner && !showsPartner {
                 PlannerShiftStore.toggle(context, day: day, amount: shiftAmount)
                 sync.requestSync()
+            } else if let item = movingExternal {
+                finishExternalMove(to: PlannerCalendar.combine(day: day, time: item.start))
             } else if let moving {
                 // Перенос на другой день: то же время суток.
                 let time = PlannerCalendar.combine(day: day, time: moving.occurrenceStart)

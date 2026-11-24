@@ -27,6 +27,11 @@ struct PlannerTimelineView: View {
     var onShiftHold: (Date) -> Void = { _ in }
     /// Своё эмодзи статуса записи: `nil` — обычное, пустая строка — без эмодзи.
     var badgeEmoji: (PlannerEvent, Date) -> String? = { _, _ in nil }
+    /// Скрывать ли запись визуально (режим «глазик»).
+    var isHidden: (PlannerEvent, Date) -> Bool = { _, _ in false }
+    /// Кнопка-глазик над субботой: `nil` — без неё. Второе значение: глазик перечёркнут (скрываем).
+    var onEyeTap: (() -> Void)? = nil
+    var eyeHides = false
     /// Смайлик настроения дня (для обоих), пустая строка — нет.
     var dayMark: (Date) -> String = { _ in "" }
     /// Значок оплаты записи за этот день.
@@ -124,7 +129,39 @@ struct PlannerTimelineView: View {
 
     // MARK: - Шапка с днями
 
+    private var eyeRow: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: timeColumnWidth, height: 18)
+            if isDayMode {
+                Spacer()
+                eyeButton
+            } else {
+                ForEach(Array(days.enumerated()), id: \.offset) { index, _ in
+                    if index == min(5, days.count - 1) { eyeButton.frame(maxWidth: .infinity) }
+                    else { Color.clear.frame(maxWidth: .infinity, maxHeight: 18) }
+                }
+            }
+        }
+    }
+
+    private var eyeButton: some View {
+        Button { onEyeTap?() } label: {
+            Image(systemName: eyeHides ? "eye.slash" : "eye.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(eyeHides ? Color.secondary : Color.plannerToday)
+                .frame(width: 32, height: 18)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(eyeHides ? "Показать отменённые и перенесённые" : "Скрыть отменённые и перенесённые")
+    }
+
     private var header: some View {
+        VStack(spacing: 0) {
+            headerRow
+        }
+    }
+
+    private var headerRow: some View {
         HStack(spacing: 0) {
             Button {
                 withAnimation(.snappy) { showFullDay.toggle() }
@@ -349,9 +386,15 @@ struct PlannerTimelineView: View {
     }
 
     /// Ширина текста на 1 пункт шрифта (жирный системный): считаем по-настоящему, а не на глаз.
+    nonisolated(unsafe) private static var widthCache: [String: CGFloat] = [:]
+    private static let measureFont = UIFont.systemFont(ofSize: 100, weight: .bold)
+
     private static func unitWidth(_ text: String) -> CGFloat {
-        let font = UIFont.systemFont(ofSize: 100, weight: .bold)
-        return (text as NSString).size(withAttributes: [.font: font]).width / 100
+        if let cached = widthCache[text] { return cached }
+        let width = (text as NSString).size(withAttributes: [.font: measureFont]).width / 100
+        if widthCache.count > 2000 { widthCache.removeAll() }
+        widthCache[text] = width
+        return width
     }
 
     /// Как написать название в блоке: строки и размер шрифта.
@@ -380,7 +423,8 @@ struct PlannerTimelineView: View {
         // Все слова остаются в блоке: пробуем разбить на 1…5 строк (самое узкое разбиение
         // для каждого числа строк) и берём вариант с самым крупным шрифтом.
         var best: (lines: [String], font: CGFloat) = ([title], fit([title]))
-        for count in 2...min(5, words.count) {
+        // Слишком много слов: делим только на 2–3 строки, чтобы не считать зря.
+        for count in 2...min(words.count > 12 ? 3 : 5, words.count) {
             let lines = Self.balancedLines(words, count: count)
             let size = fit(lines)
             if size > best.font { best = (lines, size) }
@@ -609,7 +653,7 @@ struct PlannerTimelineView: View {
         let minimum: TimeInterval = 15 * 60
 
         var raw: [PlannerTimelineBlock] = []
-        for occurrence in events.occurrences(on: day) where !occurrence.event.isAllDay {
+        for occurrence in events.occurrences(on: day) where !occurrence.event.isAllDay && !isHidden(occurrence.event, day) {
             let start = max(occurrence.start, dayStart)
             let end = min(max(occurrence.end, start.addingTimeInterval(minimum)), dayEnd)
             raw.append(PlannerTimelineBlock(
