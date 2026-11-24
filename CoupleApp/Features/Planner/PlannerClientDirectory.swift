@@ -39,6 +39,10 @@ enum PlannerClientDirectory {
     /// Добавить нового клиента в общую базу.
     @MainActor
     static func add(name: String, member: CoupleMember, context: ModelContext) -> Entry {
+        // Одинаковых карточек не бывает: если такой клиент уже есть, возвращаем его.
+        if let found = PlannerClientMerge.existing(name: name, member: member, context: context) {
+            return Entry(id: found.syncID, name: found.name)
+        }
         let client = ClientsClient(name: name, member: member)
         client.markChanged()
         context.insert(client)
