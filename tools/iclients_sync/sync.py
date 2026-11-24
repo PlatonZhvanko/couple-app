@@ -200,13 +200,16 @@ def main() -> None:
         det_id = str(uuid.uuid5(NS, f"client:{cid}"))
         phone = c.get("phone") or ""
         cname = c.get("display_name") or c.get("name") or "Клиент YClients"
-        if det_id in existing:
+        if det_id in existing and not existing[det_id]["deleted_at"]:
             client_ids[cid] = det_id
         elif digits(phone) and digits(phone) in by_phone:
             client_ids[cid] = by_phone[digits(phone)]
         elif name_key(cname) in by_name:
             # Клиент с таким именем уже есть: записи идут в его карточку, дубль не создаём.
             client_ids[cid] = by_name[name_key(cname)]
+        elif det_id in existing:
+            # Карточка склеена приложением (помечена удалённой): не возвращаем её к жизни.
+            client_ids[cid] = det_id
         else:
             client_ids[cid] = det_id
             by_name[name_key(cname)] = det_id
