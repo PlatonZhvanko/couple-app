@@ -8,6 +8,8 @@ final class PlannerOlimpicDay: SyncableModel {
     struct Court: Codable, Hashable {
         var id: Int
         var name: String
+        /// «padel» или «tennis» (определяет сервер).
+        var kind: String?
     }
 
     struct Booking: Codable, Hashable, Identifiable {
