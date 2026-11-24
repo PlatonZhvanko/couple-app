@@ -57,8 +57,11 @@ struct PlannerOlimpicView: View {
 
     /// Колонки кортов: берём с любого дня, чтобы набор не «прыгал» на пустых днях.
     private var courts: [PlannerOlimpicDay.Court] {
-        if let own = shown?.courts, !own.isEmpty { return own }
-        return days.max(by: { $0.day < $1.day })?.courts ?? []
+        let raw: [PlannerOlimpicDay.Court]
+        if let own = shown?.courts, !own.isEmpty { raw = own }
+        else { raw = days.max(by: { $0.day < $1.day })?.courts ?? [] }
+        // «Администратор» — не корт.
+        return raw.filter { !$0.name.lowercased().contains("админ") }
     }
 
     private var bookings: [PlannerOlimpicDay.Booking] {
@@ -75,10 +78,10 @@ struct PlannerOlimpicView: View {
 
     private func color(_ status: String) -> Color {
         switch status {
-        case "arrived": return Color.blue.opacity(0.55)
-        case "confirmed": return Color.green.opacity(0.6)
-        case "noshow": return Color.red.opacity(0.4)
-        default: return Color.yellow.opacity(0.65)
+        case "arrived": return Color(red: 0.62, green: 0.80, blue: 1.0)
+        case "confirmed": return Color(red: 0.66, green: 0.92, blue: 0.72)
+        case "noshow": return Color(red: 1.0, green: 0.72, blue: 0.74)
+        default: return Color(red: 1.0, green: 0.90, blue: 0.55)
         }
     }
 
@@ -152,13 +155,6 @@ struct PlannerOlimpicView: View {
                 if loadFailed || shown == nil { await refresh() }
             }
         }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 30).onEnded { value in
-                let dx = value.translation.width
-                guard abs(dx) > 70, abs(dx) > abs(value.translation.height) * 2 else { return }
-                move(dx < 0 ? 1 : -1)
-            }
-        )
         .sheet(isPresented: $showDatePicker) {
             NavigationStack {
                 DatePicker("День", selection: Binding(

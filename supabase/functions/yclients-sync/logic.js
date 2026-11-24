@@ -162,7 +162,7 @@ function olimpicStatus(rec) {
 }
 // Разбор записей журнала в корты и брони по дням.
 function buildOlimpic(all) {
-    const live = all.filter((r) => !r.deleted && r.staff?.id);
+    const live = all.filter((r) => !r.deleted && r.staff?.id && !/админ/i.test(String(r.staff.name ?? "")));
     // Корты — это сотрудники журнала, у которых есть записи в окне.
     const courtMap = new Map();
     for (const r of live)
