@@ -249,7 +249,7 @@ struct PetsTasksView: View {
                     HStack {
                         Text("Нужно сделать")
                         Spacer()
-                        Text(CarFormat.money(todo.reduce(0) { $0 + $1.price }))
+                        Text(PetsSpendingView.money(todo.reduce(0) { $0 + $1.price }))
                     }
                 } footer: {
                     Text("Смахните вправо: «Сделано» запишет сумму в траты питомца в день по расписанию.")
@@ -300,7 +300,7 @@ struct PetsTasksView: View {
                     }
                 }
                 Spacer()
-                Text(task.price > 0 ? CarFormat.money(task.price) : "—").foregroundStyle(.secondary)
+                Text(task.price > 0 ? PetsSpendingView.money(task.price) : "—").foregroundStyle(.secondary)
             }
         }
         .tint(.primary)
@@ -477,7 +477,6 @@ struct PetsEntryFormView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(SyncCoordinator.self) private var sync
     @Environment(AccountStore.self) private var account
-    @Query(filter: #Predicate<PetsEntry> { $0.deletedAt == nil }) private var allEntries: [PetsEntry]
 
     @State private var amountText: String
     @State private var category: String
@@ -496,8 +495,7 @@ struct PetsEntryFormView: View {
     }
 
     private var suggestions: [String] {
-        let custom = Set(allEntries.map(\.category)).subtracting(Self.basic).sorted()
-        let all = Self.basic + custom
+        let all = Self.basic
         let text = category.trimmingCharacters(in: .whitespaces).lowercased()
         if text.isEmpty { return Array(all.prefix(7)) }
         return all.filter { $0.lowercased().contains(text) && $0.lowercased() != text }
@@ -565,27 +563,16 @@ struct PetsEntryFormView: View {
     }
 }
 
-/// Траты питомца: за всё время, месяц или выбранный период, по категориям.
+/// Траты питомца: за всё время, месяц или выбранный период. Простой плоский список без тяжёлой работы.
 struct PetsSpendingView: View {
     let pet: PetsPet
-
-    private enum Period: String, CaseIterable, Identifiable {
-        case all = "Всё время", month = "Месяц", custom = "Период"
-        var id: String { rawValue }
-    }
-
-    private struct SpendGroup: Identifiable {
-        let name: String
-        let items: [PetsEntry]
-        let sum: Double
-        var id: String { name }
-    }
 
     @Query(filter: #Predicate<PetsEntry> { $0.deletedAt == nil }, sort: \PetsEntry.date, order: .reverse)
     private var allEntries: [PetsEntry]
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
-    @State private var period: Period = .all
+    /// 0 — всё время, 1 — месяц, 2 — свой период.
+    @State private var period = 0
     @State private var from = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
     @State private var to = Date.now
     @State private var adding = false
@@ -593,62 +580,58 @@ struct PetsSpendingView: View {
 
     private func inPeriod(_ date: Date) -> Bool {
         switch period {
-        case .all: return true
-        case .month:
+        case 1:
             let start = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
             return date >= start
-        case .custom:
-            let start = Calendar.current.startOfDay(for: from)
-            let end = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: to)) ?? to
+        case 2:
+            let cal = Calendar.current
+            let start = cal.startOfDay(for: from)
+            let end = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: to)) ?? to
             return date >= start && date < end
+        default:
+            return true
         }
     }
 
     var body: some View {
         let entries = allEntries.filter { $0.petID == pet.syncID && inPeriod($0.date) }
         let total = entries.reduce(0) { $0 + $1.amount }
-        let groups: [SpendGroup] = Dictionary(grouping: entries, by: \.category)
-            .map { SpendGroup(name: $0.key, items: $0.value, sum: $0.value.reduce(0) { $0 + $1.amount }) }
-            .sorted { $0.sum > $1.sum }
         List {
             Section {
                 Picker("Период", selection: $period) {
-                    ForEach(Period.allCases) { Text($0.rawValue).tag($0) }
+                    Text("Всё время").tag(0)
+                    Text("Месяц").tag(1)
+                    Text("Период").tag(2)
                 }
                 .pickerStyle(.segmented)
-                if period == .custom {
+                if period == 2 {
                     DatePicker("С", selection: $from, displayedComponents: .date)
                     DatePicker("По", selection: $to, displayedComponents: .date)
                 }
-                LabeledContent("Итого") { Text(CarFormat.money(total)).bold() }
+                HStack {
+                    Text("Итого")
+                    Spacer()
+                    Text(Self.money(total)).bold()
+                }
             }
-            if entries.isEmpty {
-                Section { Text("За период трат нет").foregroundStyle(.secondary) }
-            }
-            ForEach(groups) { group in
-                Section {
-                    ForEach(group.items) { item in
-                        Button { editing = item } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.note.isEmpty ? item.category : item.note)
-                                    Text(item.date.formatted(date: .abbreviated, time: .omitted))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Text(CarFormat.money(item.amount))
-                            }
-                        }
-                        .tint(.primary)
-                        .swipeActions {
-                            Button("Удалить", systemImage: "trash", role: .destructive) { remove(item) }
-                        }
-                    }
-                } header: {
+            Section("Траты") {
+                if entries.isEmpty {
+                    Text("За период трат нет").foregroundStyle(.secondary)
+                }
+                ForEach(entries) { item in
                     HStack {
-                        Text(group.name)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.note.isEmpty ? item.category : item.note)
+                            Text("\(item.category) · \(item.date.formatted(date: .abbreviated, time: .omitted))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                         Spacer()
-                        Text(CarFormat.money(group.sum))
+                        Text(Self.money(item.amount))
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { editing = item }
+                    .swipeActions {
+                        Button("Удалить", role: .destructive) { remove(item) }
                     }
                 }
             }
@@ -661,6 +644,18 @@ struct PetsSpendingView: View {
         }
         .sheet(isPresented: $adding) { PetsEntryFormView(pet: pet, entry: nil) }
         .sheet(item: $editing) { PetsEntryFormView(pet: pet, entry: $0) }
+    }
+
+    /// Простое форматирование суммы без тяжёлых форматтеров.
+    static func money(_ value: Double) -> String {
+        let number = Int(value.rounded())
+        let text = String(abs(number))
+        var out = ""
+        for (index, char) in text.reversed().enumerated() {
+            if index > 0 && index % 3 == 0 { out.append("\u{00A0}") }
+            out.append(char)
+        }
+        return (number < 0 ? "-" : "") + String(out.reversed()) + " ₽"
     }
 
     private func remove(_ item: PetsEntry) {
