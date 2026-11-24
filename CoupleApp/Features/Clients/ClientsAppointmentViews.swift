@@ -307,13 +307,19 @@ struct ClientsAppointmentEditor: View {
     private func save() {
         var targetClientID = clientID
         if isNewClient {
-            let client = ClientsClient(
-                name: newClientName.trimmingCharacters(in: .whitespaces),
-                phone: newClientPhone.trimmingCharacters(in: .whitespaces),
-                member: member
-            )
-            context.insert(client)
-            targetClientID = client.syncID
+            let newName = newClientName.trimmingCharacters(in: .whitespaces)
+            if let found = PlannerClientMerge.existing(name: newName, member: member, context: context) {
+                // Такая карточка уже есть: запись идёт в неё, новую не создаём.
+                targetClientID = found.syncID
+            } else {
+                let client = ClientsClient(
+                    name: newName,
+                    phone: newClientPhone.trimmingCharacters(in: .whitespaces),
+                    member: member
+                )
+                context.insert(client)
+                targetClientID = client.syncID
+            }
         }
 
         let target = appointment ?? ClientsAppointment(member: member)

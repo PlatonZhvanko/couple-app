@@ -8,6 +8,7 @@ struct RootTabView: View {
 
     @Environment(AccountStore.self) private var account
     @Environment(SyncCoordinator.self) private var sync
+    @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("root.selectedTab") private var selection: String = FeatureRegistry.all.first?.id ?? SettingsFeature.feature.id
 
@@ -41,6 +42,11 @@ struct RootTabView: View {
                 sync.requestSync()
                 Task { await account.refreshFromServer() }
             }
+        }
+        .task(id: sync.dataVersion) {
+            // Одинаковые карточки клиентов (в том числе пришедшие из YClients) склеиваются сами.
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled, PlannerClientMerge.mergeAll(context) { sync.requestSync() }
         }
         .task {
             // Сразу после входа и дальше каждые 10 секунд, пока приложение открыто:
