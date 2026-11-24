@@ -209,40 +209,43 @@ enum PetsTaskActions {
 
 // MARK: - Список дел по здоровью
 
+/// Простой экран: данные читаются один раз в обычные значения (без @Query на экране).
 struct PetsTasksView: View {
     let pet: PetsPet
 
-    @Query(filter: #Predicate<PetsTask> { $0.deletedAt == nil }, sort: \PetsTask.createdAt)
-    private var allTasks: [PetsTask]
+    private struct Row: Identifiable {
+        let id: UUID
+        let title: String
+        let caption: String
+        let late: Bool
+        let price: Double
+        let isDone: Bool
+    }
+
     @Environment(\.modelContext) private var context
     @Environment(SyncCoordinator.self) private var sync
     @Environment(AccountStore.self) private var account
-    @State private var editing: PetsTask?
+    @State private var rows: [Row] = []
     @State private var adding = false
-
-    private var tasks: [PetsTask] { allTasks.filter { $0.petID == pet.syncID } }
+    @State private var editing: PetsTask?
 
     var body: some View {
-        let todo = tasks.filter { !$0.isDone }
-        let done = tasks.filter(\.isDone)
+        let todo = rows.filter { !$0.isDone }
+        let done = rows.filter(\.isDone)
         List {
-            if tasks.isEmpty {
-                ContentUnavailableView("Пока пусто", systemImage: "cross.case",
-                                       description: Text("Запишите, что сделать по здоровью: прививка, визит к врачу. Коты напомнят."))
+            if rows.isEmpty {
+                Text("Пока пусто. Запишите, что сделать по здоровью: прививка, визит к врачу. Коты напомнят.")
+                    .foregroundStyle(.secondary)
             }
             if !todo.isEmpty {
                 Section {
-                    ForEach(todo) { task in
-                        row(task)
+                    ForEach(todo) { row in
+                        rowView(row)
                             .swipeActions(edge: .leading) {
-                                Button("Сделано", systemImage: "checkmark.circle") {
-                                    PetsTaskActions.done(task, context: context, date: task.desiredDate ?? .now,
-                                                         member: account.current)
-                                    sync.requestSync()
-                                }.tint(.green)
+                                Button("Сделано") { markDone(row.id) }.tint(.green)
                             }
                             .swipeActions(edge: .trailing) {
-                                Button("Удалить", systemImage: "trash", role: .destructive) { remove(task) }
+                                Button("Удалить", role: .destructive) { remove(row.id) }
                             }
                     }
                 } header: {
@@ -257,13 +260,10 @@ struct PetsTasksView: View {
             }
             if !done.isEmpty {
                 Section("Сделано") {
-                    ForEach(done) { task in
-                        row(task)
+                    ForEach(done) { row in
+                        rowView(row)
                             .swipeActions {
-                                Button("Не сделано", systemImage: "arrow.uturn.backward") {
-                                    PetsTaskActions.undone(task, context: context)
-                                    sync.requestSync()
-                                }.tint(.orange)
+                                Button("Не сделано") { markUndone(row.id) }.tint(.orange)
                             }
                     }
                 }
@@ -275,42 +275,80 @@ struct PetsTasksView: View {
                 Button("Добавить", systemImage: "plus") { adding = true }
             }
         }
-        .sheet(isPresented: $adding) { PetsTaskFormView(pet: pet, task: nil) }
-        .sheet(item: $editing) { PetsTaskFormView(pet: pet, task: $0) }
+        .sheet(isPresented: $adding, onDismiss: load) { PetsTaskFormView(pet: pet, task: nil) }
+        .sheet(item: $editing, onDismiss: load) { PetsTaskFormView(pet: pet, task: $0) }
+        .task { load() }
+        .onChange(of: sync.dataVersion) { _, _ in load() }
     }
 
-    private func row(_ task: PetsTask) -> some View {
-        Button { editing = task } label: {
+    private func rowView(_ row: Row) -> some View {
+        Button { open(row.id) } label: {
             HStack {
-                Image(systemName: task.isDone ? "checkmark.circle.fill" : "pawprint.fill")
-                    .foregroundStyle(task.isDone ? .green : .pink)
+                Text(row.isDone ? "✅" : "🐾")
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(task.title.isEmpty ? "Без названия" : task.title)
-                    if !task.isDone, task.desiredAgeMonths > 0 {
-                        Text("В возрасте \(PetsAge.text(months: task.desiredAgeMonths))")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    if task.isDone, let at = task.doneAt {
-                        Text("Сделано \(at.formatted(date: .abbreviated, time: .omitted))")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else if let due = task.desiredDate {
-                        Text("\(due.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.caption)
-                            .foregroundStyle(due < .now ? .red : .secondary)
+                    Text(row.title)
+                    if !row.caption.isEmpty {
+                        Text(row.caption).font(.caption).foregroundStyle(row.late ? .red : .secondary)
                     }
                 }
                 Spacer()
-                Text(task.price > 0 ? PetsSpendingView.money(task.price) : "—").foregroundStyle(.secondary)
+                Text(row.price > 0 ? PetsSpendingView.money(row.price) : "—").foregroundStyle(.secondary)
             }
         }
         .tint(.primary)
     }
 
-    private func remove(_ task: PetsTask) {
+    private func fetch() -> [PetsTask] {
+        let petID = pet.syncID
+        let descriptor = FetchDescriptor<PetsTask>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.petID == petID },
+            sortBy: [SortDescriptor(\PetsTask.createdAt)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private func load() {
+        rows = fetch().map { task in
+            var caption = ""
+            var late = false
+            if task.isDone, let at = task.doneAt {
+                caption = "Сделано \(at.formatted(date: .abbreviated, time: .omitted))"
+            } else if let due = task.desiredDate {
+                caption = due.formatted(date: .abbreviated, time: .shortened)
+                late = due < .now
+            } else if task.desiredAgeMonths > 0 {
+                caption = "В возрасте \(PetsAge.text(months: task.desiredAgeMonths))"
+            }
+            return Row(id: task.syncID, title: task.title.isEmpty ? "Без названия" : task.title,
+                       caption: caption, late: late, price: task.price, isDone: task.isDone)
+        }
+    }
+
+    private func find(_ id: UUID) -> PetsTask? { fetch().first { $0.syncID == id } }
+
+    private func open(_ id: UUID) { editing = find(id) }
+
+    private func markDone(_ id: UUID) {
+        guard let task = find(id) else { return }
+        PetsTaskActions.done(task, context: context, date: task.desiredDate ?? .now, member: account.current)
+        sync.requestSync()
+        load()
+    }
+
+    private func markUndone(_ id: UUID) {
+        guard let task = find(id) else { return }
+        PetsTaskActions.undone(task, context: context)
+        sync.requestSync()
+        load()
+    }
+
+    private func remove(_ id: UUID) {
+        guard let task = find(id) else { return }
         if task.isDone { PetsTaskActions.undone(task, context: context) }
         task.markDeleted()
         try? context.save()
         sync.requestSync()
+        load()
     }
 }
 
@@ -372,15 +410,9 @@ struct PetsTaskFormView: View {
                 } header: { Text("Питомец") }
                 Section("Что сделать") {
                     TextField("Название, например «Прививка»", text: $title)
-                    if !suggestions.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack {
-                                ForEach(suggestions, id: \.self) { preset in
-                                    Button(preset) { title = preset }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                }
-                            }
+                    Menu("Быстрый выбор") {
+                        ForEach(PetsTaskActions.presets, id: \.self) { preset in
+                            Button(preset) { title = preset }
                         }
                     }
                     LabeledContent("Цена, ₽") {
@@ -517,15 +549,9 @@ struct PetsEntryFormView: View {
                 }
                 Section {
                     TextField("Категория: найти или создать новую", text: $category)
-                    if !suggestions.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack {
-                                ForEach(suggestions, id: \.self) { item in
-                                    Button(item) { category = item }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                }
-                            }
+                    Menu("Выбрать из списка") {
+                        ForEach(Self.basic, id: \.self) { item in
+                            Button(item) { category = item }
                         }
                     }
                 } header: {

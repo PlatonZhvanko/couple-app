@@ -91,13 +91,13 @@ struct PetsDetailView: View {
     /// Одно окно за раз: две кнопки в одной строке списка не должны открывать окна одновременно.
     @State private var sheet: DetailSheet?
 
-    @Query(filter: #Predicate<PetsTask> { $0.deletedAt == nil }) private var allTasks: [PetsTask]
-    @Query(filter: #Predicate<PetsEntry> { $0.deletedAt == nil }) private var allEntries: [PetsEntry]
+    @Environment(\.modelContext) private var context
+    @Environment(SyncCoordinator.self) private var sync
+    /// Считается вне body и хранится обычными значениями (без @Query на экране).
+    @State private var alerts: [PetsAlert] = []
+    @State private var spent: Double = 0
 
     var body: some View {
-        let tasks = allTasks.filter { $0.petID == pet.syncID }
-        let alerts = PetsAlerts.alerts(pet: pet, tasks: tasks)
-        let spent = allEntries.filter { $0.petID == pet.syncID }.reduce(0) { $0 + $1.amount }
         List {
             Section {
                 VStack(spacing: 6) {
@@ -156,13 +156,25 @@ struct PetsDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { Button("Изменить") { sheet = .edit } }
         }
-        .sheet(item: $sheet) { item in
+        .task { reload() }
+        .onChange(of: sync.dataVersion) { _, _ in reload() }
+        .sheet(item: $sheet, onDismiss: reload) { item in
             switch item {
             case .edit: PetsFormView(pet: pet)
             case .entry: PetsEntryFormView(pet: pet, entry: nil)
             case .task: PetsTaskFormView(pet: pet, task: nil)
             }
         }
+    }
+
+    private func reload() {
+        let petID = pet.syncID
+        let tasks = (try? context.fetch(FetchDescriptor<PetsTask>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.petID == petID }))) ?? []
+        let entries = (try? context.fetch(FetchDescriptor<PetsEntry>(
+            predicate: #Predicate { $0.deletedAt == nil && $0.petID == petID }))) ?? []
+        alerts = PetsAlerts.alerts(pet: pet, tasks: tasks)
+        spent = entries.reduce(0) { $0 + $1.amount }
     }
 
     /// Под аватаркой: дата рождения, крупно полные годы, мелко месяцы и дни.
