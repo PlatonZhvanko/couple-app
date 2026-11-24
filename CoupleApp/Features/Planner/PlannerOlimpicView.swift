@@ -7,8 +7,8 @@ struct PlannerOlimpicView: View {
     @Environment(AccountStore.self) private var account
     @Query(filter: #Predicate<PlannerOlimpicDay> { $0.deletedAt == nil })
     private var days: [PlannerOlimpicDay]
-    /// Глазик: показывать ли «не пришёл» (по умолчанию показаны, как просил владелец: «не скрыто»).
-    @AppStorage("planner.olimpic.hideNoShow") private var hideNoShow = false
+    /// Глазик: «не пришёл» по умолчанию скрыты при каждом входе; нажатие показывает их.
+    @State private var hideNoShow = true
     @State private var selectedDay = PlannerCalendar.calendar.startOfDay(for: .now)
     @State private var detail: PlannerOlimpicDay.Booking?
     @State private var showDatePicker = false
