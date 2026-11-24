@@ -202,7 +202,7 @@ function buildOlimpic(all, nastyaId) {
         list.push({
             id: r.id, court: r.staff.id, client, start: iso(begin), length: r.seance_length || 3600,
             status: olimpicStatus(r), service: services,
-            nastya: nastyaId !== null && (r.resource_instances ?? []).some((i) => i.id === nastyaId),
+            nastya: (r.resource_instances ?? []).some((i) => (nastyaId !== null && i.id === nastyaId) || norm(String(i.title ?? i.name ?? "")) === norm(RESOURCE_TITLE)),
         });
         perDay.set(day, list);
     }
