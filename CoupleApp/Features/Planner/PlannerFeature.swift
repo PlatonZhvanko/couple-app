@@ -20,6 +20,7 @@ enum PlannerFeature {
             PlannerColorRule.self,
             PlannerMoneyKind.self, PlannerMoneyOp.self, PlannerShift.self,
             PlannerStatusStyle.self,
+            PlannerOlimpicDay.self,
         ]
     ) {
         PlannerRootView()

@@ -35,6 +35,8 @@ struct PlannerCalendarView: View {
     /// Несколько записей в одном времени: меню снизу, чтобы выбрать нужную.
     @State private var pickChoices: [PlannerPickChoice] = []
     @State private var showPick = false
+    /// Планер кортов «Олимпик» (только просмотр).
+    @State private var showOlimpic = false
     /// Глазик: скрыть отменённые, перенесённые и «не сделано» (записи не удаляются).
     @AppStorage("planner.hideCancelled") private var hideCancelled = false
 
@@ -226,6 +228,7 @@ struct PlannerCalendarView: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: $showOlimpic) { PlannerOlimpicView() }
         .sheet(isPresented: $showPick) {
             PlannerPickSheet(choices: pickChoices) { choice in
                 showPick = false
@@ -425,6 +428,18 @@ struct PlannerCalendarView: View {
                     .buttonStyle(.borderless)
                     .accessibilityLabel(hideCancelled ? "Показать отменённые и перенесённые" : "Скрыть отменённые и перенесённые")
                     .position(x: dayFocus ? geo.size.width - 52 : timeColumn + column * 5.5,
+                              y: geo.size.height / 2)
+                    // «Олимпик»: на той же высоте, между понедельником и вторником.
+                    Button { showOlimpic = true } label: {
+                        Text("Олимпик")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.plannerToday))
+                    }
+                    .buttonStyle(.borderless)
+                    .position(x: dayFocus ? geo.size.width - 112 : timeColumn + column,
                               y: geo.size.height / 2)
                 }
             }
