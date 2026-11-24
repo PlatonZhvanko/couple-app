@@ -83,9 +83,13 @@ struct PetsRootView: View {
 /// Карточка питомца: данные, внимание, быстрые кнопки, дела по здоровью и траты.
 struct PetsDetailView: View {
     let pet: PetsPet
-    @State private var editing = false
-    @State private var addingEntry = false
-    @State private var addingTask = false
+    private enum DetailSheet: String, Identifiable {
+        case edit, entry, task
+        var id: String { rawValue }
+    }
+
+    /// Одно окно за раз: две кнопки в одной строке списка не должны открывать окна одновременно.
+    @State private var sheet: DetailSheet?
 
     @Query(filter: #Predicate<PetsTask> { $0.deletedAt == nil }) private var allTasks: [PetsTask]
     @Query(filter: #Predicate<PetsEntry> { $0.deletedAt == nil }) private var allEntries: [PetsEntry]
@@ -96,11 +100,11 @@ struct PetsDetailView: View {
         let spent = allEntries.filter { $0.petID == pet.syncID }.reduce(0) { $0 + $1.amount }
         List {
             Section {
-                HStack {
-                    Spacer()
+                VStack(spacing: 6) {
                     PetsAvatar(pet: pet, size: 140)
-                    Spacer()
+                    ageBlock
                 }
+                .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
             }
             if !alerts.isEmpty {
@@ -113,14 +117,9 @@ struct PetsDetailView: View {
             }
             Section {
                 HStack(spacing: 12) {
-                    Button { addingEntry = true } label: {
-                        Label("Трата", systemImage: "rublesign.circle.fill").frame(maxWidth: .infinity)
-                    }
-                    Button { addingTask = true } label: {
-                        Label("Что сделать", systemImage: "cross.case.fill").frame(maxWidth: .infinity)
-                    }
+                    quickButton("💸", "Трата") { sheet = .entry }
+                    quickButton("🩺", "Что сделать") { sheet = .task }
                 }
-                .buttonStyle(.borderedProminent)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             }
@@ -155,11 +154,64 @@ struct PetsDetailView: View {
         }
         .navigationTitle(pet.displayName)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { Button("Изменить") { editing = true } }
+            ToolbarItem(placement: .topBarTrailing) { Button("Изменить") { sheet = .edit } }
         }
-        .sheet(isPresented: $editing) { PetsFormView(pet: pet) }
-        .sheet(isPresented: $addingEntry) { PetsEntryFormView(pet: pet, entry: nil) }
-        .sheet(isPresented: $addingTask) { PetsTaskFormView(pet: pet, task: nil) }
+        .sheet(item: $sheet) { item in
+            switch item {
+            case .edit: PetsFormView(pet: pet)
+            case .entry: PetsEntryFormView(pet: pet, entry: nil)
+            case .task: PetsTaskFormView(pet: pet, task: nil)
+            }
+        }
+    }
+
+    /// Под аватаркой: дата рождения, крупно полные годы, мелко месяцы и дни.
+    @ViewBuilder
+    private var ageBlock: some View {
+        if let birthday = pet.birthday {
+            let parts = Calendar.current.dateComponents([.year, .month, .day], from: birthday, to: .now)
+            let years = max(0, parts.year ?? 0)
+            let months = max(0, parts.month ?? 0)
+            let days = max(0, parts.day ?? 0)
+            VStack(spacing: 2) {
+                Text("🎂 \(birthday.formatted(date: .long, time: .omitted))")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if years > 0 {
+                    Text("\(years) \(yearWord(years))").font(.title2.weight(.bold))
+                    Text("\(months) мес. \(days) дн.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("\(months) мес.").font(.title2.weight(.bold))
+                    Text("\(days) дн.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            Button("Указать день рождения") { sheet = .edit }
+                .font(.footnote)
+                .buttonStyle(.borderless)
+        }
+    }
+
+    private func yearWord(_ n: Int) -> String {
+        let last = n % 10, two = n % 100
+        if two >= 11 && two <= 14 { return "лет" }
+        if last == 1 { return "год" }
+        if (2...4).contains(last) { return "года" }
+        return "лет"
+    }
+
+    /// Аккуратная кнопка: маленький эмодзи и текст по центру.
+    private func quickButton(_ emoji: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(emoji).font(.subheadline)
+                Text(title).font(.subheadline.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.pink.opacity(0.18)))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.primary)
     }
 }
 
