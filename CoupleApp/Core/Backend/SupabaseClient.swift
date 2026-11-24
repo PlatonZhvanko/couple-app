@@ -115,6 +115,12 @@ final class SupabaseClient {
         return try await send(path: "rest/v1/\(table)", query: query, method: method, body: body, authorized: true, headers: headers)
     }
 
+    /// Вызов функции Supabase (Edge Function) от имени вошедшего пользователя.
+    func callFunction(_ name: String, body: Data) async throws -> Data {
+        _ = try await validSession()
+        return try await send(path: "functions/v1/\(name)", query: "", method: "POST", body: body, authorized: true)
+    }
+
     private func send(
         path: String,
         query: String,

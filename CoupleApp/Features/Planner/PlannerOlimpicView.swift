@@ -4,6 +4,7 @@ import SwiftUI
 /// Планер «Олимпик»: колонки — корты, слева время. Копия журнала YClients, только для просмотра.
 struct PlannerOlimpicView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AccountStore.self) private var account
     @Query(filter: #Predicate<PlannerOlimpicDay> { $0.deletedAt == nil })
     private var days: [PlannerOlimpicDay]
     /// Глазик: показывать ли «не пришёл» (по умолчанию показаны, как просил владелец: «не скрыто»).
@@ -11,6 +12,10 @@ struct PlannerOlimpicView: View {
     @State private var selectedDay = PlannerCalendar.calendar.startOfDay(for: .now)
     @State private var detail: PlannerOlimpicDay.Booking?
     @State private var showDatePicker = false
+    /// Свежие данные, полученные сейчас из YClients (через функцию Supabase).
+    @State private var live: [String: PlannerOlimpicDay.Payload] = [:]
+    @State private var loading = false
+    @State private var loadFailed = false
 
     private let timeWidth: CGFloat = 44
     private let firstSlot = 14   // 7:00
@@ -28,14 +33,36 @@ struct PlannerOlimpicView: View {
 
     private var record: PlannerOlimpicDay? { days.first { $0.day == dayKey } }
 
+    /// Что показываем: свежий ответ, иначе сохранённое в памяти телефона, иначе копию с сервера синхронизации.
+    private var shown: PlannerOlimpicDay.Payload? {
+        live[dayKey] ?? PlannerOlimpicCache.load(dayKey) ?? record?.payload
+    }
+
+    private func refresh() async {
+        let key = dayKey
+        guard let client = account.client else { loadFailed = true; return }
+        loading = true
+        defer { loading = false }
+        do {
+            let body = try JSONSerialization.data(withJSONObject: ["action": "olimpic", "day": key])
+            let data = try await client.callFunction("yclients-sync", body: body)
+            let payload = try JSONDecoder().decode(PlannerOlimpicDay.Payload.self, from: data)
+            live[key] = payload
+            PlannerOlimpicCache.save(payload, key: key)
+            loadFailed = false
+        } catch {
+            loadFailed = true
+        }
+    }
+
     /// Колонки кортов: берём с любого дня, чтобы набор не «прыгал» на пустых днях.
     private var courts: [PlannerOlimpicDay.Court] {
-        if let own = record?.courts, !own.isEmpty { return own }
+        if let own = shown?.courts, !own.isEmpty { return own }
         return days.max(by: { $0.day < $1.day })?.courts ?? []
     }
 
     private var bookings: [PlannerOlimpicDay.Booking] {
-        (record?.bookings ?? []).filter { !(hideNoShow && $0.status == "noshow") }
+        (shown?.bookings ?? []).filter { !(hideNoShow && $0.status == "noshow") }
     }
 
     private static let isoFormatter: ISO8601DateFormatter = {
@@ -106,12 +133,23 @@ struct PlannerOlimpicView: View {
                 .scrollDisabled(fit >= 15)
                 .overlay {
                     if courts.isEmpty {
-                        Text("Расписание пока не загрузилось.\nОно подтягивается из YClients раз в 5 минут.")
+                        Group {
+                            if loading { ProgressView("Загружаю журнал…") }
+                            else { Text("Нет интернета: журнал посмотреть нельзя.\nКак только появится связь, он загрузится сам.") }
+                        }
                             .font(.footnote)
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
                     }
                 }
+            }
+        }
+        .task(id: dayKey) { await refresh() }
+        .task {
+            // Пока экран открыт и связи не было, пробуем снова.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                if loadFailed || shown == nil { await refresh() }
             }
         }
         .simultaneousGesture(
