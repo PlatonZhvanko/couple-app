@@ -103,7 +103,7 @@ enum PlannerStatusStyleStore {
            !hex.isEmpty, let color = Color(hex: hex) {
             return color
         }
-        return confirmed ? Color.orange : Color.white
+        return confirmed ? Color(red: 1.0, green: 0.45, blue: 0.0) : Color.white
     }
 
     @MainActor

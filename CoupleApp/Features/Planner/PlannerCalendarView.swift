@@ -929,7 +929,7 @@ struct PlannerEventRow: View {
                 if event.isFromYClients || court == .confirmed {
                     // Записи YClients: прозрачный жёлтый фон с обводкой (подтверждённый корт: оранжевый).
                     let tint = court == .confirmed ? courtColor : Color.yellow
-                    RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.25))
+                    RoundedRectangle(cornerRadius: 12).fill(tint.opacity(court == .confirmed ? 0.45 : 0.25))
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(tint))
                 } else if court == .request {
                     RoundedRectangle(cornerRadius: 12).fill(courtColor)

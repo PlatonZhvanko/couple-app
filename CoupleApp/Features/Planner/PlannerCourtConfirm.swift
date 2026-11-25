@@ -106,14 +106,8 @@ final class PlannerCourtMatcher {
             if event.isFromYClients {
                 byDay[cal.startOfDay(for: event.start), default: []].append(event)
             } else if event.categoryValue != .errand {
-                // Запрос: галочка на записи, а также любая запись группы или клиента,
-                // у которых включено «Бронируется в YClients на другого клиента» (и старые записи тоже).
-                var isRequest = event.courtRequest
-                if !isRequest && !enabled.isEmpty {
-                    var keys = event.participantIDs.map { PlannerCourtAlias.clientKey($0) }
-                    if event.categoryValue != .personal { keys.append(PlannerCourtAlias.groupKey(event.title)) }
-                    isRequest = keys.contains { enabled[$0] != nil }
-                }
+                // Запросом считается только запись планера с включённой галочкой.
+                let isRequest = event.courtRequest
                 if isRequest { requests.append(event) }
             }
         }
