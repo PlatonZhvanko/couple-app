@@ -563,8 +563,8 @@ struct PlannerTimelineView: View {
                             // Записи YClients: прозрачный жёлтый фон с обводкой, как ремонты авто.
                             // Подтверждённый корт: то же, но цвета подтверждения (оранжевый).
                             let tint = block.court == .confirmed ? block.color : Color.yellow
-                            RoundedRectangle(cornerRadius: 6).fill(tint.opacity(0.35))
-                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(tint))
+                            RoundedRectangle(cornerRadius: 6).fill(tint.opacity(block.court == .confirmed ? 0.5 : 0.35))
+                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(tint, lineWidth: block.court == .confirmed ? 2 : 1))
                         } else if block.court == .request {
                             // Ждём подтверждения корта: белая запись с тонкой обводкой.
                             RoundedRectangle(cornerRadius: 6).fill(block.color)
