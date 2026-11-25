@@ -425,7 +425,7 @@ struct PetsTaskFormView: View {
                     Toggle("По дате", isOn: $hasDate)
                     if hasDate {
                         DatePicker("Дата и время", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                        Button("Выбрать в календаре", systemImage: "calendar") { showPicker = true }
+                        Button("Выбрать в планере", systemImage: "calendar.badge.clock") { showPicker = true }
                         Stepper("Длительность: \(duration) мин", value: $duration, in: 30...600, step: 30)
                     }
                     Toggle("По возрасту", isOn: $hasAge)
@@ -451,7 +451,12 @@ struct PetsTaskFormView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showPicker) { CarDateTimePickerSheet(date: $date) }
+            .fullScreenCover(isPresented: $showPicker) {
+                PlannerSlotPickerSheet { picked in
+                    date = picked
+                    hasDate = true
+                }
+            }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(task == nil ? "Новое дело" : "Дело по здоровью")
             .navigationBarTitleDisplayMode(.inline)

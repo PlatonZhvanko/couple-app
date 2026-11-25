@@ -10,7 +10,16 @@ struct PlannerCalendarView: View {
 
     /// `true` — планнер партнёра (его дела, кроме скрытых галочкой), `false` — мои и общие.
     let showsPartner: Bool
+    /// Режим «выбрать в планере»: нажатие на свободное время не создаёт запись,
+    /// а возвращает выбранное время (для формы ремонта или дела по здоровью).
+    var pickSlot: ((Date) -> Void)? = nil
 
+    init(showsPartner: Bool, pickSlot: ((Date) -> Void)? = nil) {
+        self.showsPartner = showsPartner
+        self.pickSlot = pickSlot
+    }
+
+    @Environment(\.dismiss) private var dismissPicker
     @Environment(AccountStore.self) private var account
     @Environment(SyncCoordinator.self) private var sync
     @Environment(\.modelContext) private var context
@@ -154,7 +163,7 @@ struct PlannerCalendarView: View {
         let _ = { paymentIndex.byEvent = Dictionary(grouping: payments, by: \.eventID) }()
         let _ = { courtBox.matcher = PlannerCourtMatcher(events: allEvents, aliases: courtAliases) }()
         Group {
-            if style == .planner {
+            if style == .planner || pickSlot != nil {
                 plannerBody
             } else {
                 calendarBody
@@ -165,6 +174,8 @@ struct PlannerCalendarView: View {
                 movingBanner(moving)
             } else if let movingExternal {
                 externalMovingBanner(movingExternal)
+            } else if pickSlot != nil {
+                pickSlotBanner
             }
         }
         .task(id: refreshKey) { refresh() }
@@ -324,6 +335,25 @@ struct PlannerCalendarView: View {
         .foregroundStyle(Color.primary)
     }
 
+    private var pickSlotBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "hand.tap.fill")
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Выберите время").font(.subheadline.weight(.semibold))
+                Text("Нажмите на свободное место в любом дне: дело встанет туда")
+                    .font(.caption)
+                    .lineLimit(2)
+            }
+            Spacer()
+            Button("Отмена") { dismissPicker() }
+                .font(.subheadline.weight(.semibold))
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.accentColor.opacity(0.2))
+        .foregroundStyle(Color.primary)
+    }
+
     private func externalMovingBanner(_ item: CalendarItem) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
@@ -464,6 +494,7 @@ struct PlannerCalendarView: View {
                 colorFor: { event, day in blockColor(event, day) },
                 externalItems: { items(on: $0) },
                 onExternalTap: { item in
+                    guard pickSlot == nil else { return }
                     let choices = choicesAt(start: item.start, end: item.end, day: item.start)
                     if choices.count > 1 {
                         pickChoices = choices
@@ -472,7 +503,7 @@ struct PlannerCalendarView: View {
                         externalDetail = item
                     }
                 },
-                canMoveExternal: { item in canEditExternal(item) && item.move != nil },
+                canMoveExternal: { item in pickSlot == nil && canEditExternal(item) && item.move != nil },
                 onExternalMove: { item, newStart in
                     item.move?(newStart)
                     sync.requestSync()
@@ -490,7 +521,7 @@ struct PlannerCalendarView: View {
                 dayMark: { moodMark($0) },
                 badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
-                canMove: { $0.scopeValue.canEdit(by: account.current) && !$0.isFromYClients },
+                canMove: { pickSlot == nil && $0.scopeValue.canEdit(by: account.current) && !$0.isFromYClients },
                 onHeaderTap: { day in
                     withAnimation(.snappy) {
                         selectedDay = day
@@ -498,6 +529,10 @@ struct PlannerCalendarView: View {
                     }
                 },
                 onSlotTap: { start in
+                    if let pickSlot {
+                        pickSlot(start)
+                        return
+                    }
                     // Чужой журнал только для просмотра.
                     if showsPartner { return }
                     if moving != nil {
@@ -510,7 +545,7 @@ struct PlannerCalendarView: View {
                     }
                 },
                 onEventTap: { event, day in
-                    guard moving == nil, movingExternal == nil else { return }
+                    guard moving == nil, movingExternal == nil, pickSlot == nil else { return }
                     guard let tapped = events.occurrences(on: cal.startOfDay(for: day)).first(where: { $0.event === event }) else {
                         sheetTarget = SheetTarget(kind: .detail, event: event, day: day)
                         return
