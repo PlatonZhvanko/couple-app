@@ -95,7 +95,7 @@ struct PlannerTrainingEditor: View {
             _repeatUntil = State(initialValue: event.repeatUntil)
             _colorHex = State(initialValue: event.colorHex)
             _reminder = State(initialValue: event.reminderMinutes)
-            _courtRequest = State(initialValue: event.courtRequest)
+            _courtRequest = State(initialValue: event.courtAsk)
             _participantIDs = State(initialValue: event.participantIDs)
         } else {
             let hour = cal.isDateInToday(day) ? min(cal.component(.hour, from: .now) + 1, 22) : 10
@@ -698,7 +698,7 @@ struct PlannerTrainingEditor: View {
         target.repeatUntil = repeatUntil
         target.colorHex = colorHex
         target.reminderMinutes = reminder
-        target.courtRequest = mode != .errand && courtRequest
+        target.courtAsk = mode != .errand && courtRequest
         if category == .errand {
             target.partnerMoneyKindRaw = pMoney.rawValue
             target.partnerMoneyAmount = pMoney == .none ? 0 : max(0, pAmount ?? 0)
