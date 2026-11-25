@@ -13,6 +13,8 @@ struct PlannerRecordView: View {
     var onCarry: () -> Void = {}
     /// Режим наблюдателя: запись чужого журнала только для просмотра.
     var readOnly = false
+    /// Запись YClients, подтвердившая корт этого занятия (корт и клиент из YClients).
+    var linkedRecord: PlannerEvent? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDelete = false
@@ -33,8 +35,9 @@ struct PlannerRecordView: View {
     @State private var groupPrice: Double = PlannerPricing.group
 
     init(event: PlannerEvent, day: Date, onEdit: @escaping () -> Void, onMove: @escaping () -> Void,
-         onCarry: @escaping () -> Void = {}, readOnly: Bool = false) {
+         onCarry: @escaping () -> Void = {}, readOnly: Bool = false, linkedRecord: PlannerEvent? = nil) {
         self.event = event
+        self.linkedRecord = linkedRecord
         self.day = day
         self.onEdit = onEdit
         self.onMove = onMove
@@ -106,6 +109,7 @@ struct PlannerRecordView: View {
                         if isCancelled { finesSection } else { paymentsSection }
                     }
                     if event.isFromYClients { yclientsSection }
+                    if let linkedRecord { courtConfirmedSection(linkedRecord) }
                     actionsSection
                 }
             }
@@ -181,6 +185,25 @@ struct PlannerRecordView: View {
                 }
             }
             .padding(.vertical, 4)
+        }
+    }
+
+    /// Оранжевая запись: корт и клиент из подтвердившей её записи YClients.
+    private func courtConfirmedSection(_ record: PlannerEvent) -> some View {
+        Section {
+            LabeledContent("Источник") {
+                HStack(spacing: 6) {
+                    ClientsYClientsBadge(size: 18)
+                    Text("YClients")
+                }
+            }
+            if !record.notes.isEmpty {
+                LabeledContent("Корт", value: record.notes)
+            }
+            LabeledContent("Клиент YClients", value: record.plainTitle)
+            LabeledContent("Время", value: "\(PlannerCalendar.time(record.start))–\(PlannerCalendar.time(record.end))")
+        } header: {
+            Text("✓ Корт подтверждён")
         }
     }
 
