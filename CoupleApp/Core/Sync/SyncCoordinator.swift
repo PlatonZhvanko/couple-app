@@ -49,7 +49,8 @@ final class SyncCoordinator {
 
         // Если в новой версии приложения появились новые типы записей,
         // забираем всё заново, чтобы получить их и со старых дат.
-        let kinds = adapters.keys.sorted().joined(separator: ",")
+        // Версия полей записей: при её смене тоже забираем всё заново (старые сборки пропускали новые поля).
+        let kinds = adapters.keys.sorted().joined(separator: ",") + "|fields3"
         if UserDefaults.standard.string(forKey: Keys.knownKinds) != kinds {
             UserDefaults.standard.removeObject(forKey: Keys.cursor)
             UserDefaults.standard.set(kinds, forKey: Keys.knownKinds)
