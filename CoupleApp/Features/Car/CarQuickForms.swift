@@ -34,7 +34,7 @@ struct CarFuelFormView: View {
                 } footer: {
                     Text("Бак до \(Int(carTankLiters)) л.")
                 }
-                Section("Необязательно") {
+                Section {
                     LabeledContent("Сумма, ₽") {
                         TextField("—", text: $amountText).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
                     }
@@ -43,6 +43,8 @@ struct CarFuelFormView: View {
                             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                     }
                     TextField("АЗС", text: $station)
+                } header: {
+                    Text("Необязательно")
                 } footer: {
                     if let text = CarOdometerAction.lowerWarning(text: odometerText, current: currentOdometer) {
                         Text(text).foregroundStyle(.orange)

@@ -116,7 +116,7 @@ struct CarEntryFormView: View {
                     TextField(category == .fuel ? "АЗС, марка топлива" : "Что за трата", text: $note, axis: .vertical)
                 }
 
-                if let entry {
+                if entry != nil {
                     Section {
                         Button("Удалить запись", role: .destructive) { confirmDelete = true }
                     }
