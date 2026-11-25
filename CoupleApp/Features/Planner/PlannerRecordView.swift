@@ -201,6 +201,9 @@ struct PlannerRecordView: View {
             if !record.notes.isEmpty {
                 LabeledContent("Корт", value: record.notes)
             }
+            if PlannerCourtMatcher.norm(event.plainTitle) != PlannerCourtMatcher.norm(record.plainTitle) {
+                LabeledContent("Клиент в планере", value: event.plainTitle)
+            }
             LabeledContent("Клиент YClients", value: record.plainTitle)
             LabeledContent("Время", value: "\(PlannerCalendar.time(record.start))–\(PlannerCalendar.time(record.end))")
         } header: {
