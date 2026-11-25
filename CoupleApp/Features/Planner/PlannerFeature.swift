@@ -21,6 +21,7 @@ enum PlannerFeature {
             PlannerMoneyKind.self, PlannerMoneyOp.self, PlannerShift.self,
             PlannerStatusStyle.self,
             PlannerOlimpicDay.self,
+            PlannerCourtAlias.self,
         ]
     ) {
         PlannerRootView()

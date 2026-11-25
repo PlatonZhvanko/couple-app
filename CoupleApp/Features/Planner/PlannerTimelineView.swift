@@ -29,6 +29,8 @@ struct PlannerTimelineView: View {
     var badgeEmoji: (PlannerEvent, Date) -> String? = { _, _ in nil }
     /// Скрывать ли запись визуально (режим «глазик»).
     var isHidden: (PlannerEvent, Date) -> Bool = { _, _ in false }
+    /// Подтверждение корта в iClients: нет запроса, ждём (белая) или подтверждён (оранжевая).
+    var courtState: (PlannerEvent, Date) -> PlannerCourtState = { _, _ in .none }
     /// Кнопка-глазик над субботой: `nil` — без неё. Второе значение: глазик перечёркнут (скрываем).
     var onEyeTap: (() -> Void)? = nil
     var eyeHides = false
@@ -405,7 +407,8 @@ struct PlannerTimelineView: View {
     static func leadingView(for block: PlannerTimelineBlock) -> AnyView? {
         switch block.source {
         case .external(let item): return item.leadingView
-        case .event(let event): return event.isFromYClients ? AnyView(ClientsYClientsBadge(size: 10.5)) : nil
+        case .event(let event):
+            return (event.isFromYClients || block.court == .confirmed) ? AnyView(ClientsYClientsBadge(size: 10.5)) : nil
         }
     }
 
@@ -489,6 +492,7 @@ struct PlannerTimelineView: View {
         let lineCount = CGFloat(fit.lines)
         let fontSize = fit.font
         let showTime = !narrow && availHeight > fontSize * lineCount * 1.2 + 14
+        let showCourtNote = block.court == .confirmed && !narrow && availHeight > fontSize * lineCount * 1.2 + 28
         let content = VStack(alignment: .leading, spacing: 0) {
             // Одним текстом, чтобы при нехватке места обе строки уменьшались вместе.
             Text(fit.text)
@@ -501,6 +505,13 @@ struct PlannerTimelineView: View {
                 Text("\(PlannerCalendar.time(block.start))–\(PlannerCalendar.time(block.end))")
                     .font(.system(size: isDayMode ? 12 : 10, weight: isCancelled ? .bold : .medium))
                     .opacity(0.75)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+            if showCourtNote {
+                Text("✓ Корт подтверждён, iClients")
+                    .font(.system(size: 9, weight: .semibold))
+                    .opacity(0.8)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }
@@ -542,7 +553,7 @@ struct PlannerTimelineView: View {
         switch block.source {
         case .event(let event):
             let cancelled = [.cancelled, .fineUnpaid, .finePaid].contains(block.badge)
-            let fromYClients = event.isFromYClients
+            let fromYClients = event.isFromYClients || block.court == .confirmed
             let base = content
                 .opacity(cancelled ? 0.55 : 1)
                 .foregroundStyle(fromYClients ? Color.primary : Color.black)
@@ -550,8 +561,14 @@ struct PlannerTimelineView: View {
                     Group {
                         if fromYClients {
                             // Записи YClients: прозрачный жёлтый фон с обводкой, как ремонты авто.
-                            RoundedRectangle(cornerRadius: 6).fill(Color.yellow.opacity(0.35))
-                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.yellow))
+                            // Подтверждённый корт: то же, но цвета подтверждения (оранжевый).
+                            let tint = block.court == .confirmed ? block.color : Color.yellow
+                            RoundedRectangle(cornerRadius: 6).fill(tint.opacity(0.35))
+                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(tint))
+                        } else if block.court == .request {
+                            // Ждём подтверждения корта: белая запись с тонкой обводкой.
+                            RoundedRectangle(cornerRadius: 6).fill(block.color)
+                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.gray.opacity(0.5)))
                         } else {
                             RoundedRectangle(cornerRadius: 6).fill(block.color)
                         }
@@ -665,7 +682,8 @@ struct PlannerTimelineView: View {
                     ? ""
                     : (errandEmojis[occurrence.event.errandType.lowercased()] ?? "💼"),
                 together: occurrence.event.scopeValue == .shared,
-                badgeOverride: badgeEmoji(occurrence.event, day)
+                badgeOverride: badgeEmoji(occurrence.event, day),
+                court: courtState(occurrence.event, day)
             ))
         }
         for item in externalItems(day) {
@@ -730,5 +748,6 @@ struct PlannerTimelineBlock: Identifiable {
     var together = false
     /// Настроенное эмодзи статуса: `nil` — обычное, пустое — не показывать.
     var badgeOverride: String? = nil
+    var court: PlannerCourtState = .none
     var columns = 1
 }

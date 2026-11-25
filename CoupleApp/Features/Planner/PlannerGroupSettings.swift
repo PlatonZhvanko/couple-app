@@ -185,6 +185,10 @@ struct PlannerGroupEditor: View {
                 Text("Они сами добавятся, когда выберешь эту группу при создании записи.")
             }
 
+            if account.current == .partner {
+                PlannerCourtAliasSection(key: PlannerCourtAlias.groupKey(kind.name), subject: kind.name)
+            }
+
             Section {
                 Button("Удалить группу", role: .destructive) { confirmDelete = true }
             } footer: {

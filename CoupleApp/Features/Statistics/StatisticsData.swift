@@ -121,7 +121,10 @@ struct StatisticsSnapshot {
         snap.subscriptions = PlannerPaymentStore.allSubscriptions(context)
         snap.charges = live.filter { $0.methodValue == .subscription }
 
-        for event in events where PlannerPaymentStore.isTraining(event) && !event.participantIDs.isEmpty {
+        // Записи iClients, слитые с занятием планера (подтверждённый корт), не считаем второй раз.
+        let aliases = (try? context.fetch(FetchDescriptor<PlannerCourtAlias>())) ?? []
+        let merged = PlannerCourtMatcher(events: events, aliases: aliases).allSupersededIDs()
+        for event in events where PlannerPaymentStore.isTraining(event) && !event.participantIDs.isEmpty && !merged.contains(event.syncID) {
             // Считаем только дни периода, а не всю историю повтора.
             var day = max(cal.startOfDay(for: event.start), cal.startOfDay(for: begin))
             var steps = 0
