@@ -228,8 +228,28 @@ async function nastyaIdOrNull() {
 }
 // Разбор записей журнала в корты и брони по дням.
 function buildOlimpic(all, nastyaId, groups = []) {
-    all = [...all, ...groups.map(groupAsRecord).filter((x) => !!x)];
-    const live = all.filter((r) => !r.deleted && r.staff?.id && !/админ/i.test(String(r.staff.name ?? "")));
+    // «Администратор» — не корт: его записи и события не показываем ни при каких условиях.
+    const isAdminText = (t) => /админ/i.test(String(t ?? ""));
+    const staffNames = new Map();
+    for (const r of all)
+        if (r.staff?.id && String(r.staff.name ?? "").trim())
+            staffNames.set(r.staff.id, String(r.staff.name).trim());
+    const adminIds = new Set();
+    for (const [id, name] of staffNames)
+        if (isAdminText(name))
+            adminIds.add(id);
+    // У групповых событий имя корта может не прийти: берём его по номеру из обычных записей.
+    // Событие на неизвестном корте не показываем: на «нужных кортах» его быть не может.
+    const groupRecs = groups.map(groupAsRecord).filter((x) => !!x).filter((g) => {
+        const name = String(g.staff.name ?? "").trim() || staffNames.get(g.staff.id) || "";
+        if (!name)
+            return false;
+        g.staff.name = name;
+        return true;
+    });
+    all = [...all, ...groupRecs];
+    const live = all.filter((r) => !r.deleted && r.staff?.id && !adminIds.has(r.staff.id) && !isAdminText(r.staff.name) &&
+        !/^\s*администратор/i.test(String(r.client?.display_name || r.client?.name || "")));
     // Корты — это сотрудники журнала, у которых есть записи в окне.
     const courtMap = new Map();
     for (const r of live)
@@ -405,7 +425,18 @@ async function sync() {
             payload.end = iso(finish);
             payload.notes = court;
             payload.v = SCHEMA_VERSION;
+            // В записи YClients заменили клиента (тот же слот, другой клиент): обновляем клиента в планере.
+            const ycName = client.display_name || client.name || "";
+            const swapped = payload.ycClientId != null
+                ? payload.ycClientId !== client.id
+                : !!ycName && nameKey(String(payload.title ?? "")) !== nameKey(ycName);
+            if (swapped && ycName) {
+                payload.title = ycName;
+                payload.participantIDs = clientUuid ? [clientUuid.toUpperCase()] : [];
+            }
         }
+        if (client.id != null)
+            payload.ycClientId = client.id;
         applyNoShow(payload, rec, begin);
         if (old && sameJson(payload, before))
             continue;
