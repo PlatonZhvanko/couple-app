@@ -486,6 +486,8 @@ struct CarServiceHistoryView: View {
             TextField("Например 185000", text: $odometerText).keyboardType(.numberPad)
             Button("Сохранить") { saveOdometer() }
             Button("Отмена", role: .cancel) {}
+        } message: {
+            if let text = CarOdometerAction.lowerWarning(text: odometerText, current: odometer) { Text(text) }
         }
         .sheet(item: $sheet) { CarSheetView(sheet: $0, currentOdometer: odometer) }
     }

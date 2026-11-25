@@ -53,6 +53,8 @@ struct CarRootView: View {
                     }
                 }
                 Button("Отмена", role: .cancel) {}
+            } message: {
+                if let text = CarOdometerAction.lowerWarning(text: odometerText, current: currentOdometer) { Text(text) }
             }
             .navigationTitle(chosenCar?.displayName ?? "Авто")
             .toolbar { toolbar }
