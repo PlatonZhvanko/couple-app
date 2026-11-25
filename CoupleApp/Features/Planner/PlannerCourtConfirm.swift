@@ -107,7 +107,7 @@ final class PlannerCourtMatcher {
                 byDay[cal.startOfDay(for: event.start), default: []].append(event)
             } else if event.categoryValue != .errand {
                 // Запросом считается только запись планера с включённой галочкой.
-                let isRequest = event.courtRequest
+                let isRequest = event.courtAsk
                 if isRequest { requests.append(event) }
             }
         }

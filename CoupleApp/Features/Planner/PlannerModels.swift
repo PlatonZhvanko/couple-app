@@ -206,7 +206,7 @@ final class PlannerEvent: SyncableModel {
         /// Откуда запись: «yclients» — подтянута из журнала YClients автоматически.
         var source: String?
         /// Запрос подтверждения корта в iClients (Настя). Нет в старых записях.
-        var courtRequest: Bool?
+        var courtAsk: Bool?
     }
 
     static let recordKind = "planner.event"
@@ -256,7 +256,7 @@ final class PlannerEvent: SyncableModel {
     /// «yclients» — запись пришла из журнала YClients (время приходит оттуда, переносить нельзя).
     var source: String? = nil
     /// Ждём подтверждения корта в iClients: запись горит белым, пока там не появится такая же.
-    var courtRequest: Bool = false
+    var courtAsk: Bool = false
     /// Статусы по дням (сделано / не сделано / перенесено).
     var statusRaw: String = ""
     /// Тип дела из базы («Тренировка», «Закупка»). Пусто — разовое дело.
@@ -287,7 +287,7 @@ final class PlannerEvent: SyncableModel {
             partnerMoneyType: partnerMoneyType.isEmpty ? nil : partnerMoneyType,
             partnerStatuses: partnerStatusRaw.isEmpty ? nil : partnerStatusRaw,
             source: source,
-            courtRequest: courtRequest ? true : nil
+            courtAsk: courtAsk ? true : nil
         )
     }
 
@@ -321,7 +321,7 @@ final class PlannerEvent: SyncableModel {
         partnerMoneyType = payload.partnerMoneyType ?? ""
         partnerStatusRaw = payload.partnerStatuses ?? ""
         source = payload.source
-        courtRequest = payload.courtRequest ?? false
+        courtAsk = payload.courtAsk ?? false
     }
 
     var isFromYClients: Bool { source == "yclients" }
