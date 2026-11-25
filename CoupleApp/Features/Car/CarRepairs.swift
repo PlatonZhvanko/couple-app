@@ -344,7 +344,7 @@ struct CarRepairFormView: View {
                     if hasDate {
                         if repair == nil {
                             DatePicker("Дата и время", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                            Button("Выбрать в календаре", systemImage: "calendar") { showPicker = true }
+                            Button("Выбрать в планере", systemImage: "calendar.badge.clock") { showPicker = true }
                         } else {
                             // Дату существующего ремонта меняют касанием по журналу: кнопка «Перенести» в Планере.
                             LabeledContent("Дата и время", value: "\(PlannerCalendar.dayTitle(date)), \(PlannerCalendar.time(date))")
@@ -370,7 +370,12 @@ struct CarRepairFormView: View {
                 }
             }
             .disabled(readOnly)
-            .sheet(isPresented: $showPicker) { CarDateTimePickerSheet(date: $date) }
+            .fullScreenCover(isPresented: $showPicker) {
+                PlannerSlotPickerSheet { picked in
+                    date = picked
+                    hasDate = true
+                }
+            }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(repair == nil ? "Новый пункт" : (readOnly ? "Ремонт (просмотр)" : "Ремонт"))
             .navigationBarTitleDisplayMode(.inline)

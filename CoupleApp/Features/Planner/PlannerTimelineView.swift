@@ -604,7 +604,7 @@ struct PlannerTimelineView: View {
                 .foregroundStyle(Color.primary)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(item.detail == nil ? Color.gray.opacity(0.25) : item.color.opacity(0.35))
+                        .fill(item.detail == nil ? Color.gray.opacity(0.25) : item.color.opacity(0.5))
                         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(item.detail == nil ? Color.gray : item.color, style: StrokeStyle(lineWidth: 1, dash: item.detail == nil ? [3, 2] : [])))
                 )
                 .contentShape(Rectangle())
