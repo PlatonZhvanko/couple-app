@@ -23,7 +23,6 @@ struct CarRootView: View {
     @State private var chosenID: UUID?
     @State private var showOdometer = false
     @State private var odometerText = ""
-    @State private var lowOdometer: Int?
 
     private var chosenCar: CarVehicle? { cars.first { $0.syncID == chosenID } }
 
@@ -49,29 +48,13 @@ struct CarRootView: View {
             .alert("Пробег сейчас, км", isPresented: $showOdometer) {
                 TextField("Например 185000", text: $odometerText).keyboardType(.numberPad)
                 Button("Записать") {
-                    if let car = chosenCar, let km = CarNumber.int(odometerText), km > 0 {
-                        let current = CarMath.currentOdometer(car: car, entries: allEntries.of(car))
-                        if current > 0, km < current {
-                            lowOdometer = km // меньше последней записи: сначала спросим
-                        } else {
-                            CarOdometerAction.record(km: km, car: car, member: account.current, context: context, sync: sync)
-                        }
+                    if let car = chosenCar, let km = CarNumber.int(odometerText) {
+                        CarOdometerAction.record(km: km, car: car, member: account.current, context: context, sync: sync)
                     }
                 }
                 Button("Отмена", role: .cancel) {}
-            }
-            .alert("Пробег меньше последней записи", isPresented: Binding(get: { lowOdometer != nil }, set: { if !$0 { lowOdometer = nil } })) {
-                Button("Всё равно записать") {
-                    if let car = chosenCar, let km = lowOdometer {
-                        CarOdometerAction.record(km: km, car: car, member: account.current, context: context, sync: sync)
-                    }
-                    lowOdometer = nil
-                }
-                Button("Исправить", role: .cancel) { lowOdometer = nil }
             } message: {
-                if let car = chosenCar, let km = lowOdometer {
-                    Text("Вы вводите \(CarFormat.km(km)), а последняя запись — \(CarFormat.km(CarMath.currentOdometer(car: car, entries: allEntries.of(car)))). Если это опечатка, нажмите «Исправить».")
-                }
+                if let text = CarOdometerAction.lowerWarning(text: odometerText, current: currentOdometer) { Text(text) }
             }
             .navigationTitle(chosenCar?.displayName ?? "Авто")
             .toolbar { toolbar }

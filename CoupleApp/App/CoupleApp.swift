@@ -88,11 +88,16 @@ struct RootView: View {
             switch phase {
             case .background:
                 Watchdog.shared.setActive(false)
-                // Просто свернули: экран не сбрасываем, при возврате остаёмся там же, где были.
-                // Сброс на главный экран делает только сторож, если приложение зависло.
-                showGreeting = false
+                // Сворачивание не трогает экран: вернувшись, человек видит то же окно, где остановился.
+                // Сброс на главный экран делает только сторож при настоящем зависании (см. ниже).
             case .active:
                 Watchdog.shared.setActive(true)
+                if showReload {
+                    Task {
+                        try? await Task.sleep(for: .seconds(0.7))
+                        withAnimation(.easeOut(duration: 0.3)) { showReload = false }
+                    }
+                }
             default:
                 break
             }

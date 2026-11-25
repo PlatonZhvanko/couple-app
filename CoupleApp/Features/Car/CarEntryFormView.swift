@@ -105,8 +105,9 @@ struct CarEntryFormView: View {
                     numberField("Пробег, км", text: $odometerText, decimal: false,
                                 prompt: currentOdometer > 0 ? "сейчас \(currentOdometer)" : "необязательно")
                 } footer: {
-                    if let odometer = CarNumber.int(odometerText), odometer > 0, odometer < currentOdometer, entry == nil {
-                        Text("Пробег меньше текущего (\(CarFormat.km(currentOdometer))). Проверьте цифры.")
+                    if let odometer = CarNumber.int(odometerText), odometer > 0, odometer < currentOdometer,
+                       entry == nil || entry?.odometer != currentOdometer {
+                        Text("Пробег меньше последней записи (\(CarFormat.km(currentOdometer))). Если это опечатка — поправьте, если нет — всё равно можно сохранить.")
                             .foregroundStyle(.orange)
                     }
                 }
