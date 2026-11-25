@@ -88,12 +88,8 @@ struct RootView: View {
             switch phase {
             case .background:
                 Watchdog.shared.setActive(false)
-                // Защита от «мёртвого» экрана: при сворачивании сбрасываем весь интерфейс
-                // (окна, навигацию, ввод) и возвращаемся в планер. Сохранённые данные целы.
-                UserDefaults.standard.set("planner", forKey: "root.selectedTab")
-                showGreeting = false
-                showReload = true
-                generation = UUID()
+                // Сворачивание не трогает экран: вернувшись, человек видит то же окно, где остановился.
+                // Сброс на главный экран делает только сторож при настоящем зависании (см. ниже).
             case .active:
                 Watchdog.shared.setActive(true)
                 if showReload {

@@ -43,6 +43,10 @@ struct CarFuelFormView: View {
                             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                     }
                     TextField("АЗС", text: $station)
+                } footer: {
+                    if let text = CarOdometerAction.lowerWarning(text: odometerText, current: currentOdometer) {
+                        Text(text).foregroundStyle(.orange)
+                    }
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -103,7 +107,12 @@ struct CarServiceFormView: View {
                         TextField("0", text: $costText).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
                     }
                 } footer: {
-                    Text("Следующее ТО через \(CarFormat.km(car.serviceIntervalKm)), напомним заранее. Интервал меняется в настройках машины.")
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let text = CarOdometerAction.lowerWarning(text: odometerText, current: currentOdometer) {
+                            Text(text).foregroundStyle(.orange)
+                        }
+                        Text("Следующее ТО через \(CarFormat.km(car.serviceIntervalKm)), напомним заранее. Интервал меняется в настройках машины.")
+                    }
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -147,6 +156,12 @@ struct CarServiceFormView: View {
 // MARK: - Пробег
 
 enum CarOdometerAction {
+    /// Предупреждение, если введённый пробег меньше последней записи (сохранять всё равно можно).
+    static func lowerWarning(text: String, current: Int) -> String? {
+        guard let km = CarNumber.int(text), km > 0, current > 0, km < current else { return nil }
+        return "Это меньше последней записи (\(CarFormat.km(current))). Если это опечатка — поправьте. Если так и должно быть — всё равно можно записать."
+    }
+
     /// Записать текущий пробег отдельной записью (сумма 0): он учитывается везде.
     @MainActor
     static func record(km: Int, car: CarVehicle, member: CoupleMember, context: ModelContext, sync: SyncCoordinator) {

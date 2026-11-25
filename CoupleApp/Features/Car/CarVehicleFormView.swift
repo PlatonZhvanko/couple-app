@@ -9,6 +9,7 @@ struct CarVehicleFormView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(SyncCoordinator.self) private var sync
+    @Environment(AccountStore.self) private var account
     @AppStorage("car.selectedCarID") private var selectedCarID: String = ""
 
     @State private var name: String
@@ -97,7 +98,12 @@ struct CarVehicleFormView: View {
         item.plate = plate.trimmingCharacters(in: .whitespaces)
         item.vin = vin.trimmingCharacters(in: .whitespaces)
         item.year = CarNumber.int(yearText) ?? 0
-        item.startOdometer = CarNumber.int(odometerText) ?? 0
+        let typedOdometer = CarNumber.int(odometerText) ?? 0
+        if let car, typedOdometer > 0, typedOdometer != car.startOdometer {
+            // Пробег можно поставить и ниже прежнего (опечатка): записываем его новой записью.
+            CarOdometerAction.record(km: typedOdometer, car: car, member: account.current, context: context, sync: sync)
+        }
+        item.startOdometer = typedOdometer
         item.serviceIntervalKm = max(1000, CarNumber.int(intervalText) ?? 8000)
         item.markChanged()
         try? context.save()
