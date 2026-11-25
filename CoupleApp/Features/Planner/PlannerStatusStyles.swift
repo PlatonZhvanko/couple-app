@@ -96,6 +96,16 @@ enum PlannerStatusStyleStore {
         return result
     }
 
+    /// Цвет записи при запросе подтверждения корта: белый; когда подтверждён — оранжевый.
+    static func courtColor(_ styles: [PlannerStatusStyle], confirmed: Bool) -> Color {
+        let key = confirmed ? "courtConfirmed" : "courtRequest"
+        if let hex = styles.first(where: { $0.scope == "all" && $0.status == key })?.colorHex,
+           !hex.isEmpty, let color = Color(hex: hex) {
+            return color
+        }
+        return confirmed ? Color.orange : Color.white
+    }
+
     @MainActor
     static func style(_ context: ModelContext, scope: String, status: String) -> PlannerStatusStyle {
         let id = PlannerStatusStyle.makeID(scope: scope, status: status)
@@ -171,6 +181,10 @@ private struct PlannerStatusScopeView: View {
         List {
             ForEach(statuses, id: \.key) { item in
                 PlannerStatusStyleRow(scope: scope, status: item.key, title: item.title, defaultEmoji: item.defaultEmoji)
+            }
+            if scope == "all" {
+                PlannerStatusStyleRow(scope: scope, status: "courtRequest", title: "Запрос корта iClients (по умолчанию белый)", defaultEmoji: "")
+                PlannerStatusStyleRow(scope: scope, status: "courtConfirmed", title: "Корт подтверждён в iClients (по умолчанию оранжевый)", defaultEmoji: "")
             }
         }
         .navigationTitle(title)

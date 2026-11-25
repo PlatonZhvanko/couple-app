@@ -538,6 +538,7 @@ enum PlannerMover {
             clone.scope = event.scope
             clone.isPrivate = event.isPrivate
             clone.colorHex = event.colorHex
+            clone.courtRequest = event.courtRequest
             clone.category = event.category
             clone.repeatRule = PlannerRepeat.none.rawValue
             clone.reminderMinutes = event.reminderMinutes

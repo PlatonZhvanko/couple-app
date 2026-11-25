@@ -39,6 +39,7 @@ struct PlannerTrainingEditor: View {
     @State private var repeatUntil: Date?
     @State private var colorHex: String
     @State private var reminder: Int
+    @State private var courtRequest: Bool
     @State private var participants: [PlannerClientDirectory.Entry] = []
     @State private var participantIDs: [UUID]
     @State private var query = ""
@@ -94,6 +95,7 @@ struct PlannerTrainingEditor: View {
             _repeatUntil = State(initialValue: event.repeatUntil)
             _colorHex = State(initialValue: event.colorHex)
             _reminder = State(initialValue: event.reminderMinutes)
+            _courtRequest = State(initialValue: event.courtRequest)
             _participantIDs = State(initialValue: event.participantIDs)
         } else {
             let hour = cal.isDateInToday(day) ? min(cal.component(.hour, from: .now) + 1, 22) : 10
@@ -112,6 +114,7 @@ struct PlannerTrainingEditor: View {
             _repeatUntil = State(initialValue: nil)
             _colorHex = State(initialValue: "")
             _reminder = State(initialValue: PlannerReminderOption.none)
+            _courtRequest = State(initialValue: false)
             _participantIDs = State(initialValue: [])
         }
     }
@@ -260,6 +263,14 @@ struct PlannerTrainingEditor: View {
                 Section("📝 Заметка") {
                     TextField("Что взять, детали", text: $notes, axis: .vertical)
                         .lineLimit(2...5)
+                }
+
+                if mode != .errand && account.current == .partner {
+                    Section {
+                        Toggle("Запрос на подтверждение корта в iClients", isOn: $courtRequest)
+                    } footer: {
+                        Text("Запись горит белым, пока в iClients не появится такая же (то же время, длительность и клиент). Тогда она станет оранжевой, а запись iClients спрячется.")
+                    }
                 }
 
                 if event != nil && canEdit {
@@ -687,6 +698,7 @@ struct PlannerTrainingEditor: View {
         target.repeatUntil = repeatUntil
         target.colorHex = colorHex
         target.reminderMinutes = reminder
+        target.courtRequest = mode != .errand && courtRequest
         if category == .errand {
             target.partnerMoneyKindRaw = pMoney.rawValue
             target.partnerMoneyAmount = pMoney == .none ? 0 : max(0, pAmount ?? 0)

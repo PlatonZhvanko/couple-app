@@ -50,6 +50,13 @@ struct PlannerCalendarView: View {
     private var colorRules: [PlannerColorRule]
     @Query(filter: #Predicate<PlannerSubscription> { $0.deletedAt == nil })
     private var subscriptions: [PlannerSubscription]
+    @Query(filter: #Predicate<PlannerCourtAlias> { $0.deletedAt == nil })
+    private var courtAliases: [PlannerCourtAlias]
+    /// Сверка с iClients: строится один раз за перерисовку.
+    private final class CourtBox {
+        var matcher = PlannerCourtMatcher.empty
+    }
+    @State private var courtBox = CourtBox()
 
     @AppStorage("planner.mode") private var mode: Mode = .month
     @AppStorage("planner.style") private var style: Style = .planner
@@ -145,6 +152,7 @@ struct PlannerCalendarView: View {
 
     var body: some View {
         let _ = { paymentIndex.byEvent = Dictionary(grouping: payments, by: \.eventID) }()
+        let _ = { courtBox.matcher = PlannerCourtMatcher(events: allEvents, aliases: courtAliases) }()
         Group {
             if style == .planner {
                 plannerBody
@@ -477,6 +485,7 @@ struct PlannerCalendarView: View {
                 },
                 badgeEmoji: { event, day in styledEmoji(event, day) },
                 isHidden: { event, day in isHiddenByEye(event, day) },
+                courtState: { event, day in courtBox.matcher.state(of: event, on: day) },
                 dayMark: { moodMark($0) },
                 badge: { event, day in blockBadge(event, day) },
                 ownerLetter: { ownerLetter($0) },
@@ -577,7 +586,7 @@ struct PlannerCalendarView: View {
 
     /// Записи, которые идут одновременно с нажатой (для выбора, если в одном месте их несколько).
     private func overlappingOccurrences(of event: PlannerEvent, at time: Date) -> [PlannerOccurrence] {
-        let occurrences = events.occurrences(on: cal.startOfDay(for: time)).filter { !$0.event.isAllDay }
+        let occurrences = events.occurrences(on: cal.startOfDay(for: time)).filter { !$0.event.isAllDay && !isHiddenByEye($0.event, time) }
         guard let tapped = occurrences.first(where: { $0.event === event }) else { return [] }
         return occurrences.filter { $0.start < tapped.end && $0.end > tapped.start }
     }
@@ -598,6 +607,11 @@ struct PlannerCalendarView: View {
     }
 
     private func blockColor(_ event: PlannerEvent, _ day: Date) -> Color {
+        switch courtBox.matcher.state(of: event, on: day) {
+        case .request: return PlannerStatusStyleStore.courtColor(statusStyles, confirmed: false)
+        case .confirmed: return PlannerStatusStyleStore.courtColor(statusStyles, confirmed: true)
+        case .none: break
+        }
         var base = PlannerColorStore.color(for: event, rules: colorRules)
         if event.colorHex.isEmpty, !event.errandType.isEmpty,
            let hex = errandColors[event.errandType.lowercased()], let typeColor = Color(hex: hex) {
@@ -618,6 +632,8 @@ struct PlannerCalendarView: View {
 
     /// Режим «глазик»: прячем отменённые, перенесённые (белые) и «не сделано».
     private func isHiddenByEye(_ event: PlannerEvent, _ day: Date) -> Bool {
+        // Запись iClients, слившаяся с занятием планера, отдельно не показывается.
+        if courtBox.matcher.isSuperseded(event, on: day) { return true }
         guard hideCancelled else { return false }
         if [.cancelled, .fineUnpaid, .finePaid, .errandNotDone, .errandMoved].contains(blockBadge(event, day)) { return true }
         switch event.status(on: day, for: viewedMember) {
@@ -808,7 +824,7 @@ struct PlannerCalendarView: View {
     // MARK: - Список на день
 
     private var dayList: some View {
-        let occurrences = events.occurrences(on: selectedDay)
+        let occurrences = events.occurrences(on: selectedDay).filter { !courtBox.matcher.isSuperseded($0.event, on: selectedDay) }
         let dayItems = items(on: selectedDay)
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -836,7 +852,9 @@ struct PlannerCalendarView: View {
                     PlannerEventRow(
                         occurrence: occurrence,
                         day: selectedDay,
-                        badge: blockBadge(occurrence.event, selectedDay)
+                        badge: blockBadge(occurrence.event, selectedDay),
+                        court: courtBox.matcher.state(of: occurrence.event, on: selectedDay),
+                        courtColor: blockColor(occurrence.event, selectedDay)
                     )
                 }
                 .buttonStyle(.plain)
@@ -861,6 +879,8 @@ struct PlannerEventRow: View {
     let occurrence: PlannerOccurrence
     let day: Date
     var badge: PlannerPayBadge = .none
+    var court: PlannerCourtState = .none
+    var courtColor: Color = .white
 
     private var event: PlannerEvent { occurrence.event }
 
@@ -871,9 +891,15 @@ struct PlannerEventRow: View {
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    if event.isFromYClients { ClientsYClientsBadge(size: 14) }
+                    if event.isFromYClients || court == .confirmed { ClientsYClientsBadge(size: 14) }
                     Text(event.isFromYClients ? event.plainTitle : event.displayTitle)
                         .font(.body.weight([.cancelled, .fineUnpaid, .finePaid].contains(badge) ? .heavy : .medium))
+                        .foregroundStyle(court == .request ? Color.black : Color.primary)
+                }
+                if court == .confirmed {
+                    Text("✓ Корт подтверждён, iClients")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
                 HStack(spacing: 6) {
                     Text(timeText)
@@ -900,10 +926,14 @@ struct PlannerEventRow: View {
         .padding(10)
         .background(
             Group {
-                if event.isFromYClients {
-                    // Записи YClients: прозрачный жёлтый фон с обводкой.
-                    RoundedRectangle(cornerRadius: 12).fill(Color.yellow.opacity(0.25))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.yellow))
+                if event.isFromYClients || court == .confirmed {
+                    // Записи YClients: прозрачный жёлтый фон с обводкой (подтверждённый корт: оранжевый).
+                    let tint = court == .confirmed ? courtColor : Color.yellow
+                    RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.25))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(tint))
+                } else if court == .request {
+                    RoundedRectangle(cornerRadius: 12).fill(courtColor)
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.gray.opacity(0.5)))
                 } else {
                     RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground))
                 }

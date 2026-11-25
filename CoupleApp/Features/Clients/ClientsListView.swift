@@ -233,6 +233,9 @@ struct ClientsClientEditor: View {
                     TextField("Пожелания, особенности", text: $note, axis: .vertical)
                         .lineLimit(3...8)
                 }
+                if let client, member == .partner {
+                    PlannerCourtAliasSection(key: PlannerCourtAlias.clientKey(client.syncID), subject: client.name)
+                }
                 if client != nil {
                     Section {
                         Button("Удалить клиента", role: .destructive) { confirmDelete = true }
