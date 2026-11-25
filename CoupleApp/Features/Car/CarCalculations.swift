@@ -3,9 +3,13 @@ import SwiftUI
 
 /// Расчёты раздела «Авто»: пробег, расход топлива, суммы, сроки.
 enum CarMath {
-    /// Текущий пробег: самый большой из журнала или стартовый.
+    /// Текущий пробег: из самой свежей записи с пробегом (по дате, при равенстве — по времени ввода)
+    /// или стартовый. Так опечатку можно исправить, записав меньший пробег новой записью.
     static func currentOdometer(car: CarVehicle, entries: [CarEntry]) -> Int {
-        max(car.startOdometer, entries.map(\.odometer).max() ?? 0)
+        let latest = entries.filter { $0.odometer > 0 }.max {
+            ($0.date, $0.createdAt) < ($1.date, $1.createdAt)
+        }
+        return latest?.odometer ?? car.startOdometer
     }
 
     struct FuelStats {

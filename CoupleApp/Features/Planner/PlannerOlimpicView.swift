@@ -19,6 +19,7 @@ struct PlannerOlimpicView: View {
     @State private var live: [String: PlannerOlimpicDay.Payload] = [:]
     @State private var loading = false
     @State private var loadFailed = false
+    @State private var lastRefresh = Date.now
 
     private let timeWidth: CGFloat = 44
     private let firstSlot = 14   // 7:00
@@ -51,6 +52,7 @@ struct PlannerOlimpicView: View {
             let data = try await client.callFunction("yclients-sync", body: body)
             let payload = try JSONDecoder().decode(PlannerOlimpicDay.Payload.self, from: data)
             live[key] = payload
+            lastRefresh = .now
             PlannerOlimpicCache.save(payload, key: key)
             loadFailed = false
         } catch {
@@ -68,7 +70,9 @@ struct PlannerOlimpicView: View {
     }
 
     private var bookings: [PlannerOlimpicDay.Booking] {
-        (shown?.bookings ?? []).filter { !(hideNoShow && $0.status == "noshow") }
+        // Только записи кортов из списка колонок (без «Администратора»), в том числе в уже сохранённых днях.
+        let ids = Set(courts.map(\.id))
+        return (shown?.bookings ?? []).filter { ids.contains($0.court) && !(hideNoShow && $0.status == "noshow") }
     }
 
     private static let isoFormatter: ISO8601DateFormatter = {
@@ -92,8 +96,10 @@ struct PlannerOlimpicView: View {
     private func fillColor(_ b: PlannerOlimpicDay.Booking) -> Color {
         if b.status == "noshow" { return Color(red: 0.95, green: 0.25, blue: 0.30) }
         if b.nastya == true { return Color(red: 1.0, green: 0.78, blue: 0.10) }
-        // Групповые события (турниры, группы) — тёмно-зелёные, отличаются от обычных записей.
-        if b.group == true { return Color(red: 0.05, green: 0.45, blue: 0.25) }
+        // Групповые события: на падел-кортах — тёмно-синие, на остальных — тёмно-зелёные.
+        if b.group == true {
+            return isPadel(b) ? Color(red: 0.04, green: 0.16, blue: 0.62) : Color(red: 0.0, green: 0.30, blue: 0.14)
+        }
         return isPadel(b) ? Color(red: 0.20, green: 0.52, blue: 0.98) : Color(red: 0.13, green: 0.72, blue: 0.40)
     }
 
@@ -164,7 +170,8 @@ struct PlannerOlimpicView: View {
             // Пока экран открыт и связи не было, пробуем снова.
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
-                if loadFailed || shown == nil { await refresh() }
+                // Пока журнал открыт: каждые 5 минут обновляем день; при ошибке пробуем чаще.
+                if loadFailed || shown == nil || Date.now.timeIntervalSince(lastRefresh) >= 300 { await refresh() }
             }
         }
         .sheet(isPresented: $showDatePicker) {

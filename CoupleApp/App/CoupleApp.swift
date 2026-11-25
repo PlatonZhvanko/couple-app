@@ -88,20 +88,11 @@ struct RootView: View {
             switch phase {
             case .background:
                 Watchdog.shared.setActive(false)
-                // Защита от «мёртвого» экрана: при сворачивании сбрасываем весь интерфейс
-                // (окна, навигацию, ввод) и возвращаемся в планер. Сохранённые данные целы.
-                UserDefaults.standard.set("planner", forKey: "root.selectedTab")
+                // Просто свернули: экран не сбрасываем, при возврате остаёмся там же, где были.
+                // Сброс на главный экран делает только сторож, если приложение зависло.
                 showGreeting = false
-                showReload = true
-                generation = UUID()
             case .active:
                 Watchdog.shared.setActive(true)
-                if showReload {
-                    Task {
-                        try? await Task.sleep(for: .seconds(0.7))
-                        withAnimation(.easeOut(duration: 0.3)) { showReload = false }
-                    }
-                }
             default:
                 break
             }
