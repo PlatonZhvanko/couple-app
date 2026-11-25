@@ -58,7 +58,11 @@ struct SyncAdapter {
                     guard let payload = try? JSONDecoder.sync.decode(Model.Payload.self, from: record.payload) else { continue }
                     if let local = existing[record.id] {
                         // Побеждает последнее изменение.
-                        guard record.updatedAt > local.updatedAt else { continue }
+                        // Та же версия без своих неотправленных правок тоже применяется: так записи,
+                        // принятые старой сборкой без новых полей, дозаполняются при повторной загрузке.
+                        let isNewer = record.updatedAt > local.updatedAt
+                        let isSameAndClean = record.updatedAt == local.updatedAt && !local.needsSync
+                        guard isNewer || isSameAndClean else { continue }
                         local.apply(payload)
                         local.updatedAt = record.updatedAt
                         local.deletedAt = record.deletedAt
