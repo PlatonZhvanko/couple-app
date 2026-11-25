@@ -129,6 +129,13 @@ final class PlannerCourtMatcher {
         return result(on: day).superseded.contains(event.syncID)
     }
 
+    /// Запись YClients, с которой слилось занятие (корт в `notes`, клиент в `title`).
+    func linkedRecord(of event: PlannerEvent, on rawDay: Date) -> PlannerEvent? {
+        guard isActive, let id = result(on: rawDay).confirmed[event.syncID] else { return nil }
+        let day = PlannerCalendar.calendar.startOfDay(for: rawDay)
+        return yclientsByDay[day]?.first { $0.syncID == id }
+    }
+
     /// Все записи YClients, слитые с занятиями (для статистики).
     func allSupersededIDs() -> Set<UUID> {
         guard isActive else { return [] }

@@ -266,6 +266,7 @@ struct PlannerCalendarView: View {
                 PlannerRecordView(
                     event: event,
                     day: target.day,
+                    linkedRecord: courtBox.matcher.linkedRecord(of: event, on: target.day),
                     onEdit: {
                         afterSheet { sheetTarget = SheetTarget(kind: .edit, event: event, day: target.day) }
                     },
