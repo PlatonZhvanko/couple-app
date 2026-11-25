@@ -412,7 +412,17 @@ async function sync(): Promise<string> {
       payload.end = iso(finish);
       payload.notes = court;
       payload.v = SCHEMA_VERSION;
+      // В записи YClients заменили клиента (тот же слот, другой клиент): обновляем клиента в планере.
+      const ycName = client.display_name || client.name || "";
+      const swapped = payload.ycClientId != null
+        ? payload.ycClientId !== client.id
+        : !!ycName && nameKey(String(payload.title ?? "")) !== nameKey(ycName);
+      if (swapped && ycName) {
+        payload.title = ycName;
+        payload.participantIDs = clientUuid ? [clientUuid.toUpperCase()] : [];
+      }
     }
+    if (client.id != null) payload.ycClientId = client.id;
     applyNoShow(payload, rec, begin);
     if (old && sameJson(payload, before)) continue;
     rows.push({ id: rid, couple_id: coupleId, kind: "planner.event", updated_at: now, deleted_at: null, payload });
