@@ -34,8 +34,9 @@ struct PlannerRecordView: View {
     @State private var covered: Set<UUID> = []
     @State private var groupPrice: Double = PlannerPricing.group
 
-    init(event: PlannerEvent, day: Date, onEdit: @escaping () -> Void, onMove: @escaping () -> Void,
-         onCarry: @escaping () -> Void = {}, readOnly: Bool = false, linkedRecord: PlannerEvent? = nil) {
+    init(event: PlannerEvent, day: Date, linkedRecord: PlannerEvent? = nil,
+         onEdit: @escaping () -> Void, onMove: @escaping () -> Void,
+         onCarry: @escaping () -> Void = {}, readOnly: Bool = false) {
         self.event = event
         self.linkedRecord = linkedRecord
         self.day = day
