@@ -897,7 +897,7 @@ struct PlannerEventRow: View {
                         .foregroundStyle(court == .request ? Color.black : Color.primary)
                 }
                 if court == .confirmed {
-                    Text("✓ Корт подтверждён, iClients")
+                    Text("✓ Корт подтверждён, YClients")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
