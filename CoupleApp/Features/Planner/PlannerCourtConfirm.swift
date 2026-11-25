@@ -1,26 +1,26 @@
 import SwiftData
 import SwiftUI
 
-// Подтверждение корта в iClients (планер Насти).
+// Подтверждение корта в YClients (планер Насти).
 //
-// Занятие с галочкой «Запрос на подтверждение корта» горит белым. Когда в iClients (записи с
+// Занятие с галочкой «Запрос на подтверждение корта» горит белым. Когда в YClients (записи с
 // источником «yclients») появляется такая же запись, они сливаются в один блок оранжевого цвета.
-// Совпадение: тот же день, начало и конец в пределах 5 минут, клиент iClients — тот же, что у
-// занятия, или тот, кого Настя указала как «клиента в iClients» для группы или клиента.
-// Статистика и деньги идут по занятию планера, а дубль iClients в них не считается.
+// Совпадение: тот же день, начало и конец в пределах 5 минут, клиент YClients — тот же, что у
+// занятия, или тот, кого Настя указала как «клиента в YClients» для группы или клиента.
+// Статистика и деньги идут по занятию планера, а дубль YClients в них не считается.
 
 /// Состояние занятия по подтверждению корта.
 enum PlannerCourtState {
     case none
     /// Ждём подтверждения: белая запись.
     case request
-    /// В iClients нашлась такая же запись: оранжевая.
+    /// В YClients нашлась такая же запись: оранжевая.
     case confirmed
 }
 
-// MARK: - Синоним клиента в iClients
+// MARK: - Синоним клиента в YClients
 
-/// Настройка «бронируется в iClients на другого клиента» для группы/школы или клиента.
+/// Настройка «бронируется в YClients на другого клиента» для группы/школы или клиента.
 /// Ключ: «group:<название в нижнем регистре>» или «client:<id клиента>».
 @Model
 final class PlannerCourtAlias: SyncableModel {
@@ -72,11 +72,11 @@ final class PlannerCourtAlias: SyncableModel {
 
 // MARK: - Сверка
 
-/// Сверяет занятия с запросом и записи iClients. Строится один раз за перерисовку,
+/// Сверяет занятия с запросом и записи YClients. Строится один раз за перерисовку,
 /// результат по дню запоминается: ничего тяжёлого в теле экрана.
 final class PlannerCourtMatcher {
     private struct DayResult {
-        /// id занятия с запросом → id записи iClients.
+        /// id занятия с запросом → id записи YClients.
         var confirmed: [UUID: UUID] = [:]
         var superseded: Set<UUID> = []
     }
@@ -87,6 +87,7 @@ final class PlannerCourtMatcher {
     static let empty = PlannerCourtMatcher(events: [], aliases: [])
 
     private let requests: [PlannerEvent]
+    private let requestIDs: Set<UUID>
     private let yclientsByDay: [Date: [PlannerEvent]]
     private let aliases: [String: [PlannerCourtAlias]]
     private var cache: [Date: DayResult] = [:]
@@ -95,36 +96,46 @@ final class PlannerCourtMatcher {
 
     init(events: [PlannerEvent], aliases: [PlannerCourtAlias]) {
         let cal = PlannerCalendar.calendar
+        let enabled = Dictionary(
+            grouping: aliases.filter { $0.deletedAt == nil && $0.enabled },
+            by: \.key
+        )
         var requests: [PlannerEvent] = []
         var byDay: [Date: [PlannerEvent]] = [:]
         for event in events where event.deletedAt == nil && !event.isAllDay {
             if event.isFromYClients {
                 byDay[cal.startOfDay(for: event.start), default: []].append(event)
-            } else if event.courtRequest {
-                requests.append(event)
+            } else if event.categoryValue != .errand {
+                // Запрос: галочка на записи, а также любая запись группы или клиента,
+                // у которых включено «Бронируется в YClients на другого клиента» (и старые записи тоже).
+                var isRequest = event.courtRequest
+                if !isRequest && !enabled.isEmpty {
+                    var keys = event.participantIDs.map { PlannerCourtAlias.clientKey($0) }
+                    if event.categoryValue != .personal { keys.append(PlannerCourtAlias.groupKey(event.title)) }
+                    isRequest = keys.contains { enabled[$0] != nil }
+                }
+                if isRequest { requests.append(event) }
             }
         }
+        self.requestIDs = Set(requests.map(\.syncID))
         self.requests = requests
-        // Без запросов сверять нечего: записи iClients не нужны.
+        // Без запросов сверять нечего: записи YClients не нужны.
         self.yclientsByDay = requests.isEmpty ? [:] : byDay
-        self.aliases = Dictionary(
-            grouping: aliases.filter { $0.deletedAt == nil && $0.enabled },
-            by: \.key
-        )
+        self.aliases = enabled
     }
 
     func state(of event: PlannerEvent, on day: Date) -> PlannerCourtState {
-        guard isActive, event.courtRequest, !event.isFromYClients else { return .none }
+        guard isActive, requestIDs.contains(event.syncID) else { return .none }
         return result(on: day).confirmed[event.syncID] != nil ? .confirmed : .request
     }
 
-    /// Запись iClients слилась с занятием планера и отдельно не показывается.
+    /// Запись YClients слилась с занятием планера и отдельно не показывается.
     func isSuperseded(_ event: PlannerEvent, on day: Date) -> Bool {
         guard isActive, event.isFromYClients else { return false }
         return result(on: day).superseded.contains(event.syncID)
     }
 
-    /// Все записи iClients, слитые с занятиями (для статистики).
+    /// Все записи YClients, слитые с занятиями (для статистики).
     func allSupersededIDs() -> Set<UUID> {
         guard isActive else { return [] }
         var all: Set<UUID> = []
@@ -202,10 +213,10 @@ final class PlannerCourtMatcher {
     }
 }
 
-// MARK: - Настройка клиента iClients
+// MARK: - Настройка клиента YClients
 
 extension PlannerClientDirectory {
-    /// Клиенты, пришедшие из iClients.
+    /// Клиенты, пришедшие из YClients.
     @MainActor
     static func iclientsClients(_ context: ModelContext) -> [Entry] {
         let descriptor = FetchDescriptor<ClientsClient>(predicate: #Predicate { $0.deletedAt == nil && $0.source == "iclients" })
@@ -216,7 +227,7 @@ extension PlannerClientDirectory {
     }
 }
 
-/// Блок настроек: «Бронируется в iClients на другого клиента» и выбор клиента из iClients (поиском).
+/// Блок настроек: «Бронируется в YClients на другого клиента» и выбор клиента из YClients (поиском).
 struct PlannerCourtAliasSection: View {
     let key: String
     let subject: String
@@ -241,10 +252,10 @@ struct PlannerCourtAliasSection: View {
 
     var body: some View {
         Section {
-            Toggle("Бронируется в iClients на другого клиента", isOn: $enabled)
+            Toggle("Бронируется в YClients на другого клиента", isOn: $enabled)
             if enabled {
                 if aliasName.isEmpty {
-                    TextField("Найти клиента iClients", text: $query)
+                    TextField("Найти клиента YClients", text: $query)
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
                     ForEach(suggestions) { client in
@@ -258,7 +269,7 @@ struct PlannerCourtAliasSection: View {
                         }
                     }
                     if pool.isEmpty {
-                        Text("Клиентов из iClients пока нет: они появятся после синхронизации.")
+                        Text("Клиентов из YClients пока нет: они появятся после синхронизации.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 } else {
@@ -277,9 +288,9 @@ struct PlannerCourtAliasSection: View {
                 }
             }
         } header: {
-            Text("📋 iClients")
+            Text("📋 YClients")
         } footer: {
-            Text("Если «\(subject)» в iClients записывают на другого клиента, выбери его. Тогда запись планера и запись iClients с таким клиентом сольются в одну, когда корт подтвердится.")
+            Text("Если «\(subject)» в YClients записывают на другого клиента, выбери его. Тогда запись планера и запись YClients с таким клиентом сольются в одну, когда корт подтвердится.")
         }
         .onAppear(perform: load)
         .onChange(of: enabled) { _, _ in save() }
@@ -294,12 +305,19 @@ struct PlannerCourtAliasSection: View {
             aliasID = found.aliasClientID
             aliasName = found.aliasName
         }
-        pool = PlannerClientDirectory.iclientsClients(context)
         loaded = true
+        if enabled && aliasName.isEmpty { loadPool() }
+    }
+
+    /// Список клиентов YClients читаем только когда он нужен (включено и клиент ещё не выбран).
+    private func loadPool() {
+        guard pool.isEmpty else { return }
+        pool = PlannerClientDirectory.iclientsClients(context)
     }
 
     private func save() {
         guard loaded else { return }
+        if enabled && aliasName.isEmpty { loadPool() }
         let id = PlannerCourtAlias.makeID(key: key)
         let item: PlannerCourtAlias
         if let found = (try? context.fetch(FetchDescriptor<PlannerCourtAlias>(predicate: #Predicate { $0.syncID == id })))?.first {

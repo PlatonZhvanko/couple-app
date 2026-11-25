@@ -183,8 +183,8 @@ private struct PlannerStatusScopeView: View {
                 PlannerStatusStyleRow(scope: scope, status: item.key, title: item.title, defaultEmoji: item.defaultEmoji)
             }
             if scope == "all" {
-                PlannerStatusStyleRow(scope: scope, status: "courtRequest", title: "Запрос корта iClients (по умолчанию белый)", defaultEmoji: "")
-                PlannerStatusStyleRow(scope: scope, status: "courtConfirmed", title: "Корт подтверждён в iClients (по умолчанию оранжевый)", defaultEmoji: "")
+                PlannerStatusStyleRow(scope: scope, status: "courtRequest", title: "Запрос корта YClients (по умолчанию белый)", defaultEmoji: "")
+                PlannerStatusStyleRow(scope: scope, status: "courtConfirmed", title: "Корт подтверждён в YClients (по умолчанию оранжевый)", defaultEmoji: "")
             }
         }
         .navigationTitle(title)

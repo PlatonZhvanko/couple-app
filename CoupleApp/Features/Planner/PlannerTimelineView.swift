@@ -29,7 +29,7 @@ struct PlannerTimelineView: View {
     var badgeEmoji: (PlannerEvent, Date) -> String? = { _, _ in nil }
     /// Скрывать ли запись визуально (режим «глазик»).
     var isHidden: (PlannerEvent, Date) -> Bool = { _, _ in false }
-    /// Подтверждение корта в iClients: нет запроса, ждём (белая) или подтверждён (оранжевая).
+    /// Подтверждение корта в YClients: нет запроса, ждём (белая) или подтверждён (оранжевая).
     var courtState: (PlannerEvent, Date) -> PlannerCourtState = { _, _ in .none }
     /// Кнопка-глазик над субботой: `nil` — без неё. Второе значение: глазик перечёркнут (скрываем).
     var onEyeTap: (() -> Void)? = nil
@@ -509,7 +509,7 @@ struct PlannerTimelineView: View {
                     .minimumScaleFactor(0.6)
             }
             if showCourtNote {
-                Text("✓ Корт подтверждён, iClients")
+                Text("✓ Корт подтверждён, YClients")
                     .font(.system(size: 9, weight: .semibold))
                     .opacity(0.8)
                     .lineLimit(1)

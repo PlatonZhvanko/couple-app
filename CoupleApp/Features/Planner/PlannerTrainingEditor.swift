@@ -267,9 +267,9 @@ struct PlannerTrainingEditor: View {
 
                 if mode != .errand && account.current == .partner {
                     Section {
-                        Toggle("Запрос на подтверждение корта в iClients", isOn: $courtRequest)
+                        Toggle("Запрос на подтверждение корта в YClients", isOn: $courtRequest)
                     } footer: {
-                        Text("Запись горит белым, пока в iClients не появится такая же (то же время, длительность и клиент). Тогда она станет оранжевой, а запись iClients спрячется.")
+                        Text("Запись горит белым, пока в YClients не появится такая же (то же время, длительность и клиент). Тогда она станет оранжевой, а запись YClients спрячется.")
                     }
                 }
 
