@@ -27,6 +27,9 @@ struct RootTabView: View {
                 SettingsFeature.feature.makeRootView()
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .tabViewStyle(.sidebarAdaptable) // на компьютере: боковая панель вместо нижней вкладок
+        #endif
         .moodSupportPopup()
         .onAppear {
             // Напоминания обновляются при каждом открытии приложения.
