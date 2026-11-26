@@ -468,18 +468,11 @@ struct PlannerCalendarView: View {
                     .accessibilityLabel(hideCancelled ? "Показать отменённые и перенесённые" : "Скрыть отменённые и перенесённые")
                     .position(x: dayFocus ? geo.size.width - 52 : timeColumn + column * 5.5,
                               y: geo.size.height / 2)
-                    // «Олимпик»: на той же высоте, между понедельником и вторником.
-                    Button { showOlimpic = true } label: {
-                        Text("Олимпик")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.plannerToday))
+                    // «Олимпик»: между понедельником и вторником (в дневном режиме уезжает вниз влево).
+                    if !dayFocus {
+                        olimpicButton
+                            .position(x: timeColumn + column, y: geo.size.height / 2 - 6)
                     }
-                    .buttonStyle(.borderless)
-                    .position(x: dayFocus ? geo.size.width - 112 : timeColumn + column,
-                              y: geo.size.height / 2 - 6)
                 }
             }
             .gesture(DragGesture(minimumDistance: 30).onEnded { value in
@@ -561,6 +554,11 @@ struct PlannerCalendarView: View {
                 onMove: { event, from, to in moveByDrag(event, from: from, to: to) },
                 onSwipe: { movePlanner($0) }
             )
+            .overlay(alignment: .bottomLeading) {
+                if dayFocus {
+                    olimpicButton.padding(8)
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 Text("Сегодня 💰 \(Int(todayEarned)) ₽")
                     .font(.footnote.weight(.semibold))
@@ -571,6 +569,18 @@ struct PlannerCalendarView: View {
                     .allowsHitTesting(false)
             }
         }
+    }
+
+    private var olimpicButton: some View {
+        Button { showOlimpic = true } label: {
+            Text("Олимпик")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.plannerToday))
+        }
+        .buttonStyle(.borderless)
     }
 
     // MARK: - Профиль Платони: статусы дел, смены, настроение
