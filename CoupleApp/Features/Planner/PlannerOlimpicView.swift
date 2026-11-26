@@ -72,7 +72,27 @@ struct PlannerOlimpicView: View {
     private var bookings: [PlannerOlimpicDay.Booking] {
         // Только записи кортов из списка колонок (без «Администратора»), в том числе в уже сохранённых днях.
         let ids = Set(courts.map(\.id))
-        return (shown?.bookings ?? []).filter { ids.contains($0.court) && !(hideNoShow && $0.status == "noshow") }
+        let all = (shown?.bookings ?? []).filter { ids.contains($0.court) && !(hideNoShow && $0.status == "noshow") }
+        return dropOwnOverlaps(all)
+    }
+
+    /// Запись того же клиента внутри события (групповое/более длинное) не рисуем: серых дублей быть не должно.
+    /// Работает и для уже сохранённых дней, т.к. фильтр применяется при показе.
+    private func dropOwnOverlaps(_ list: [PlannerOlimpicDay.Booking]) -> [PlannerOlimpicDay.Booking] {
+        func key(_ b: PlannerOlimpicDay.Booking) -> String {
+            b.client.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        func rank(_ b: PlannerOlimpicDay.Booking) -> (Int, Int, Int) {
+            (b.group == true ? 0 : 1, -b.length, b.id)
+        }
+        return list.filter { b in
+            guard let (s, e) = interval(b), !key(b).isEmpty else { return true }
+            return !list.contains { a in
+                guard a.id != b.id, a.court == b.court, key(a) == key(b),
+                      let (s2, e2) = interval(a), s2 < e, e2 > s else { return false }
+                return rank(a) < rank(b)
+            }
+        }
     }
 
     private static let isoFormatter: ISO8601DateFormatter = {
