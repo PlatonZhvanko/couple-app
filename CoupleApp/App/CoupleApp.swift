@@ -2,7 +2,9 @@ import SwiftUI
 import SwiftData
 
 /// Точка входа приложения.
+#if !targetEnvironment(macCatalyst)
 @main
+#endif
 struct CoupleApp: App {
     private let environment: AppEnvironment
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .dark

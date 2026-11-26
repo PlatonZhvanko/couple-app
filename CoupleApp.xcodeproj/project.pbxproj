@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		C0A1E0000000000000000001 /* CoupleApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CoupleApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0A1E0000000000000000011 /* Vdvoem.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Vdvoem.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +17,22 @@
 			path = CoupleApp;
 			sourceTree = "<group>";
 		};
+		C0A1E0000000000000000012 /* CoupleAppMac */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CoupleAppMac;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		C0A1E0000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0A1E0000000000000000013 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +46,7 @@
 			isa = PBXGroup;
 			children = (
 				C0A1E0000000000000000002 /* CoupleApp */,
+				C0A1E0000000000000000012 /* CoupleAppMac */,
 				C0A1E0000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +55,7 @@
 			isa = PBXGroup;
 			children = (
 				C0A1E0000000000000000001 /* CoupleApp.app */,
+				C0A1E0000000000000000011 /* Vdvoem.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +85,29 @@
 			productReference = C0A1E0000000000000000001 /* CoupleApp.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C0A1E0000000000000000016 /* CoupleAppMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0A1E0000000000000000017 /* Build configuration list for PBXNativeTarget "CoupleAppMac" */;
+			buildPhases = (
+				C0A1E0000000000000000015 /* Sources */,
+				C0A1E0000000000000000013 /* Frameworks */,
+				C0A1E0000000000000000014 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C0A1E0000000000000000002 /* CoupleApp */,
+				C0A1E0000000000000000012 /* CoupleAppMac */,
+			);
+			name = CoupleAppMac;
+			packageProductDependencies = (
+			);
+			productName = CoupleAppMac;
+			productReference = C0A1E0000000000000000011 /* Vdvoem.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -81,6 +119,9 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					C0A1E0000000000000000006 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					C0A1E0000000000000000016 = {
 						CreatedOnToolsVersion = 16.0;
 					};
 				};
@@ -101,6 +142,7 @@
 			projectRoot = "";
 			targets = (
 				C0A1E0000000000000000006 /* CoupleApp */,
+				C0A1E0000000000000000016 /* CoupleAppMac */,
 			);
 		};
 /* End PBXProject section */
@@ -113,10 +155,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0A1E0000000000000000014 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		C0A1E0000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0A1E0000000000000000015 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -233,6 +289,76 @@
 			};
 			name = Release;
 		};
+		C0A1E0000000000000000018 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/CoupleAppMac.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Вдвоём";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.couple.vdvoem.mac;
+				PRODUCT_NAME = Vdvoem;
+				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C0A1E0000000000000000019 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/CoupleAppMac.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Вдвоём";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.couple.vdvoem.mac;
+				PRODUCT_NAME = Vdvoem;
+				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -250,6 +376,15 @@
 			buildConfigurations = (
 				C0A1E000000000000000000C /* Debug */,
 				C0A1E000000000000000000D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C0A1E0000000000000000017 /* Build configuration list for PBXNativeTarget "CoupleAppMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0A1E0000000000000000018 /* Debug */,
+				C0A1E0000000000000000019 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
