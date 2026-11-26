@@ -73,10 +73,10 @@ struct PlannerOlimpicView: View {
         // Только записи кортов из списка колонок (без «Администратора»), в том числе в уже сохранённых днях.
         let ids = Set(courts.map(\.id))
         let all = (shown?.bookings ?? []).filter { ids.contains($0.court) && !(hideNoShow && $0.status == "noshow") }
-        return dropOwnOverlaps(all)
+        return all
     }
 
-    /// Запись того же клиента внутри события (групповое/более длинное) не рисуем: серых дублей быть не должно.
+    /// Записи клиента внутри события не рисуем отдельной серой накладкой (данные остаются, видны при нажатии).
     /// Работает и для уже сохранённых дней, т.к. фильтр применяется при показе.
     private func dropOwnOverlaps(_ list: [PlannerOlimpicDay.Booking]) -> [PlannerOlimpicDay.Booking] {
         func key(_ b: PlannerOlimpicDay.Booking) -> String {
@@ -342,7 +342,7 @@ struct PlannerOlimpicView: View {
 
     /// Записи корта по порядку: та, что накладывается на более раннюю, рисуется сверху (серой).
     private func layers(for court: Int) -> [Layer] {
-        let list = bookings.filter { $0.court == court }.sorted {
+        let list = dropOwnOverlaps(bookings.filter { $0.court == court }).sorted {
             let a = start($0) ?? .distantPast, c = start($1) ?? .distantPast
             if a != c { return a < c }
             if ($0.group == true) != ($1.group == true) { return $0.group == true }
